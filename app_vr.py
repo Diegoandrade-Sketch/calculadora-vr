@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+import textwrap
 
 # 1. Configuracao da Pagina
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
@@ -83,7 +84,7 @@ with st.sidebar:
         faturamento = st.selectbox("Faturamento", ["Imediato", "30 dias", "60 dias", "Após a implantação"])
         parcelas = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 5, 6], index=3)
 
-# --- 5. TELA DE CONSULTA (CORREÇÃO DE RENDERIZAÇÃO) ---
+# --- 5. TELA DE CONSULTA (REPARO TOTAL NA RENDERIZAÇÃO) ---
 if tela == "Consulta de Preço":
     st.markdown('<h1 class="hero-title">ANÁLISE TÉCNICA</h1>', unsafe_allow_html=True)
     prod_sel = st.selectbox("Selecione o Produto:", list(precos_tabela.keys()))
@@ -94,13 +95,12 @@ if tela == "Consulta de Preço":
     
     c1, c2 = st.columns(2)
     with c1:
-        # Bloco Único de HTML para evitar quebra de renderização
-        conteudo_html = f"""
+        # Usando dedent para garantir que o Streamlit receba HTML limpo
+        html_markup = textwrap.dedent(f"""
             <div class="resumo-card">
                 <span class="resumo-label">Preço de Venda</span>
                 <div class="resumo-valor">R$ {d['mensal']:,.2f}<small style="font-size:1rem; color:#888;">/mês</small></div>
                 <div style="font-weight:bold; color:#555; margin-bottom:10px;">Setup: R$ {d['setup']:,.2f}</div>
-                
                 <div class="section-header"><span class="section-title">ROI ESTRATÉGICO VR</span></div>
                 <div class="roi-interno-box">
                     <div class="roi-metrica">
@@ -120,25 +120,21 @@ if tela == "Consulta de Preço":
                         <span class="roi-num-int">{d['comp']}</span>
                     </div>
                 </div>
-                
                 <div class="resumo-subtitulo">ROI PARA O CLIENTE</div>
                 <p style="font-size:0.9rem; color:#444; line-height:1.4;">{d['roi']}</p>
             </div>
-        """
-        st.markdown(conteudo_html, unsafe_allow_html=True)
+        """)
+        st.markdown(html_markup, unsafe_allow_html=True)
 
     with c2:
         st.markdown('<div class="section-header"><span class="section-title">ENGENHARIA DE VALOR</span></div>', unsafe_allow_html=True)
-        if d["mensal"] > 500: 
-            st.info("**Foco em Retenção:** Produto de alta recorrência.")
-        if d["comp"] == "Alta": 
-            st.warning("**Atenção Técnica:** Exige senioridade na implantação.")
-        if d["margem"] == "Altíssima": 
-            st.success("**Alta Escalabilidade:** Margem líquida superior.")
+        if d["mensal"] > 500: st.info("**Foco em Retenção:** Produto de alta recorrência.")
+        if d["comp"] == "Alta": st.warning("**Atenção Técnica:** Exige senioridade na implantação.")
+        if d["margem"] == "Altíssima": st.success("**Alta Escalabilidade:** Margem líquida superior.")
         
         st.write("---")
-        st.markdown(f"**Descrição Técnica:**\n\n{d['desc']}")
-        st.markdown(f"**Projeção de Ciclo de Vida:**\n\nReceita bruta total em 24 meses: **R$ {ltv_24:,.2f}**.")
+        st.markdown(f"**Descrição Técnica:**  \n{d['desc']}")
+        st.markdown(f"**Projeção de Ciclo de Vida:**  \nReceita bruta total em 24 meses: **R$ {ltv_24:,.2f}**.")
 
 # --- 6. TELA DE PROPOSTA ---
 else:
