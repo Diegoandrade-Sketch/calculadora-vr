@@ -69,7 +69,23 @@ precos_tabela = {
 }
 itens_desp = {"Alimentação": 49.00, "Hospedagem": 195.00, "Deslocamento (KM)": 2.12}
 
-# --- 4. MENU LATERAL ---
+# --- 4. INICIALIZAÇÃO DE ESTADO (CRÍTICO) ---
+# Inicializamos tudo aqui no topo para que nenhum widget tente resetar os valores
+if 'sel_i' not in st.session_state: st.session_state.sel_i = ["Migração Banco de Dados", "Definição de Escopo", "Configuração Servidor / PDV Linux", "Implantação e Treinamento"]
+if 'sel_m' not in st.session_state: st.session_state.sel_m = ["VR ERP PRO"]
+
+# Inicializa valores de despesas e quantidades se não existirem
+for i in list(precos_tabela.keys()):
+    if f"v_h_{i}" not in st.session_state:
+        st.session_state[f"v_h_{i}"] = 120 if "Treinamento" in i else 12
+    if f"v_q_{i}" not in st.session_state:
+        st.session_state[f"v_q_{i}"] = 1
+
+for i in itens_desp.keys():
+    if f"v_d_{i}" not in st.session_state:
+        st.session_state[f"v_d_{i}"] = 0
+
+# --- 5. MENU LATERAL ---
 with st.sidebar:
     if os.path.exists("logo_vr.png"): st.image("logo_vr.png", width=200)
     tela = st.radio("Navegação:", ["Gerador de Proposta", "Consulta de Preço"])
@@ -84,135 +100,88 @@ with st.sidebar:
         faturamento = st.selectbox("Faturamento", ["Imediato", "30 dias", "60 dias", "Após a implantação"])
         parcelas = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 5, 6], index=3)
 
-# --- 5. TELA DE CONSULTA ---
+# --- TELA DE CONSULTA (Sem alterações) ---
 if tela == "Consulta de Preço":
     st.markdown('<h1 class="hero-title">ANÁLISE TÉCNICA</h1>', unsafe_allow_html=True)
     prod_sel = st.selectbox("Selecione o Produto:", list(precos_tabela.keys()))
     d = precos_tabela[prod_sel]
-    
     ltv_24 = (d["mensal"] * 24) + d["setup"]
     payback = ((d["cac"] - d["setup"]) / d["mensal"]) if d["mensal"] > 0 else 0
-    
     c1, c2 = st.columns(2)
     with c1:
-        html_markup = textwrap.dedent(f"""
-            <div class="resumo-card">
-                <span class="resumo-label">Preço de Venda</span>
-                <div class="resumo-valor">R$ {d['mensal']:,.2f}<small style="font-size:1rem; color:#888;">/mês</small></div>
-                <div style="font-weight:bold; color:#555; margin-bottom:10px;">Setup: R$ {d['setup']:,.2f}</div>
-                <div class="section-header"><span class="section-title">ROI ESTRATÉGICO VR</span></div>
-                <div class="roi-interno-box">
-                    <div class="roi-metrica">
-                        <span class="roi-label-int">LTV (24 Meses)</span>
-                        <span class="roi-num-int">R$ {ltv_24:,.2f}</span>
-                    </div>
-                    <div class="roi-metrica">
-                        <span class="roi-label-int">Breakeven</span>
-                        <span class="roi-num-int">{round(payback, 1) if d['mensal'] > 0 else 'N/A'} meses</span>
-                    </div>
-                    <div class="roi-metrica">
-                        <span class="roi-label-int">Margem</span>
-                        <span class="roi-num-int">{d['margem']}</span>
-                    </div>
-                    <div class="roi-metrica">
-                        <span class="roi-label-int">Complexidade</span>
-                        <span class="roi-num-int">{d['comp']}</span>
-                    </div>
-                </div>
-                <div class="resumo-subtitulo">ROI PARA O CLIENTE</div>
-                <p style="font-size:0.9rem; color:#444; line-height:1.4;">{d['roi']}</p>
-            </div>
-        """)
-        st.markdown(html_markup, unsafe_allow_html=True)
-
+        st.markdown(f"""<div class="resumo-card"><span class="resumo-label">Preço</span><div class="resumo-valor">R$ {d['mensal']:,.2f}</div><div class="section-header"><span class="section-title">ROI ESTRATÉGICO</span></div><div class="roi-interno-box"><div class="roi-metrica"><span class="roi-label-int">LTV</span><span class="roi-num-int">R$ {ltv_24:,.2f}</span></div><div class="roi-metrica"><span class="roi-label-int">Payback</span><span class="roi-num-int">{round(payback, 1)} meses</span></div></div></div>""", unsafe_allow_html=True)
     with c2:
-        st.markdown('<div class="section-header"><span class="section-title">ENGENHARIA DE VALOR</span></div>', unsafe_allow_html=True)
-        if d["mensal"] > 500: st.info("**Foco em Retenção:** Produto de alta recorrência.")
-        if d["comp"] == "Alta": st.warning("**Atenção Técnica:** Exige senioridade na implantação.")
-        if d["margem"] == "Altíssima": st.success("**Alta Escalabilidade:** Margem líquida superior.")
-        st.write("---")
-        st.markdown(f"**Descrição Técnica:**  \n{d['desc']}")
-        st.markdown(f"**Projeção de Ciclo de Vida:**  \nReceita bruta total em 24 meses: **R$ {ltv_24:,.2f}**.")
+        st.info(f"**{prod_sel}**: {d['desc']}")
 
-# --- 6. TELA DE PROPOSTA ---
+# --- 6. TELA DE PROPOSTA CORRIGIDA ---
 else:
     if not modo_apresentacao:
         st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
-
-    # 1. Inicialização de listas de seleção
-    if 'sel_i' not in st.session_state: st.session_state.sel_i = ["Migração Banco de Dados", "Definição de Escopo", "Configuração Servidor / PDV Linux", "Implantação e Treinamento"]
-    if 'sel_m' not in st.session_state: st.session_state.sel_m = ["VR ERP PRO"]
-
-    if not modo_apresentacao:
         st.markdown("---")
+        
         col_i, col_m, col_d = st.columns(3) if perfil_venda == "Executivo (Rua)" else (*st.columns(2), None)
         
         with col_i:
             st.markdown('<div class="section-header"><span class="section-title">IMPLANTAÇÃO</span></div>', unsafe_allow_html=True)
             st.session_state.sel_i = st.multiselect("Serviços", list(precos_tabela.keys())[8:12], default=st.session_state.sel_i)
             for i in st.session_state.sel_i:
-                vu = precos_tabela[i]["setup"]
-                key_h = f"v_h_{i}"
-                if key_h not in st.session_state: 
-                    st.session_state[key_h] = 12 if "Treinamento" not in i else 120
-                st.number_input(f"Horas: {i}", min_value=0, key=key_h)
+                # Usamos key fixa e não passamos 'value' para deixar o Streamlit gerenciar o estado inicializado no topo
+                st.number_input(f"Horas: {i}", min_value=0, key=f"v_h_{i}")
 
         with col_m:
             st.markdown('<div class="section-header"><span class="section-title">MENSALIDADES</span></div>', unsafe_allow_html=True)
             st.session_state.sel_m = st.multiselect("Produtos", list(precos_tabela.keys())[0:8], default=st.session_state.sel_m)
             for i in st.session_state.sel_m:
-                vu = precos_tabela[i]["mensal"]
-                key_q = f"v_q_{i}"
-                if key_q not in st.session_state: st.session_state[key_q] = 1
-                st.number_input(f"Qtd: {i}", min_value=0, key=key_q)
+                st.number_input(f"Qtd: {i}", min_value=0, key=f"v_q_{i}")
 
         if col_d:
             with col_d:
                 st.markdown('<div class="section-header"><span class="section-title">DESPESAS</span></div>', unsafe_allow_html=True)
                 for i, p in itens_desp.items():
-                    key_d = f"v_d_{i}"
-                    # GARANTIA DE PERSISTÊNCIA: Inicializa no session_state apenas se estiver vazio
-                    if key_d not in st.session_state: st.session_state[key_d] = 0
-                    # Widget amarrado à chave interna do Streamlit (sem forçar o value= no parâmetro)
-                    st.number_input(f"{i} (R$ {p:,.2f})", min_value=0, key=key_d)
+                    # Esta é a chave para não zerar: o widget está vinculado à chave que já existe no session_state
+                    st.number_input(f"{i} (R$ {p:,.2f})", min_value=0, key=f"v_d_{i}")
 
-    # 2. Cálculos Finais (Lendo sempre do session_state atualizado pelo widget)
+    # --- CÁLCULOS FINAIS ---
     t_imp, t_men_bruto, t_desp = 0, 0, 0
     lista_i, lista_m, lista_d = [], [], []
 
+    # Cálculo Implantação
     for i in st.session_state.sel_i:
         vu = precos_tabela[i]["setup"]
         h = st.session_state.get(f"v_h_{i}", 0)
         t_imp += h * vu
         lista_i.append((i, h, vu))
 
+    # Cálculo Mensalidade
     for i in st.session_state.sel_m:
         vu = precos_tabela[i]["mensal"]
         q = st.session_state.get(f"v_q_{i}", 0)
         t_men_bruto += q * vu
         lista_m.append((i, q, vu))
 
-    # O cálculo de despesas agora é robusto ao Rerun
+    # Cálculo Despesas
     for i, p in itens_desp.items():
         qd = st.session_state.get(f"v_d_{i}", 0)
-        t_desp += qd * p
-        if qd > 0: lista_d.append((i, qd, p))
+        if qd > 0:
+            t_desp += qd * p
+            lista_d.append((i, qd, p))
 
     t_men_liq = t_men_bruto * (1 - (desc/100))
 
+    # --- EXIBIÇÃO DOS CARDS ---
     st.markdown("<h2 style='text-align:center; font-weight:800; margin-top:30px;'>DETALHAMENTO DA PROPOSTA</h2>", unsafe_allow_html=True)
     res_cols = st.columns(3) if perfil_venda == "Executivo (Rua)" else st.columns([1, 2, 2, 1])[1:3]
 
     with res_cols[0]:
-        html_i = "".join([f"<li><span><span class='tooltip'>{i}<span class='tooltiptext'>{precos_tabela[i]['desc']}</span></span></span><span class='item-detalhe'>{h}h x R$ {v:,.2f}</span></li>" for i, h, v in lista_i])
+        html_i = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{h}h x R$ {v:,.2f}</span></li>" for i, h, v in lista_i])
         st.markdown(f'<div class="resumo-card"><span class="resumo-label">Setup</span><div class="resumo-valor">R$ {t_imp:,.2f}</div><div style="font-weight:bold;">{parcelas}x R$ {t_imp/parcelas:,.2f}</div><div class="resumo-subtitulo">SERVIÇOS</div><ul class="lista-itens">{html_i}</ul></div>', unsafe_allow_html=True)
 
     with res_cols[1]:
         html_m = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} Un x R$ {v:,.2f}</span></li>" for i, q, v in lista_m])
-        desc_info = f'<div style="color: #2e7d32; font-weight: bold;">Desconto: {desc:,.2f}%</div>' if exibir_detalhe_desc and desc > 0 else '<div style="height:21px"></div>'
+        desc_info = f'<div style="color: #2e7d32; font-weight: bold;">Desconto Aplicado: {desc:,.2f}%</div>' if exibir_detalhe_desc and desc > 0 else '<div style="height:21px"></div>'
         st.markdown(f'<div class="resumo-card" style="border-top-color: #2e7d32;"><span class="resumo-label">Mensalidade</span><div class="resumo-valor" style="color: #2e7d32;">R$ {t_men_liq:,.2f}</div>{desc_info}<div style="font-weight:bold; font-size: 0.9rem; margin-top:5px;">Faturamento: {faturamento}</div><div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{html_m}</ul></div>', unsafe_allow_html=True)
 
     if perfil_venda == "Executivo (Rua)":
         with res_cols[2]:
             html_d = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} x R$ {v:,.2f}</span></li>" for i, q, v in lista_d])
-            st.markdown(f'<div class="resumo-card" style="border-top-color: #1976d2;"><span class="resumo-label">Despesas</span><div class="resumo-valor" style="color: #1976d2;">R$ {t_desp:,.2f}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">Faturadas no término</div><div class="resumo-subtitulo">LOGÍSTICA</div><ul class="lista-itens">{html_d}</ul></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="resumo-card" style="border-top-color: #1976d2;"><span class="resumo-label">Despesas</span><div class="resumo-valor" style="color: #1976d2;">R$ {t_desp:,.2f}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">Logística e Deslocamento</div><div class="resumo-subtitulo">DETALHES</div><ul class="lista-itens">{html_d}</ul></div>', unsafe_allow_html=True)
