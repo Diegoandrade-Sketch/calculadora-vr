@@ -5,7 +5,7 @@ import os
 # 1. Configuração da Página
 st.set_page_config(page_title="VR Software | Proposta Comercial", layout="wide")
 
-# 2. Estilização CSS (Foco em Nítidez e Visual Profissional)
+# 2. Estilização CSS (Foco em Visual Limpo e Fontes Grandes)
 st.markdown("""
     <style>
     .main { background-color: #ffffff; }
@@ -18,6 +18,7 @@ st.markdown("""
         padding: 0;
         line-height: 1;
         letter-spacing: -3px;
+        text-transform: uppercase;
     }
     
     .section-header {
@@ -44,31 +45,47 @@ st.markdown("""
         border-radius: 5px;
     }
 
-    /* Estilo dos Cards do Resumo Visual */
+    /* Estilo dos Cards do Resumo - Sem emojis e com fontes maiores */
     .resumo-card {
-        background-color: #fcfcfc;
-        border: 1px solid #eeeeee;
-        border-left: 6px solid #ff6600;
-        padding: 20px;
-        border-radius: 8px;
-        margin-bottom: 10px;
+        background-color: #ffffff;
+        border: 1px solid #d1d1d1;
+        border-top: 8px solid #ff6600;
+        padding: 25px;
+        border-radius: 4px;
+        min-height: 400px;
     }
     .resumo-label {
-        color: #666666;
-        font-size: 0.9rem;
+        color: #1a1a1a;
+        font-size: 1.1rem;
         text-transform: uppercase;
         font-weight: bold;
+        margin-bottom: 10px;
+        display: block;
     }
     .resumo-valor {
-        color: #262730;
-        font-size: 1.8rem;
-        font-weight: 800;
-        margin-top: 5px;
+        color: #ff6600;
+        font-size: 2.5rem;
+        font-weight: 900;
+        margin-bottom: 5px;
     }
-    .resumo-item {
-        font-size: 0.95rem;
+    .resumo-subtitulo {
+        font-size: 1.2rem;
+        color: #333;
+        font-weight: bold;
+        margin-top: 20px;
+        margin-bottom: 10px;
+        border-bottom: 1px solid #eee;
+    }
+    .lista-itens {
+        font-size: 1.1rem;
         color: #444;
-        margin-bottom: 3px;
+        line-height: 1.6;
+        list-style-type: none;
+        padding-left: 0;
+    }
+    .lista-itens li {
+        padding: 5px 0;
+        border-bottom: 1px dashed #f0f0f0;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -112,40 +129,38 @@ itens_desp = {
 
 # --- BARRA LATERAL (NEGOCIAÇÃO) ---
 with st.sidebar:
-    st.header("⚙️ Negociação Financeira")
+    st.title("NEGOCIAÇÃO")
     st.subheader("Mensalidade")
     desc = st.number_input("Desconto (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.1)
     st.write("---")
     st.subheader("Implantação")
     parcelas = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 5, 6, 10, 12], index=3)
-    if desc > 15:
-        st.error("⚠️ Requer aprovação.")
 
 # 5. Interface Principal de Seleção
 col1, col2, col3 = st.columns(3)
 
 with col1:
     placeholder_imp = st.empty()
-    with st.expander("Selecionar Itens de Implantação", expanded=True):
-        imp_sel = st.multiselect("Serviços de Setup", list(itens_imp.keys()), default=list(itens_imp.keys()))
+    with st.expander("ITENS DE IMPLANTAÇÃO", expanded=True):
+        imp_sel = st.multiselect("Selecione os serviços", list(itens_imp.keys()), default=list(itens_imp.keys()))
     t_imp = 0
     for item in imp_sel:
         val_unit = itens_imp[item]
-        h = st.number_input(f"Horas: {item} (R$ {val_unit:,.2f}/h)", min_value=0, value=12 if "Treinamento" not in item else 120, key=f"h_{item}")
+        h = st.number_input(f"Horas: {item} (R$ {val_unit:,.2f})", min_value=0, value=12 if "Treinamento" not in item else 120, key=f"h_{item}")
         t_imp += h * val_unit
-    placeholder_imp.markdown(f'<div class="section-header"><span class="section-title">LICENÇA IMPLANTAÇÃO</span><span class="section-total">R$ {t_imp:,.2f}</span></div>', unsafe_allow_html=True)
+    placeholder_imp.markdown(f'<div class="section-header"><span class="section-title">IMPLANTAÇÃO TOTAL</span><span class="section-total">R$ {t_imp:,.2f}</span></div>', unsafe_allow_html=True)
 
 with col2:
     placeholder_men = st.empty()
-    with st.expander("Selecionar Itens Mensais", expanded=True):
-        mensal_sel = st.multiselect("Produtos e Licenças", list(itens_mensal.keys()), default=["VR ERP PRO"])
+    with st.expander("ITENS MENSAIS", expanded=True):
+        mensal_sel = st.multiselect("Selecione os produtos", list(itens_mensal.keys()), default=["VR ERP PRO"])
     t_men_bruto = 0
     for item in mensal_sel:
         val_unit = itens_mensal[item]
-        q = st.number_input(f"Qtd: {item} (R$ {val_unit:,.2f} un)", min_value=0, value=1, key=f"q_{item}")
+        q = st.number_input(f"Qtd: {item} (R$ {val_unit:,.2f})", min_value=0, value=1, key=f"q_{item}")
         t_men_bruto += q * val_unit
     t_men_liq = t_men_bruto * (1 - (desc/100))
-    placeholder_men.markdown(f'<div class="section-header"><span class="section-title">LICENÇA MENSAL</span><span class="section-total">R$ {t_men_liq:,.2f}</span></div>', unsafe_allow_html=True)
+    placeholder_men.markdown(f'<div class="section-header"><span class="section-title">MENSALIDADE TOTAL</span><span class="section-total">R$ {t_men_liq:,.2f}</span></div>', unsafe_allow_html=True)
 
 with col3:
     placeholder_des = st.empty()
@@ -153,49 +168,61 @@ with col3:
     for item, preco in itens_desp.items():
         qd = st.number_input(f"{item} (R$ {preco:,.2f})", min_value=0, value=0, key=f"d_{item}")
         t_desp += qd * preco
-    placeholder_des.markdown(f'<div class="section-header"><span class="section-title">DESPESAS DE PROJETO</span><span class="section-total">R$ {t_desp:,.2f}</span></div>', unsafe_allow_html=True)
+    placeholder_des.markdown(f'<div class="section-header"><span class="section-title">DESPESAS TOTAIS</span><span class="section-total">R$ {t_desp:,.2f}</span></div>', unsafe_allow_html=True)
 
 st.markdown("<br><br>", unsafe_allow_html=True)
-st.subheader("📋 RESUMO VISUAL DA PROPOSTA")
 
-# 6. SEÇÃO DE RESUMO VISUAL (TOPICOS E CARDS)
+# 6. SEÇÃO DE RESUMO VISUAL - LISTAGEM VERTICAL E FONTE GRANDE
+st.markdown("<h2 style='text-align: center; color: #333;'>DETALHAMENTO DA PROPOSTA</h2>", unsafe_allow_html=True)
+
 res_col1, res_col2, res_col3 = st.columns(3)
+
+def gerar_lista_html(itens):
+    if not itens: return "<li>Nenhum item selecionado</li>"
+    return "".join([f"<li>{item}</li>" for item in itens])
 
 with res_col1:
     st.markdown(f"""
         <div class="resumo-card">
-            <p class="resumo-label">Investimento Único (Setup)</p>
-            <p class="resumo-valor">R$ {t_imp:,.2f}</p>
-            <p class="resumo-item"><b>Condição:</b> {parcelas}x de R$ {t_imp/parcelas:,.2f}</p>
-            <hr style="margin: 10px 0;">
-            <p class="resumo-item"><b>Itens:</b> {", ".join(imp_sel) if imp_sel else "Nenhum"}</p>
+            <span class="resumo-label">Investimento Setup</span>
+            <div class="resumo-valor">R$ {t_imp:,.2f}</div>
+            <div style="font-size: 1.2rem; font-weight: bold;">{parcelas}x de R$ {t_imp/parcelas:,.2f}</div>
+            <div class="resumo-subtitulo">SERVIÇOS INCLUSOS</div>
+            <ul class="lista-itens">
+                {gerar_lista_html(imp_sel)}
+            </ul>
         </div>
     """, unsafe_allow_html=True)
 
 with res_col2:
     st.markdown(f"""
-        <div class="resumo-card" style="border-left-color: #2e7d32;">
-            <p class="resumo-label">Assinatura Mensal</p>
-            <p class="resumo-valor">R$ {t_men_liq:,.2f}</p>
-            <p class="resumo-item"><b>Desconto:</b> {desc}% aplicado</p>
-            <hr style="margin: 10px 0;">
-            <p class="resumo-item"><b>Itens:</b> {", ".join(mensal_sel) if mensal_sel else "Nenhum"}</p>
+        <div class="resumo-card" style="border-top-color: #2e7d32;">
+            <span class="resumo-label">Investimento Mensal</span>
+            <div class="resumo-valor">R$ {t_men_liq:,.2f}</div>
+            <div style="font-size: 1.2rem; color: #2e7d32; font-weight: bold;">Desconto aplicado: {desc}%</div>
+            <div class="resumo-subtitulo">SISTEMAS E LICENÇAS</div>
+            <ul class="lista-itens">
+                {gerar_lista_html(mensal_sel)}
+            </ul>
         </div>
     """, unsafe_allow_html=True)
 
 with res_col3:
     st.markdown(f"""
-        <div class="resumo-card" style="border-left-color: #1976d2;">
-            <p class="resumo-label">Previsão de Despesas</p>
-            <p class="resumo-valor">R$ {t_desp:,.2f}</p>
-            <p class="resumo-item"><b>Tipo:</b> Reembolso Posterior</p>
-            <hr style="margin: 10px 0;">
-            <p class="resumo-item">Viagens, alimentação e deslocamento conforme demanda.</p>
+        <div class="resumo-card" style="border-top-color: #1976d2;">
+            <span class="resumo-label">Previsão de Despesas</span>
+            <div class="resumo-valor">R$ {t_desp:,.2f}</div>
+            <div style="font-size: 1.1rem;">Custos de deslocamento e estadia</div>
+            <div class="resumo-subtitulo">POLÍTICA DE REEMBOLSO</div>
+            <ul class="lista-itens">
+                <li>Alimentação</li>
+                <li>Hospedagem</li>
+                <li>Kilometragem Rodada</li>
+            </ul>
         </div>
     """, unsafe_allow_html=True)
 
-# 7. Botão Final para Copiar Texto (mantido por utilidade)
 st.write("---")
-if st.button("Gerar Sumário em Texto para WhatsApp"):
-    resumo_txt = f"*PROPOSTA VR SOFTWARE*\n\n1. SETUP: R$ {t_imp:,.2f} ({parcelas}x)\n2. MENSALIDADE: R$ {t_men_liq:,.2f}\n3. DESPESAS: R$ {t_desp:,.2f}"
+if st.button("FORMATAR PARA WHATSAPP"):
+    resumo_txt = f"PROPOSTA VR SOFTWARE\n\nIMPLANTAÇÃO: R$ {t_imp:,.2f} em {parcelas}x\nMENSALIDADE: R$ {t_men_liq:,.2f}\nDESPESAS: R$ {t_desp:,.2f}"
     st.code(resumo_txt, language="text")
