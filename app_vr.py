@@ -128,12 +128,13 @@ with st.sidebar:
     
     st.markdown('<span class="sidebar-label">Negociação</span>', unsafe_allow_html=True)
     
-    # Regra: Digita até 30, mas avisa após 15
     desc = st.number_input("Desconto Mensal (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.1)
     if desc > 15.0:
-        st.warning("⚠️ Desconto não autorizado. Esta proposta precisará passar pela aprovação do financeiro.")
+        st.warning("Desconto não autorizado. Esta proposta precisará passar pela aprovação do financeiro.")
     
-    # Regra: Parcelamento Setup limitado a 6x
+    # Nova Condicao de Faturamento
+    faturamento = st.selectbox("Faturamento Mensalidade", ["Imediato", "30 dias", "60 dias", "Apos a implantacao"])
+    
     parcelas = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 5, 6], index=3)
     
     st.write("---")
@@ -143,7 +144,7 @@ with st.sidebar:
         t_m = st.session_state.get('t_men_liq', 0)
         t_d = st.session_state.get('t_desp', 0)
         
-        resumo_txt = f"*PROPOSTA VR SOFTWARE*\n\n*Setup:* R$ {t_i:,.2f} em {parcelas}x\n*Mensalidade:* R$ {t_m:,.2f}"
+        resumo_txt = f"*PROPOSTA VR SOFTWARE*\n\n*Setup:* R$ {t_i:,.2f} em {parcelas}x\n*Mensalidade:* R$ {t_m:,.2f} ({faturamento})"
         if perfil_venda == "Executivo (Rua)":
             resumo_txt += f"\n*Despesas:* R$ {t_d:,.2f}"
             
@@ -165,36 +166,18 @@ if not modo_apresentacao:
     st.markdown("---")
 
 # 5. Dados Base
-itens_imp = {
-    "Migração Banco de Dados": 201.30, 
-    "Definição de Escopo": 201.30, 
-    "Configuração Servidor / PDV Linux": 201.30, 
-    "Implantação e Treinamento": 201.30
-}
-
-descricoes_imp = {
-    "Migração Banco de Dados": "Cópia do cadastro de produtos, fornecedores e contas a receber em aberto vindos do sistema anterior.",
-    "Definição de Escopo": "Alinhamento estratégico para mapear os processos da sua empresa e garantir que todas as necessidades sejam atendidas pelo sistema.",
-    "Configuração Servidor / PDV Linux": "Preparação técnica do servidor central e dos terminais de venda com sistema Linux, garantindo máxima estabilidade e segurança.",
-    "Implantação e Treinamento": "Acompanhamento capacitivo da equipe em todos os módulos contratados, garantindo o uso correto da ferramenta."
-}
-
-itens_mensal = {
-    "VR ERP PRO": 1285.71, "VR PDV Convencional": 185.71, "PDV Touchscreen": 185.71, 
-    "PDV Selfcheckout": 290.44, "SiTef Express": 357.14, "VR TEF": 417.04, 
-    "Gerenciador XML": 163.84, "VR Mobile": 193.63
-}
-
+itens_imp = {"Migração Banco de Dados": 201.30, "Definição de Escopo": 201.30, "Configuração Servidor / PDV Linux": 201.30, "Implantação e Treinamento": 201.30}
+descricoes_imp = {"Migração Banco de Dados": "Cópia do cadastro de produtos, fornecedores e contas a receber em aberto vindos do sistema anterior.", "Definição de Escopo": "Alinhamento estratégico para mapear os processos da sua empresa e garantir que todas as necessidades sejam atendidas pelo sistema.", "Configuração Servidor / PDV Linux": "Preparação técnica do servidor central e dos terminais de venda com sistema Linux, garantindo máxima estabilidade e segurança.", "Implantação e Treinamento": "Acompanhamento capacitivo da equipe em todos os módulos contratados, garantindo o uso correto da ferramenta."}
+itens_mensal = {"VR ERP PRO": 1285.71, "VR PDV Convencional": 185.71, "PDV Touchscreen": 185.71, "PDV Selfcheckout": 290.44, "SiTef Express": 357.14, "VR TEF": 417.04, "Gerenciador XML": 163.84, "VR Mobile": 193.63}
 itens_desp = {"Alimentação": 49.00, "Hospedagem": 195.00, "Deslocamento (KM)": 2.12}
 
-# 6. Lógica de Interface e Cálculos
+# 6. Lógica de Interface
 if not modo_apresentacao:
-    # Ajusta o número de colunas na edição dependendo do perfil
     if perfil_venda == "Executivo (Rua)":
         col1, col2, col3 = st.columns(3)
     else:
         col1, col2 = st.columns(2)
-        col3 = None # Desativa a coluna 3 para CS
+        col3 = None
     
     dados_imp_final = []
     with col1:
@@ -220,7 +203,7 @@ if not modo_apresentacao:
 
     dados_desp_final = []
     t_desp = 0
-    if col3: # Só entra aqui se for Perfil Executivo
+    if col3:
         with col3:
             st.markdown('<div class="section-header"><span class="section-title">PREVISÃO DE DESPESAS</span></div>', unsafe_allow_html=True)
             for item, preco in itens_desp.items():
@@ -228,14 +211,7 @@ if not modo_apresentacao:
                 t_desp += qd * preco
                 if qd > 0: dados_desp_final.append((item, qd, preco))
 
-    st.session_state.update({
-        't_imp': t_imp, 
-        'dados_imp': dados_imp_final, 
-        't_men_bruto': t_men_bruto, 
-        'dados_mensal': dados_mensal_final, 
-        't_desp': t_desp, 
-        'dados_desp': dados_desp_final
-    })
+    st.session_state.update({'t_imp': t_imp, 'dados_imp': dados_imp_final, 't_men_bruto': t_men_bruto, 'dados_mensal': dados_mensal_final, 't_desp': t_desp, 'dados_desp': dados_desp_final})
 else:
     t_imp = st.session_state.get('t_imp', 0)
     dados_imp_final = st.session_state.get('dados_imp', [])
@@ -244,18 +220,15 @@ else:
     t_desp = st.session_state.get('t_desp', 0) if perfil_venda == "Executivo (Rua)" else 0
     dados_desp_final = st.session_state.get('dados_desp', [])
 
-# Cálculos finais com 2 casas decimais no desconto visual
 t_men_liq = t_men_bruto * (1 - (desc/100))
 st.session_state['t_men_liq'] = t_men_liq
 
 # 7. SEÇÃO DE RESUMO VISUAL
 st.markdown("<h2 style='text-align: center; color: #333; font-weight: 800; margin-bottom: 25px;'>DETALHAMENTO DA PROPOSTA</h2>", unsafe_allow_html=True)
 
-# Ajuste de Colunas do Resumo baseado no Perfil
 if perfil_venda == "Executivo (Rua)":
     res_col1, res_col2, res_col3 = st.columns(3)
 else:
-    # Centraliza os dois cards deixando colunas vazias nas pontas
     _, res_col1, res_col2, _ = st.columns([0.5, 2, 2, 0.5])
     res_col3 = None
 
@@ -283,12 +256,13 @@ with res_col2:
             <span class="resumo-label">Investimento Mensal</span>
             <div class="resumo-valor" style="color: #2e7d32;">R$ {t_men_liq:,.2f}</div>
             <div style="font-size: 1.1rem; color: #2e7d32; font-weight: bold;">Desconto aplicado: {desc:,.2f}%</div>
+            <div style="font-size: 0.9rem; color: #444; font-weight: bold; margin-top: 5px;">Faturamento: {faturamento}</div>
             <div class="resumo-subtitulo">SISTEMAS E LICENÇAS</div>
             <ul class="lista-itens">{html_itens if html_itens else "<li>Nenhum item selecionado</li>"}</ul>
         </div>
     """, unsafe_allow_html=True)
 
-if res_col3: # Só mostra se for perfil Executivo
+if res_col3:
     with res_col3:
         html_itens = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} Qtd. x R$ {v:,.2f}</span></li>" for i, q, v in dados_desp_final])
         st.markdown(f"""
