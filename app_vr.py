@@ -39,18 +39,13 @@ st.markdown("""
     .lista-itens li { padding: 6px 0; border-bottom: 1px dashed #f0f0f0; display: flex; justify-content: space-between; }
     .item-detalhe { color: #777; font-size: 0.9rem; }
 
-    /* Botoes da Sidebar */
     [data-testid="stSidebar"] .stButton > button {
         width: 100%; border-radius: 5px; height: 3em; font-weight: bold;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# Inicializacao do estado para controlar a visibilidade dos seletores
-if 'mostrar_seletores' not in st.session_state:
-    st.session_state.mostrar_seletores = True
-
-# Funcao para Gerar Imagem
+# Funcao para Gerar Imagem de Resumo
 def gerar_imagem_resumo(t_imp, p_imp, t_men, t_desp):
     img = Image.new('RGB', (800, 600), color='#ffffff')
     draw = ImageDraw.Draw(img)
@@ -63,6 +58,7 @@ def gerar_imagem_resumo(t_imp, p_imp, t_men, t_desp):
         font_titulo = ImageFont.load_default()
         font_sub = ImageFont.load_default()
         font_valor = ImageFont.load_default()
+    
     draw.text((40, 25), "RESUMO DA PROPOSTA - VR SOFTWARE", fill="white", font=font_titulo)
     draw.text((40, 140), "IMPLANTACAO SETUP", fill="#666666", font=font_sub)
     draw.text((40, 175), f"R$ {t_imp:,.2f}", fill="#ff6600", font=font_valor)
@@ -71,6 +67,7 @@ def gerar_imagem_resumo(t_imp, p_imp, t_men, t_desp):
     draw.text((40, 335), f"R$ {t_men:,.2f}", fill="#2e7d32", font=font_valor)
     draw.text((40, 460), "PREVISAO DE DESPESAS", fill="#666666", font=font_sub)
     draw.text((40, 495), f"R$ {t_desp:,.2f}", fill="#1976d2", font=font_valor)
+    
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
@@ -92,9 +89,9 @@ itens_imp = {"Migracao Banco de Dados": 201.30, "Definicao de Escopo": 201.30, "
 itens_mensal = {"VR ERP PRO": 1285.71, "VR PDV Convencional": 185.71, "PDV Touchscreen": 185.71, "PDV Selfcheckout": 290.44, "SiTef Express": 357.14, "VR TEF": 417.04, "Gerenciador XML": 163.84, "VR Mobile": 193.63}
 itens_desp = {"Alimentacao": 49.00, "Hospedagem": 195.00, "Deslocamento KM": 2.12}
 
-# --- BARRA LATERAL (Sidebar) ---
+# --- BARRA LATERAL ---
 with st.sidebar:
-    st.title("OPCOES")
+    st.title("CONFIGURACOES")
     desc = st.number_input("Desconto Mensal Porcentagem", min_value=0.0, max_value=30.0, value=0.0, step=0.1)
     parcelas = st.selectbox("Parcelas Setup", [1, 2, 3, 4, 5, 6, 10, 12], index=3)
     
@@ -108,73 +105,58 @@ with st.sidebar:
         st.code(msg, language="text")
 
     img_data = gerar_imagem_resumo(st.session_state.get('t_imp', 0), parcelas, st.session_state.get('t_men_liq', 0), st.session_state.get('t_desp', 0))
-    st.download_button(label="Baixar Imagem da Proposta", data=img_data, file_name="proposta_vr.png", mime="image/png")
+    st.download_button(label="Baixar Card da Proposta", data=img_data, file_name="proposta_vr.png", mime="image/png")
 
-# 5. Interface de Selecao (Ocultavel)
-if st.session_state.mostrar_seletores:
-    col1, col2, col3 = st.columns(3)
-    
-    dados_imp_final = []
-    with col1:
-        st.markdown('<div class="section-header"><span class="section-title">SERVICOS</span></div>', unsafe_allow_html=True)
-        imp_sel = st.multiselect("Selecione os servicos", list(itens_imp.keys()), default=list(itens_imp.keys()))
-        t_imp = 0
-        for item in imp_sel:
-            v_u = itens_imp[item]
-            h = st.number_input(f"Horas {item}", min_value=0, value=12 if "Treinamento" not in item else 120, key=f"h_{item}")
-            t_imp += h * v_u
-            dados_imp_final.append((item, h, v_u))
-    
-    dados_mensal_final = []
-    with col2:
-        st.markdown('<div class="section-header"><span class="section-title">PRODUTOS</span></div>', unsafe_allow_html=True)
-        mensal_sel = st.multiselect("Selecione os produtos", list(itens_mensal.keys()), default=["VR ERP PRO"])
-        t_men_bruto = 0
-        for item in mensal_sel:
-            v_u = itens_mensal[item]
-            q = st.number_input(f"Qtd {item}", min_value=0, value=1, key=f"q_{item}")
-            t_men_bruto += q * v_u
-            dados_mensal_final.append((item, q, v_u))
-        t_men_liq = t_men_bruto * (1 - (desc/100))
+# 5. Interface de Selecao de Itens
+col1, col2, col3 = st.columns(3)
 
-    dados_desp_final = []
-    with col3:
-        st.markdown('<div class="section-header"><span class="section-title">DESPESAS</span></div>', unsafe_allow_html=True)
-        t_desp = 0
-        for item, preco in itens_desp.items():
-            qd = st.number_input(f"{item}", min_value=0, value=0, key=f"d_{item}")
-            t_desp += qd * preco
-            if qd > 0: dados_desp_final.append((item, qd, preco))
+dados_imp_final = []
+with col1:
+    st.markdown('<div class="section-header"><span class="section-title">SERVICOS</span></div>', unsafe_allow_html=True)
+    imp_sel = st.multiselect("Itens de Implantacao", list(itens_imp.keys()), default=list(itens_imp.keys()))
+    t_imp = 0
+    for item in imp_sel:
+        v_u = itens_imp[item]
+        h = st.number_input(f"Horas {item}", min_value=0, value=12 if "Treinamento" not in item else 120, key=f"h_{item}")
+        t_imp += h * v_u
+        dados_imp_final.append((item, h, v_u))
 
-    # Salva no estado para quando for ocultado
-    st.session_state.update({'t_imp': t_imp, 'dados_imp': dados_imp_final, 't_men_liq': t_men_liq, 'dados_mensal': dados_mensal_final, 't_desp': t_desp, 'dados_desp': dados_desp_final})
+dados_mensal_final = []
+with col2:
+    st.markdown('<div class="section-header"><span class="section-title">PRODUTOS</span></div>', unsafe_allow_html=True)
+    mensal_sel = st.multiselect("Itens Mensais", list(itens_mensal.keys()), default=["VR ERP PRO"])
+    t_men_bruto = 0
+    for item in mensal_sel:
+        v_u = itens_mensal[item]
+        q = st.number_input(f"Qtd {item}", min_value=0, value=1, key=f"q_{item}")
+        t_men_bruto += q * v_u
+        dados_mensal_final.append((item, q, v_u))
+    t_men_liq = t_men_bruto * (1 - (desc/100))
 
-# Botao para Ocultar/Exibir (Logo abaixo dos seletores)
-btn_label = "OCULTAR SELECAO DE ITENS" if st.session_state.mostrar_seletores else "EXIBIR SELECAO DE ITENS"
-if st.button(btn_label):
-    st.session_state.mostrar_seletores = not st.session_state.mostrar_seletores
-    st.rerun()
+dados_desp_final = []
+with col3:
+    st.markdown('<div class="section-header"><span class="section-title">DESPESAS</span></div>', unsafe_allow_html=True)
+    t_desp = 0
+    for item, preco in itens_desp.items():
+        qd = st.number_input(f"{item}", min_value=0, value=0, key=f"d_{item}")
+        t_desp += qd * preco
+        if qd > 0: dados_desp_final.append((item, qd, preco))
 
-# 6. Exibicao Final (Resumo)
-if not st.session_state.mostrar_seletores:
-    t_imp = st.session_state.get('t_imp', 0)
-    dados_imp_final = st.session_state.get('dados_imp', [])
-    t_men_liq = st.session_state.get('t_men_liq', 0)
-    dados_mensal_final = st.session_state.get('dados_mensal', [])
-    t_desp = st.session_state.get('t_desp', 0)
-    dados_desp_final = st.session_state.get('dados_desp', [])
+# Atualiza sessao para os botoes da sidebar
+st.session_state.update({'t_imp': t_imp, 't_men_liq': t_men_liq, 't_desp': t_desp})
 
-st.markdown("<br><h2 style='text-align: center; color: #333; font-weight: 800;'>RESUMO DA PROPOSTA</h2>", unsafe_allow_html=True)
+# 6. Detalhamento Final
+st.markdown("<br><h2 style='text-align: center; color: #333; font-weight: 800;'>DETALHAMENTO DA PROPOSTA</h2>", unsafe_allow_html=True)
 res_col1, res_col2, res_col3 = st.columns(3)
 
 with res_col1:
     h_i = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{h}h x R$ {v:,.2f}</span></li>" for i, h, v in dados_imp_final])
-    st.markdown(f'<div class="resumo-card"><span class="resumo-label">Investimento Setup</span><div class="resumo-valor">R$ {t_imp:,.2f}</div><div style="font-size: 1.2rem; font-weight: bold;">{parcelas}x de R$ {t_imp/parcelas:,.2f}</div><div class="resumo-subtitulo">DETALHES DO SETUP</div><ul class="lista-itens">{h_i if h_i else "<li>Nenhum item</li>"}</ul></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="resumo-card"><span class="resumo-label">Investimento Setup</span><div class="resumo-valor">R$ {t_imp:,.2f}</div><div style="font-size: 1.2rem; font-weight: bold;">{parcelas}x de R$ {t_imp/parcelas:,.2f}</div><div class="resumo-subtitulo">SERVICOS DE IMPLANTACAO</div><ul class="lista-itens">{h_i if h_i else "<li>Nenhum item selecionado</li>"}</ul></div>', unsafe_allow_html=True)
 
 with res_col2:
     h_m = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} Qtd x R$ {v:,.2f}</span></li>" for i, q, v in dados_mensal_final])
-    st.markdown(f'<div class="resumo-card" style="border-top-color: #2e7d32;"><span class="resumo-label">Investimento Mensal</span><div class="resumo-valor">R$ {t_men_liq:,.2f}</div><div style="font-size: 1.1rem; color: #2e7d32; font-weight: bold;">Desconto aplicado: {desc}%</div><div class="resumo-subtitulo">ITENS MENSAIS</div><ul class="lista-itens">{h_m if h_m else "<li>Nenhum item</li>"}</ul></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="resumo-card" style="border-top-color: #2e7d32;"><span class="resumo-label">Investimento Mensal</span><div class="resumo-valor">R$ {t_men_liq:,.2f}</div><div style="font-size: 1.1rem; color: #2e7d32; font-weight: bold;">Desconto: {desc}%</div><div class="resumo-subtitulo">SISTEMAS E LICENCAS</div><ul class="lista-itens">{h_m if h_m else "<li>Nenhum item selecionado</li>"}</ul></div>', unsafe_allow_html=True)
 
 with res_col3:
     h_d = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} Un x R$ {v:,.2f}</span></li>" for i, q, v in dados_desp_final])
-    st.markdown(f'<div class="resumo-card" style="border-top-color: #1976d2;"><span class="resumo-label">Previsao de Despesas</span><div class="resumo-valor">R$ {t_desp:,.2f}</div><div style="font-size: 1rem; color: #d32f2f; font-weight: bold;">Faturado conforme uso</div><div class="resumo-subtitulo">ITENS DE LOGISTICA</div><ul class="lista-itens">{h_d if h_d else "<li>Nenhuma despesa</li>"}</ul></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="resumo-card" style="border-top-color: #1976d2;"><span class="resumo-label">Previsao de Despesas</span><div class="resumo-valor">R$ {t_desp:,.2f}</div><div style="font-size: 1rem; color: #d32f2f; font-weight: bold;">Valores faturados pos-servico</div><div class="resumo-subtitulo">LOGISTICA E VIAGEM</div><ul class="lista-itens">{h_d if h_d else "<li>Nenhuma despesa lancada</li>"}</ul></div>', unsafe_allow_html=True)
