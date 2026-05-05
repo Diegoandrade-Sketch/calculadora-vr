@@ -85,7 +85,6 @@ with st.sidebar:
         faturamento = st.selectbox("Faturamento", ["Imediato", "30 dias", "60 dias", "Após a implantação"])
         parcelas = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 5, 6], index=3)
         
-        # --- NOVO BLOCO: EXPORTAÇÃO WHATSAPP NO MENU ---
         st.write("---")
         st.markdown('<span class="sidebar-label">Ações de Fechamento</span>', unsafe_allow_html=True)
         cliente_nome = st.text_input("Nome do Cliente", "Parceiro")
@@ -207,23 +206,20 @@ else:
             html_d = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} x R$ {v:,.2f}</span></li>" for i, q, v in lista_d])
             st.markdown(f'<div class="resumo-card" style="border-top-color: #1976d2;"><span class="resumo-label">Despesas</span><div class="resumo-valor" style="color: #1976d2;">R$ {t_desp:,.2f}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">Faturadas no término</div><div class="resumo-subtitulo">LOGÍSTICA</div><ul class="lista-itens">{html_d}</ul></div>', unsafe_allow_html=True)
 
-    # --- LÓGICA DO WHATSAPP (Apenas se estiver na tela de proposta) ---
+    # --- LOGICA DO WHATSAPP ---
     if tela == "Gerador de Proposta":
-        msg = f"""*Olá, {cliente_nome}!* Segue o resumo da sua proposta *VR Software*:
+        msg = f"""Olá, {cliente_nome}. Segue o resumo da sua proposta VR Software:
     
-🚀 *Investimento de Setup:* R$ {t_imp:,.2f} ({parcelas}x R$ {t_imp/parcelas:,.2f})
-💻 *Mensalidade:* R$ {t_men_liq:,.2f}
-📅 *Faturamento:* {faturamento}
+Investimento de Setup: R$ {t_imp:,.2f} ({parcelas}x R$ {t_imp/parcelas:,.2f})
+Mensalidade: R$ {t_men_liq:,.2f}
+Faturamento: {faturamento}
 
-*Sistemas inclusos:*
+Sistemas inclusos:
 """
         for i, q, v in lista_m:
-            msg += f"• {i} ({q} un)\n"
-            
-        msg += "\n_Proposta gerada via VR Sales Intelligence._"
+            msg += f"- {i} ({q} un)\n"
         
         url_whatsapp = f"https://api.whatsapp.com/send?phone=55{cliente_tel}&text={quote(msg)}"
         
         with st.sidebar:
-            if st.link_button("🚀 Enviar para WhatsApp", url_whatsapp, use_container_width=True):
-                st.balloons()
+            st.link_button("Enviar para WhatsApp", url_whatsapp, use_container_width=True)
