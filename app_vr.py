@@ -20,14 +20,14 @@ st.markdown("""
     .resumo-subtitulo { font-size: 1.1rem; color: #333; font-weight: bold; margin-top: 20px; margin-bottom: 10px; border-bottom: 2px solid #ffefe5; padding-bottom: 5px; }
     .lista-itens { font-size: 1.05rem; color: #444; line-height: 1.6; list-style-type: none; padding-left: 0; }
     .lista-itens li { padding: 10px 0; border-bottom: 1px dashed #e0e0e0; display: flex; justify-content: space-between; align-items: center; }
-    .item-detalhe { color: #333; font-size: 1.05rem; font-weight: 700; background-color: #fcfcfc; padding: 2px 8px; border-radius: 4px; }
+    .item-detalhe { color: #333; font-size: 0.95rem; font-weight: 700; background-color: #fcfcfc; padding: 2px 8px; border-radius: 4px; border: 1px solid #eee; }
     .tooltip { position: relative; display: inline-block; cursor: help; border-bottom: 1px dotted #ff6600; color: #222; font-weight: 600; }
     .tooltip .tooltiptext { visibility: hidden; width: 280px; background-color: #262730; color: #fff; text-align: left; border-radius: 8px; padding: 12px; position: absolute; z-index: 10; bottom: 135%; left: 50%; margin-left: -140px; opacity: 0; transition: opacity 0.3s, transform 0.3s; font-size: 0.85rem; line-height: 1.4; font-weight: 400; box-shadow: 0 10px 20px rgba(0,0,0,0.2); transform: translateY(10px); }
     .tooltip:hover .tooltiptext { visibility: visible; opacity: 1; transform: translateY(0px); }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. DADOS BASE (FIXOS) ---
+# --- 3. DADOS BASE ---
 itens_imp = {
     "Migração Banco de Dados": 201.30, "Definição de Escopo": 201.30, 
     "Configuração Servidor / PDV Linux": 201.30, "Implantação e Treinamento": 201.30
@@ -48,30 +48,26 @@ itens_mensal = {
 
 itens_desp = {"Alimentação": 49.00, "Hospedagem": 195.00, "Deslocamento (KM)": 2.12}
 
-# --- 4. BARRA LATERAL (TRAVAS DE NEGÓCIO) ---
+# --- 4. BARRA LATERAL ---
 with st.sidebar:
     st.title("PAINEL DE CONTROLE")
     modo_apresentacao = st.toggle("Modo Apresentação", value=False)
     
     st.markdown('<span class="sidebar-label">Negociação</span>', unsafe_allow_html=True)
-    
-    # Travas de Desconto (Precisão de 0.01)
     desc = st.number_input("Desconto Mensal (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.01, format="%.2f")
+    
     if desc > 15.0:
-        st.error(f"⚠️ Desconto de {desc:.2f}% não autorizado! Exige aprovação do financeiro.")
+        st.error(f"⚠️ Desconto de {desc:.2f}% exige aprovação financeira.")
     elif desc > 0:
-        st.success(f"✅ Desconto de {desc:.2f}% autorizado.")
+        st.success(f"✅ Desconto de {desc:.2f}% aplicado.")
 
-    # Trava de Parcelamento (Máximo 6x)
     parcelas = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 5, 6], index=0)
     
     st.write("---")
-    st.markdown('<span class="sidebar-label">Exportação</span>', unsafe_allow_html=True)
     if st.button("FORMATAR PARA WHATSAPP"):
         t_i = st.session_state.get('t_imp', 0)
         t_m = st.session_state.get('t_men_liq', 0)
-        t_d = st.session_state.get('t_desp', 0)
-        resumo_txt = f"*PROPOSTA VR SOFTWARE*\n\n*Setup:* R$ {t_i:,.2f} ({parcelas}x)\n*Mensalidade:* R$ {t_m:,.2f} ({desc:.2f}% desc.)\n*Despesas:* R$ {t_d:,.2f}"
+        resumo_txt = f"*PROPOSTA VR SOFTWARE*\n\n*Setup:* R$ {t_i:,.2f} ({parcelas}x)\n*Mensalidade:* R$ {t_m:,.2f} ({desc:.2f}% desc.)"
         st.code(resumo_txt, language="text")
 
 # 5. Cabeçalho
@@ -79,15 +75,12 @@ head_col1, head_col2 = st.columns([1, 4])
 with head_col1:
     if os.path.exists("logo_vr.png"): st.image("logo_vr.png", width=220)
     else: st.subheader("VR SOFTWARE")
-
 with head_col2:
-    if not modo_apresentacao:
-        st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
+    if not modo_apresentacao: st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
 
-if not modo_apresentacao:
-    st.markdown("---")
+if not modo_apresentacao: st.markdown("---")
 
-# 6. Lógica de Interface e Cálculos
+# 6. Lógica de Interface
 if not modo_apresentacao:
     col1, col2, col3 = st.columns(3)
     
@@ -128,11 +121,10 @@ else:
     t_men_bruto = st.session_state.get('t_men_bruto', 0); dados_mensal_final = st.session_state.get('dados_mensal', [])
     t_desp = st.session_state.get('t_desp', 0); dados_desp_final = st.session_state.get('dados_desp', [])
 
-# Cálculo matemático preciso
 t_men_liq = t_men_bruto * (1 - (desc/100))
 st.session_state['t_men_liq'] = t_men_liq
 
-# 7. Resumo Visual
+# 7. Resumo Visual (COM AJUSTE DE "LICENÇA")
 st.markdown("<h2 style='text-align: center; color: #333; font-weight: 800; margin-bottom: 25px;'>RESUMO DA PROPOSTA</h2>", unsafe_allow_html=True)
 res_col1, res_col2, res_col3 = st.columns(3)
 
@@ -141,10 +133,10 @@ with res_col1:
     st.markdown(f'<div class="resumo-card"><span class="resumo-label">Setup</span><div class="resumo-valor">R$ {t_imp:,.2f}</div><div style="font-weight:bold;">{parcelas}x de R$ {t_imp/parcelas:,.2f}</div><div class="resumo-subtitulo">SERVIÇOS</div><ul class="lista-itens">{html_itens if html_itens else "<li>Nenhum item</li>"}</ul></div>', unsafe_allow_html=True)
 
 with res_col2:
-    html_itens = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} un x R$ {v:,.2f}</span></li>" for i, q, v in dados_mensal_final])
+    # ALTERADO: Agora exibe "Lic." em vez de "un"
+    html_itens = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} Lic. x R$ {v:,.2f}</span></li>" for i, q, v in dados_mensal_final])
     cor_txt = "#d32f2f" if desc > 15.0 else "#2e7d32"
-    # AJUSTE: desc:.2f garante as duas casas decimais no visual do card
-    st.markdown(f'<div class="resumo-card" style="border-top-color: {cor_txt};"><span class="resumo-label">Mensal</span><div class="resumo-valor">R$ {t_men_liq:,.2f}</div><div style="color:{cor_txt}; font-weight:bold;">Desconto: {desc:.2f}%</div><div class="resumo-subtitulo">LICENÇAS</div><ul class="lista-itens">{html_itens if html_itens else "<li>Nenhum item</li>"}</ul></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="resumo-card" style="border-top-color: {cor_txt};"><span class="resumo-label">Mensal</span><div class="resumo-valor">R$ {t_men_liq:,.2f}</div><div style="color:{cor_txt}; font-weight:bold;">Desconto: {desc:.2f}%</div><div class="resumo-subtitulo">SISTEMAS (LICENÇAS)</div><ul class="lista-itens">{html_itens if html_itens else "<li>Nenhum item</li>"}</ul></div>', unsafe_allow_html=True)
 
 with res_col3:
     html_itens = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} x R$ {v:,.2f}</span></li>" for i, q, v in dados_desp_final])
