@@ -6,7 +6,7 @@ import os
 # 1. Configuracao da Pagina
 st.set_page_config(page_title="VR Software | Proposta Comercial", layout="wide")
 
-# 2. Estilizacao CSS Avançada (Mantendo sua base original)
+# 2. Estilizacao CSS Avançada
 st.markdown("""
     <style>
     .stApp {
@@ -120,16 +120,17 @@ st.markdown("""
 # --- 3. BARRA LATERAL ---
 with st.sidebar:
     st.title("PAINEL DE CONTROLE")
+    
+    st.markdown('<span class="sidebar-label">Perfil da Venda</span>', unsafe_allow_html=True)
+    perfil_venda = st.selectbox("Selecione o perfil", ["Executivo (Rua)", "CS (Base)"], index=0)
+    
     modo_apresentacao = st.toggle("Modo Apresentação", value=False)
     
     st.markdown('<span class="sidebar-label">Negociação</span>', unsafe_allow_html=True)
-    
-    # Regra: Digita até 30, mas avisa após 15
     desc = st.number_input("Desconto Mensal (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.1)
     if desc > 15.0:
         st.warning("⚠️ Desconto não autorizado. Esta proposta precisará passar pela aprovação do financeiro.")
     
-    # Regra: Parcelamento Setup limitado a 6x
     parcelas = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 5, 6], index=3)
     
     st.write("---")
@@ -138,7 +139,12 @@ with st.sidebar:
         t_i = st.session_state.get('t_imp', 0)
         t_m = st.session_state.get('t_men_liq', 0)
         t_d = st.session_state.get('t_desp', 0)
-        resumo_txt = f"*PROPOSTA VR SOFTWARE*\n\n*Setup:* R$ {t_i:,.2f} em {parcelas}x\n*Mensalidade:* R$ {t_m:,.2f}\n*Despesas:* R$ {t_d:,.2f}"
+        
+        # Texto do WhatsApp ajustado conforme o perfil
+        resumo_txt = f"*PROPOSTA VR SOFTWARE*\n\n*Setup:* R$ {t_i:,.2f} em {parcelas}x\n*Mensalidade:* R$ {t_m:,.2f}"
+        if perfil_venda == "Executivo (Rua)":
+            resumo_txt += f"\n*Despesas:* R$ {t_d:,.2f}"
+            
         st.code(resumo_txt, language="text")
 
 # 4. Cabeçalho Dinâmico
@@ -181,7 +187,12 @@ itens_desp = {"Alimentação": 49.00, "Hospedagem": 195.00, "Deslocamento (KM)":
 
 # 6. Lógica de Interface e Cálculos
 if not modo_apresentacao:
-    col1, col2, col3 = st.columns(3)
+    # Ajusta o número de colunas na edição dependendo do perfil
+    if perfil_venda == "Executivo (Rua)":
+        col1, col2, col3 = st.columns(3)
+    else:
+        col1, col2 = st.columns(2)
+        col3 = None # Desativa a coluna 3 para CS
     
     dados_imp_final = []
     with col1:
@@ -190,7 +201,6 @@ if not modo_apresentacao:
         t_imp = 0
         for item in imp_sel:
             v_u = itens_imp[item]
-            # Ajuste: Rótulo agora mostra o valor unitário
             h = st.number_input(f"Horas: {item} (R$ {v_u:,.2f}/h)", min_value=0, value=12 if "Treinamento" not in item else 120, key=f"h_{item}")
             t_imp += h * v_u
             dados_imp_final.append((item, h, v_u))
@@ -202,20 +212,19 @@ if not modo_apresentacao:
         t_men_bruto = 0
         for item in mensal_sel:
             v_u = itens_mensal[item]
-            # Ajuste: Rótulo agora mostra o valor unitário
             q = st.number_input(f"Qtd: {item} (R$ {v_u:,.2f})", min_value=0, value=1, key=f"q_{item}")
             t_men_bruto += q * v_u
             dados_mensal_final.append((item, q, v_u))
 
     dados_desp_final = []
-    with col3:
-        st.markdown('<div class="section-header"><span class="section-title">PREVISÃO DE DESPESAS</span></div>', unsafe_allow_html=True)
-        t_desp = 0
-        for item, preco in itens_desp.items():
-            # Ajuste: Rótulo agora mostra o valor unitário
-            qd = st.number_input(f"{item} (R$ {preco:,.2f})", min_value=0, value=0, key=f"d_{item}")
-            t_desp += qd * preco
-            if qd > 0: dados_desp_final.append((item, qd, preco))
+    t_desp = 0
+    if col3: # Só entra aqui se for Perfil Executivo
+        with col3:
+            st.markdown('<div class="section-header"><span class="section-title">PREVISÃO DE DESPESAS</span></div>', unsafe_allow_html=True)
+            for item, preco in itens_desp.items():
+                qd = st.number_input(f"{item} (R$ {preco:,.2f})", min_value=0, value=0, key=f"d_{item}")
+                t_desp += qd * preco
+                if qd > 0: dados_desp_final.append((item, qd, preco))
 
     st.session_state.update({
         't_imp': t_imp, 
@@ -230,7 +239,7 @@ else:
     dados_imp_final = st.session_state.get('dados_imp', [])
     t_men_bruto = st.session_state.get('t_men_bruto', 0)
     dados_mensal_final = st.session_state.get('dados_mensal', [])
-    t_desp = st.session_state.get('t_desp', 0)
+    t_desp = st.session_state.get('t_desp', 0) if perfil_venda == "Executivo (Rua)" else 0
     dados_desp_final = st.session_state.get('dados_desp', [])
 
 # Cálculos finais
@@ -239,7 +248,14 @@ st.session_state['t_men_liq'] = t_men_liq
 
 # 7. SEÇÃO DE RESUMO VISUAL
 st.markdown("<h2 style='text-align: center; color: #333; font-weight: 800; margin-bottom: 25px;'>DETALHAMENTO DA PROPOSTA</h2>", unsafe_allow_html=True)
-res_col1, res_col2, res_col3 = st.columns(3)
+
+# Ajuste de Colunas do Resumo baseado no Perfil
+if perfil_venda == "Executivo (Rua)":
+    res_col1, res_col2, res_col3 = st.columns(3)
+else:
+    # Centraliza os dois cards deixando colunas vazias nas pontas
+    _, res_col1, res_col2, _ = st.columns([0.5, 2, 2, 0.5])
+    res_col3 = None
 
 with res_col1:
     html_itens = ""
@@ -270,14 +286,15 @@ with res_col2:
         </div>
     """, unsafe_allow_html=True)
 
-with res_col3:
-    html_itens = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} Qtd. x R$ {v:,.2f}</span></li>" for i, q, v in dados_desp_final])
-    st.markdown(f"""
-        <div class="resumo-card" style="border-top-color: #1976d2;">
-            <span class="resumo-label">Previsão de Despesas</span>
-            <div class="resumo-valor" style="color: #1976d2;">R$ {t_desp:,.2f}</div>
-            <div style="font-size: 1rem; color: #d32f2f; font-weight: bold; background: #fff5f5; padding: 5px; border-radius: 4px;">Faturadas ao término da implantação</div>
-            <div class="resumo-subtitulo">DETALHAMENTO LOGÍSTICO</div>
-            <ul class="lista-itens">{html_itens if html_itens else "<li>Nenhuma despesa selecionada</li>"}</ul>
-        </div>
-    """, unsafe_allow_html=True)
+if res_col3: # Só mostra se for perfil Executivo
+    with res_col3:
+        html_itens = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} Qtd. x R$ {v:,.2f}</span></li>" for i, q, v in dados_desp_final])
+        st.markdown(f"""
+            <div class="resumo-card" style="border-top-color: #1976d2;">
+                <span class="resumo-label">Previsão de Despesas</span>
+                <div class="resumo-valor" style="color: #1976d2;">R$ {t_desp:,.2f}</div>
+                <div style="font-size: 1rem; color: #d32f2f; font-weight: bold; background: #fff5f5; padding: 5px; border-radius: 4px;">Faturadas ao término da implantação</div>
+                <div class="resumo-subtitulo">DETALHAMENTO LOGÍSTICO</div>
+                <ul class="lista-itens">{html_itens if html_itens else "<li>Nenhuma despesa selecionada</li>"}</ul>
+            </div>
+        """, unsafe_allow_html=True)
