@@ -1,11 +1,12 @@
 import streamlit as st
 import pandas as pd
+import urllib.parse
 import os
 
 # 1. Configuracao da Pagina
 st.set_page_config(page_title="VR Software | Proposta Comercial", layout="wide")
 
-# 2. Estilizacao CSS Avançada
+# 2. Estilizacao CSS Avançada (Mantendo sua base original)
 st.markdown("""
     <style>
     .stApp {
@@ -52,6 +53,8 @@ st.markdown("""
         padding: 25px; border-radius: 8px; min-height: 480px; box-shadow: 0 10px 25px rgba(0,0,0,0.05);
     }
     .resumo-valor { color: #ff6600; font-size: 2.5rem; font-weight: 900; margin-bottom: 5px; }
+    .resumo-label { color: #888; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; display: block; }
+    
     .resumo-subtitulo {
         font-size: 1.1rem; color: #333; font-weight: bold; margin-top: 20px;
         margin-bottom: 10px; border-bottom: 2px solid #ffefe5; padding-bottom: 5px;
@@ -120,13 +123,18 @@ with st.sidebar:
     modo_apresentacao = st.toggle("Modo Apresentação", value=False)
     
     st.markdown('<span class="sidebar-label">Negociação</span>', unsafe_allow_html=True)
+    
+    # Regra: Digita até 30, mas avisa após 15
     desc = st.number_input("Desconto Mensal (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.1)
-    parcelas = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 5, 6, 10, 12], index=3)
+    if desc > 15.0:
+        st.warning("⚠️ Desconto não autorizado. Esta proposta precisará passar pela aprovação do financeiro.")
+    
+    # Regra: Parcelamento Setup limitado a 6x
+    parcelas = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 5, 6], index=3)
     
     st.write("---")
     st.markdown('<span class="sidebar-label">Exportação</span>', unsafe_allow_html=True)
     if st.button("FORMATAR PARA WHATSAPP"):
-        # Usa os valores finais calculados para o texto
         t_i = st.session_state.get('t_imp', 0)
         t_m = st.session_state.get('t_men_liq', 0)
         t_d = st.session_state.get('t_desp', 0)
@@ -182,7 +190,8 @@ if not modo_apresentacao:
         t_imp = 0
         for item in imp_sel:
             v_u = itens_imp[item]
-            h = st.number_input(f"Horas: {item}", min_value=0, value=12 if "Treinamento" not in item else 120, key=f"h_{item}")
+            # Ajuste: Rótulo agora mostra o valor unitário
+            h = st.number_input(f"Horas: {item} (R$ {v_u:,.2f}/h)", min_value=0, value=12 if "Treinamento" not in item else 120, key=f"h_{item}")
             t_imp += h * v_u
             dados_imp_final.append((item, h, v_u))
 
@@ -193,7 +202,8 @@ if not modo_apresentacao:
         t_men_bruto = 0
         for item in mensal_sel:
             v_u = itens_mensal[item]
-            q = st.number_input(f"Qtd: {item}", min_value=0, value=1, key=f"q_{item}")
+            # Ajuste: Rótulo agora mostra o valor unitário
+            q = st.number_input(f"Qtd: {item} (R$ {v_u:,.2f})", min_value=0, value=1, key=f"q_{item}")
             t_men_bruto += q * v_u
             dados_mensal_final.append((item, q, v_u))
 
@@ -202,15 +212,15 @@ if not modo_apresentacao:
         st.markdown('<div class="section-header"><span class="section-title">PREVISÃO DE DESPESAS</span></div>', unsafe_allow_html=True)
         t_desp = 0
         for item, preco in itens_desp.items():
-            qd = st.number_input(f"{item}", min_value=0, value=0, key=f"d_{item}")
+            # Ajuste: Rótulo agora mostra o valor unitário
+            qd = st.number_input(f"{item} (R$ {preco:,.2f})", min_value=0, value=0, key=f"d_{item}")
             t_desp += qd * preco
             if qd > 0: dados_desp_final.append((item, qd, preco))
 
-    # Salvamos o Bruto para poder recalcular o desconto em qualquer modo
     st.session_state.update({
         't_imp': t_imp, 
         'dados_imp': dados_imp_final, 
-        't_men_bruto': t_men_bruto, # Salva o bruto
+        't_men_bruto': t_men_bruto, 
         'dados_mensal': dados_mensal_final, 
         't_desp': t_desp, 
         'dados_desp': dados_desp_final
@@ -218,14 +228,13 @@ if not modo_apresentacao:
 else:
     t_imp = st.session_state.get('t_imp', 0)
     dados_imp_final = st.session_state.get('dados_imp', [])
-    t_men_bruto = st.session_state.get('t_men_bruto', 0) # Recupera o bruto
+    t_men_bruto = st.session_state.get('t_men_bruto', 0)
     dados_mensal_final = st.session_state.get('dados_mensal', [])
     t_desp = st.session_state.get('t_desp', 0)
     dados_desp_final = st.session_state.get('dados_desp', [])
 
-# --- CORREÇÃO: O cálculo do valor líquido acontece AQUI, fora dos IFs ---
+# Cálculos finais
 t_men_liq = t_men_bruto * (1 - (desc/100))
-# Atualiza o state para o botão do WhatsApp ler o valor correto
 st.session_state['t_men_liq'] = t_men_liq
 
 # 7. SEÇÃO DE RESUMO VISUAL
@@ -254,8 +263,8 @@ with res_col2:
     st.markdown(f"""
         <div class="resumo-card" style="border-top-color: #2e7d32;">
             <span class="resumo-label">Investimento Mensal</span>
-            <div class="resumo-valor">R$ {t_men_liq:,.2f}</div>
-            <div style="font-size: 1.1rem; color: #2e7d32; font-weight: bold;">Desconto aplicado: {desc}%</div>
+            <div class="resumo-valor" style="color: #2e7d32;">R$ {t_men_liq:,.2f}</div>
+            <div style="font-size: 1.1rem; color: #2e7d32; font-weight: bold;">Desconto aplicado: {desc:,.2f}%</div>
             <div class="resumo-subtitulo">SISTEMAS E LICENÇAS</div>
             <ul class="lista-itens">{html_itens if html_itens else "<li>Nenhum item selecionado</li>"}</ul>
         </div>
@@ -266,7 +275,7 @@ with res_col3:
     st.markdown(f"""
         <div class="resumo-card" style="border-top-color: #1976d2;">
             <span class="resumo-label">Previsão de Despesas</span>
-            <div class="resumo-valor">R$ {t_desp:,.2f}</div>
+            <div class="resumo-valor" style="color: #1976d2;">R$ {t_desp:,.2f}</div>
             <div style="font-size: 1rem; color: #d32f2f; font-weight: bold; background: #fff5f5; padding: 5px; border-radius: 4px;">Faturadas ao término da implantação</div>
             <div class="resumo-subtitulo">DETALHAMENTO LOGÍSTICO</div>
             <ul class="lista-itens">{html_itens if html_itens else "<li>Nenhuma despesa selecionada</li>"}</ul>
