@@ -22,6 +22,7 @@ st.markdown("""
         margin-top: 20px; margin-bottom: 10px; display: block; letter-spacing: 1px;
     }
 
+    /* BOTAO PREMIUM WHATSAPP */
     div.stButton > button {
         width: 100%;
         background: linear-gradient(90deg, #ff6600 0%, #ff944d 100%);
@@ -59,21 +60,20 @@ st.markdown("""
     
     .lista-itens { font-size: 1.05rem; color: #444; line-height: 1.6; list-style-type: none; padding-left: 0; }
     .lista-itens li { 
-        padding: 10px 0; 
+        padding: 12px 0; 
         border-bottom: 1px dashed #e0e0e0; 
         display: flex; 
         justify-content: space-between; 
         align-items: center;
     }
 
-    /* AJUSTE SOLICITADO: Fontes de detalhe maiores e mais escuras */
+    /* AJUSTE SOLICITADO: Fontes maiores e bem visíveis para os valores/quantidades */
     .item-detalhe { 
-        color: #333; 
-        font-size: 1.05rem; 
-        font-weight: 700;
-        background-color: #fcfcfc;
-        padding: 2px 8px;
-        border-radius: 4px;
+        color: #222; 
+        font-size: 1.1rem; 
+        font-weight: 800;
+        text-align: right;
+        min-width: 140px;
     }
 
     .tooltip {
@@ -115,11 +115,11 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 3. Cabeçalho
-head_col1, head_col2 = st.columns([1, 4])
+# 3. Cabeçalho - LOGO MAIOR
+head_col1, head_col2 = st.columns([1.5, 4])
 with head_col1:
     if os.path.exists("logo_vr.png"):
-        st.image("logo_vr.png", width=220)
+        st.image("logo_vr.png", width=350) # Aumentado de 220 para 350
     else:
         st.subheader("VR SOFTWARE")
 with head_col2:
@@ -127,7 +127,7 @@ with head_col2:
 
 st.markdown("---")
 
-# 4. Dados de Preço e Descrições
+# 4. Dados e Descrições
 itens_imp = {
     "Migração Banco de Dados": 201.30, 
     "Definição de Escopo": 201.30, 
