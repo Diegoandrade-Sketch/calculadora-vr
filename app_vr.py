@@ -12,11 +12,31 @@ st.markdown("""
         background: linear-gradient(135deg, #ffffff 0%, #fff5ed 100%);
     }
     
-    .hero-title {
-        color: #262730; font-size: 5.5rem; font-weight: 900; margin: 0; padding: 0;
-        line-height: 1; letter-spacing: -3px; text-transform: uppercase;
+    /* TITULO CENTRALIZADO E ESTILIZADO */
+    .hero-container {
+        text-align: center;
+        padding: 40px 0 20px 0;
     }
     
+    .hero-title {
+        background: linear-gradient(90deg, #262730 0%, #555 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-size: 5rem; 
+        font-weight: 900; 
+        margin: 0; 
+        padding: 0;
+        line-height: 1.1; 
+        letter-spacing: -2px; 
+        text-transform: uppercase;
+    }
+    
+    .logo-container {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 20px;
+    }
+
     .sidebar-label {
         color: #ff6600; font-size: 0.9rem; font-weight: 800; text-transform: uppercase;
         margin-top: 20px; margin-bottom: 10px; display: block; letter-spacing: 1px;
@@ -50,7 +70,7 @@ st.markdown("""
 
     .resumo-card {
         background-color: #ffffff; border: 1px solid #f0f0f0; border-top: 8px solid #ff6600;
-        padding: 25px; border-radius: 8px; min-height: 480px; box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+        padding: 25px; border-radius: 8px; min-height: 520px; box-shadow: 0 10px 25px rgba(0,0,0,0.05);
     }
     .resumo-valor { color: #ff6600; font-size: 2.5rem; font-weight: 900; margin-bottom: 5px; }
     .resumo-subtitulo {
@@ -67,13 +87,11 @@ st.markdown("""
         align-items: center;
     }
 
-    /* AJUSTE SOLICITADO: Fontes maiores e bem visíveis para os valores/quantidades */
     .item-detalhe { 
         color: #222; 
         font-size: 1.1rem; 
         font-weight: 800;
         text-align: right;
-        min-width: 140px;
     }
 
     .tooltip {
@@ -115,15 +133,15 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 3. Cabeçalho - LOGO MAIOR
-head_col1, head_col2 = st.columns([1.5, 4])
-with head_col1:
-    if os.path.exists("logo_vr.png"):
-        st.image("logo_vr.png", width=350) # Aumentado de 220 para 350
-    else:
-        st.subheader("VR SOFTWARE")
-with head_col2:
-    st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
+# 3. Cabeçalho Centralizado
+st.markdown('<div class="logo-container">', unsafe_allow_html=True)
+if os.path.exists("logo_vr.png"):
+    st.image("logo_vr.png", width=400)
+else:
+    st.markdown("<h2 style='text-align: center;'>VR SOFTWARE</h2>", unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
+
+st.markdown('<div class="hero-container"><h1 class="hero-title">Proposta Comercial</h1></div>', unsafe_allow_html=True)
 
 st.markdown("---")
 
@@ -214,7 +232,7 @@ else:
     dados_desp_final = st.session_state.get('dados_desp', [])
 
 # 6. SEÇÃO DE RESUMO VISUAL
-st.markdown("<h2 style='text-align: center; color: #333; font-weight: 800;'>DETALHAMENTO DA PROPOSTA</h2>", unsafe_allow_html=True)
+st.markdown("<h2 style='text-align: center; color: #333; font-weight: 800; margin-bottom: 30px;'>DETALHAMENTO DA PROPOSTA</h2>", unsafe_allow_html=True)
 res_col1, res_col2, res_col3 = st.columns(3)
 
 with res_col1:
