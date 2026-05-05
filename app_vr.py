@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
-from PIL import Image, ImageDraw, ImageFont # Necessário instalar: pip install Pillow
+from PIL import Image, ImageDraw, ImageFont
 import io
 
 # 1. Configuração da Página
@@ -23,7 +23,6 @@ st.markdown("""
         display: flex; justify-content: space-between; align-items: center;
         background: linear-gradient(90deg, #ff6600 0%, #ff944d 100%);
         padding: 8px 15px; border-radius: 5px; margin-bottom: 15px; margin-top: 20px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     .section-title { color: #ffffff; font-size: 1.1rem; font-weight: bold; margin: 0; }
     
@@ -40,22 +39,12 @@ st.markdown("""
     .lista-itens li { padding: 6px 0; border-bottom: 1px dashed #f0f0f0; display: flex; justify-content: space-between; }
     .item-detalhe { color: #777; font-size: 0.9rem; }
 
-    /* Botão WhatsApp Customizado */
-    div.stButton > button:first-child {
-        background-color: #25D366;
-        color: white;
-        border: none;
-        padding: 15px 30px;
-        font-size: 1.2rem;
-        font-weight: bold;
-        border-radius: 50px;
-        box-shadow: 0 4px 15px rgba(37, 211, 102, 0.3);
-        transition: all 0.3s ease;
+    /* Estilo para os botões na Sidebar */
+    [data-testid="stSidebar"] .stButton > button {
         width: 100%;
-    }
-    div.stButton > button:hover {
-        background-color: #128C7E;
-        transform: scale(1.02);
+        border-radius: 5px;
+        height: 3em;
+        font-weight: bold;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -64,11 +53,7 @@ st.markdown("""
 def gerar_imagem_resumo(t_imp, p_imp, t_men, t_desp):
     img = Image.new('RGB', (800, 600), color='#ffffff')
     draw = ImageDraw.Draw(img)
-    
-    # Desenha bordas e degrade laranja no topo
     draw.rectangle([0, 0, 800, 100], fill='#ff6600')
-    
-    # Textos (Usa fontes padrão caso não encontre específicas)
     try:
         font_titulo = ImageFont.truetype("arialbd.ttf", 40)
         font_sub = ImageFont.truetype("arial.ttf", 25)
@@ -77,23 +62,14 @@ def gerar_imagem_resumo(t_imp, p_imp, t_men, t_desp):
         font_titulo = ImageFont.load_default()
         font_sub = ImageFont.load_default()
         font_valor = ImageFont.load_default()
-
     draw.text((40, 25), "RESUMO DA PROPOSTA - VR SOFTWARE", fill="white", font=font_titulo)
-    
-    # Bloco Implantação
     draw.text((40, 140), "IMPLANTAÇÃO (SETUP)", fill="#666666", font=font_sub)
     draw.text((40, 175), f"R$ {t_imp:,.2f}", fill="#ff6600", font=font_valor)
     draw.text((40, 235), f"Condição: {p_imp}x de R$ {t_imp/p_imp:,.2f}", fill="#333333", font=font_sub)
-
-    # Bloco Mensalidade
     draw.text((40, 300), "LICENCIAMENTO MENSAL", fill="#666666", font=font_sub)
     draw.text((40, 335), f"R$ {t_men:,.2f}", fill="#2e7d32", font=font_valor)
-
-    # Bloco Despesas
     draw.text((40, 460), "PREVISÃO DE DESPESAS", fill="#666666", font=font_sub)
     draw.text((40, 495), f"R$ {t_desp:,.2f}", fill="#1976d2", font=font_valor)
-    draw.text((40, 550), "*Valores faturados após a execução.", fill="#999999", font=font_sub)
-
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
@@ -110,34 +86,61 @@ with head_col2:
 
 st.markdown("---")
 
-# 4. Dados de Preço
+# 4. Dados de Preço Fixos
 itens_imp = {"Migração Banco de Dados": 201.30, "Definição de Escopo": 201.30, "Configuração Servidor / PDV Linux": 201.30, "Implantação e Treinamento": 201.30}
 itens_mensal = {"VR ERP PRO": 1285.71, "VR PDV Convencional": 185.71, "PDV Touchscreen": 185.71, "PDV Selfcheckout": 290.44, "SiTef Express": 357.14, "VR TEF": 417.04, "Gerenciador XML": 163.84, "VR Mobile": 193.63}
 itens_desp = {"Alimentação": 49.00, "Hospedagem": 195.00, "Deslocamento (KM)": 2.12}
 
-# --- BARRA LATERAL ---
+# --- BARRA LATERAL (CONFIGURAÇÃO E AÇÕES) ---
 with st.sidebar:
-    st.title("CONFIGURAÇÃO")
+    st.title("PAINEL DE CONTROLE")
     modo_apresentacao = st.toggle("Modo Apresentação", value=False)
+    
     st.write("---")
-    st.subheader("Mensalidade")
-    desc = st.number_input("Desconto (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.1)
-    st.subheader("Implantação")
-    parcelas = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 5, 6, 10, 12], index=3)
+    st.subheader("📊 Negociação")
+    desc = st.number_input("Desconto Mensal (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.1)
+    parcelas = st.selectbox("Parcelas Setup", [1, 2, 3, 4, 5, 6, 10, 12], index=3)
+    
+    st.write("---")
+    st.subheader("📤 Exportar")
+    
+    # Botão WhatsApp
+    if st.button("Copiar Texto WhatsApp"):
+        t_i = st.session_state.get('t_imp', 0)
+        t_m = st.session_state.get('t_men_liq', 0)
+        t_d = st.session_state.get('t_desp', 0)
+        p = parcelas
+        msg = f"PROPOSTA VR SOFTWARE\n\n*Setup:* R$ {t_i:,.2f} ({p}x)\n*Mensal:* R$ {t_m:,.2f}\n*Despesas:* R$ {t_d:,.2f}"
+        st.code(msg, language="text")
+
+    # Botão Download Imagem
+    img_data = gerar_imagem_resumo(
+        st.session_state.get('t_imp', 0), 
+        parcelas, 
+        st.session_state.get('t_men_liq', 0), 
+        st.session_state.get('t_desp', 0)
+    )
+    st.download_button(
+        label="Baixar Card Proposta",
+        data=img_data,
+        file_name="proposta_vr.png",
+        mime="image/png"
+    )
 
 # 5. Interface de Seleção
 if not modo_apresentacao:
     col1, col2, col3 = st.columns(3)
+    
     dados_imp_final = []
     with col1:
         st.markdown('<div class="section-header"><span class="section-title">IMPLANTAÇÃO</span></div>', unsafe_allow_html=True)
         imp_sel = st.multiselect("Serviços", list(itens_imp.keys()), default=list(itens_imp.keys()))
         t_imp = 0
         for item in imp_sel:
-            val_unit = itens_imp[item]
+            v_u = itens_imp[item]
             h = st.number_input(f"Horas: {item}", min_value=0, value=12 if "Treinamento" not in item else 120, key=f"h_{item}")
-            t_imp += h * val_unit
-            dados_imp_final.append((item, h, val_unit))
+            t_imp += h * v_u
+            dados_imp_final.append((item, h, v_u))
     
     dados_mensal_final = []
     with col2:
@@ -145,10 +148,10 @@ if not modo_apresentacao:
         mensal_sel = st.multiselect("Produtos", list(itens_mensal.keys()), default=["VR ERP PRO"])
         t_men_bruto = 0
         for item in mensal_sel:
-            val_unit = itens_mensal[item]
+            v_u = itens_mensal[item]
             q = st.number_input(f"Qtd: {item}", min_value=0, value=1, key=f"q_{item}")
-            t_men_bruto += q * val_unit
-            dados_mensal_final.append((item, q, val_unit))
+            t_men_bruto += q * v_u
+            dados_mensal_final.append((item, q, v_u))
         t_men_liq = t_men_bruto * (1 - (desc/100))
 
     dados_desp_final = []
@@ -161,6 +164,8 @@ if not modo_apresentacao:
             if qd > 0: dados_desp_final.append((item, qd, preco))
 
     st.session_state.update({'t_imp': t_imp, 'dados_imp': dados_imp_final, 't_men_liq': t_men_liq, 'dados_mensal': dados_mensal_final, 't_desp': t_desp, 'dados_desp': dados_desp_final})
+    st.markdown("<br><br>", unsafe_allow_html=True)
+
 else:
     t_imp = st.session_state.get('t_imp', 0); dados_imp_final = st.session_state.get('dados_imp', [])
     t_men_liq = st.session_state.get('t_men_liq', 0); dados_mensal_final = st.session_state.get('dados_mensal', [])
@@ -171,33 +176,13 @@ st.markdown("<h2 style='text-align: center; color: #333; font-weight: 800;'>DETA
 res_col1, res_col2, res_col3 = st.columns(3)
 
 with res_col1:
-    html_itens = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{h}h x R$ {v:,.2f}</span></li>" for i, h, v in dados_imp_final])
-    st.markdown(f'<div class="resumo-card"><span class="resumo-label">Investimento Setup</span><div class="resumo-valor">R$ {t_imp:,.2f}</div><div style="font-size: 1.2rem; font-weight: bold;">{parcelas}x de R$ {t_imp/parcelas:,.2f}</div><div class="resumo-subtitulo">SERVIÇOS INCLUSOS</div><ul class="lista-itens">{html_itens}</ul></div>', unsafe_allow_html=True)
+    h_i = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{h}h x R$ {v:,.2f}</span></li>" for i, h, v in dados_imp_final])
+    st.markdown(f'<div class="resumo-card"><span class="resumo-label">Investimento Setup</span><div class="resumo-valor">R$ {t_imp:,.2f}</div><div style="font-size: 1.2rem; font-weight: bold;">{parcelas}x de R$ {t_imp/parcelas:,.2f}</div><div class="resumo-subtitulo">SERVIÇOS INCLUSOS</div><ul class="lista-itens">{h_i}</ul></div>', unsafe_allow_html=True)
 
 with res_col2:
-    html_itens = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} Lic. x R$ {v:,.2f}</span></li>" for i, q, v in dados_mensal_final])
-    st.markdown(f'<div class="resumo-card" style="border-top-color: #2e7d32;"><span class="resumo-label">Investimento Mensal</span><div class="resumo-valor">R$ {t_men_liq:,.2f}</div><div style="font-size: 1.1rem; color: #2e7d32; font-weight: bold;">Desconto: {desc}%</div><div class="resumo-subtitulo">SISTEMAS E LICENÇAS</div><ul class="lista-itens">{html_itens}</ul></div>', unsafe_allow_html=True)
+    h_m = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} Lic. x R$ {v:,.2f}</span></li>" for i, q, v in dados_mensal_final])
+    st.markdown(f'<div class="resumo-card" style="border-top-color: #2e7d32;"><span class="resumo-label">Investimento Mensal</span><div class="resumo-valor">R$ {t_men_liq:,.2f}</div><div style="font-size: 1.1rem; color: #2e7d32; font-weight: bold;">Desconto: {desc}%</div><div class="resumo-subtitulo">SISTEMAS E LICENÇAS</div><ul class="lista-itens">{h_m}</ul></div>', unsafe_allow_html=True)
 
 with res_col3:
-    html_itens = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} Qtd. x R$ {v:,.2f}</span></li>" for i, q, v in dados_desp_final])
-    st.markdown(f'<div class="resumo-card" style="border-top-color: #1976d2;"><span class="resumo-label">Previsão de Despesas</span><div class="resumo-valor">R$ {t_desp:,.2f}</div><div style="font-size: 1rem; color: #d32f2f; font-weight: bold;">Faturadas ao término</div><div class="resumo-subtitulo">LOGÍSTICO</div><ul class="lista-itens">{html_itens}</ul></div>', unsafe_allow_html=True)
-
-# 7. AÇÕES FINAIS (WhatsApp e Imagem)
-st.write("---")
-btn_col1, btn_col2 = st.columns([2, 1])
-
-with btn_col1:
-    if st.button("ENVIAR RESUMO POR WHATSAPP"):
-        # Gera o texto para o clipboard
-        whatsapp_msg = f"Olá! Segue o resumo da proposta VR Software:\n\n*Implantação:* R$ {t_imp:,.2f} ({parcelas}x)\n*Mensalidade:* R$ {t_men_liq:,.2f}\n*Despesas:* R$ {t_desp:,.2f}\n\nFico à disposição!"
-        st.info("Texto preparado! Copie abaixo:")
-        st.code(whatsapp_msg, language="text")
-
-with btn_col2:
-    img_data = gerar_imagem_resumo(t_imp, parcelas, t_men_liq, t_desp)
-    st.download_button(
-        label="BAIXAR CARD (IMAGEM)",
-        data=img_data,
-        file_name="proposta_vr_software.png",
-        mime="image/png"
-    )
+    h_d = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} Qtd. x R$ {v:,.2f}</span></li>" for i, q, v in dados_desp_final])
+    st.markdown(f'<div class="resumo-card" style="border-top-color: #1976d2;"><span class="resumo-label">Previsão de Despesas</span><div class="resumo-valor">R$ {t_desp:,.2f}</div><div style="font-size: 1rem; color: #d32f2f; font-weight: bold;">Faturadas ao término</div><div class="resumo-subtitulo">LOGÍSTICO</div><ul class="lista-itens">{h_d}</ul></div>', unsafe_allow_html=True)
