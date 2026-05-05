@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 import textwrap
+from urllib.parse import quote
 
 # 1. Configuracao da Pagina
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
@@ -83,8 +84,14 @@ with st.sidebar:
         exibir_detalhe_desc = st.toggle("Exibir Desconto", value=True)
         faturamento = st.selectbox("Faturamento", ["Imediato", "30 dias", "60 dias", "Após a implantação"])
         parcelas = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 5, 6], index=3)
+        
+        # --- NOVO BLOCO: EXPORTAÇÃO WHATSAPP NO MENU ---
+        st.write("---")
+        st.markdown('<span class="sidebar-label">Ações de Fechamento</span>', unsafe_allow_html=True)
+        cliente_nome = st.text_input("Nome do Cliente", "Parceiro")
+        cliente_tel = st.text_input("Telefone (com DDD)", "")
 
-# --- 5. TELA DE CONSULTA (REPARO TOTAL NA RENDERIZAÇÃO) ---
+# --- 5. TELA DE CONSULTA ---
 if tela == "Consulta de Preço":
     st.markdown('<h1 class="hero-title">ANÁLISE TÉCNICA</h1>', unsafe_allow_html=True)
     prod_sel = st.selectbox("Selecione o Produto:", list(precos_tabela.keys()))
@@ -95,7 +102,6 @@ if tela == "Consulta de Preço":
     
     c1, c2 = st.columns(2)
     with c1:
-        # Usando dedent para garantir que o Streamlit receba HTML limpo
         html_markup = textwrap.dedent(f"""
             <div class="resumo-card">
                 <span class="resumo-label">Preço de Venda</span>
@@ -128,13 +134,8 @@ if tela == "Consulta de Preço":
 
     with c2:
         st.markdown('<div class="section-header"><span class="section-title">ENGENHARIA DE VALOR</span></div>', unsafe_allow_html=True)
-        if d["mensal"] > 500: st.info("**Foco em Retenção:** Produto de alta recorrência.")
-        if d["comp"] == "Alta": st.warning("**Atenção Técnica:** Exige senioridade na implantação.")
-        if d["margem"] == "Altíssima": st.success("**Alta Escalabilidade:** Margem líquida superior.")
-        
-        st.write("---")
-        st.markdown(f"**Descrição Técnica:**  \n{d['desc']}")
-        st.markdown(f"**Projeção de Ciclo de Vida:**  \nReceita bruta total em 24 meses: **R$ {ltv_24:,.2f}**.")
+        st.write(f"**Descrição:** {d['desc']}")
+        st.write(f"**Projeção de Ciclo:** R$ {ltv_24:,.2f} em 2 anos.")
 
 # --- 6. TELA DE PROPOSTA ---
 else:
@@ -194,15 +195,35 @@ else:
     res_cols = st.columns(3) if perfil_venda == "Executivo (Rua)" else st.columns([1, 2, 2, 1])[1:3]
 
     with res_cols[0]:
-        html_i = "".join([f"<li><span><span class='tooltip'>{i}<span class='tooltiptext'>{precos_tabela[i]['desc']}</span></span></span><span class='item-detalhe'>{h}h x R$ {v:,.2f}</span></li>" for i, h, v in lista_i])
+        html_i = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{h}h x R$ {v:,.2f}</span></li>" for i, h, v in lista_i])
         st.markdown(f'<div class="resumo-card"><span class="resumo-label">Setup</span><div class="resumo-valor">R$ {t_imp:,.2f}</div><div style="font-weight:bold;">{parcelas}x R$ {t_imp/parcelas:,.2f}</div><div class="resumo-subtitulo">SERVIÇOS</div><ul class="lista-itens">{html_i}</ul></div>', unsafe_allow_html=True)
 
     with res_cols[1]:
         html_m = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} Un x R$ {v:,.2f}</span></li>" for i, q, v in lista_m])
-        desc_info = f'<div style="color: #2e7d32; font-weight: bold;">Desconto: {desc:,.2f}%</div>' if exibir_detalhe_desc and desc > 0 else '<div style="height:21px"></div>'
-        st.markdown(f'<div class="resumo-card" style="border-top-color: #2e7d32;"><span class="resumo-label">Mensalidade</span><div class="resumo-valor" style="color: #2e7d32;">R$ {t_men_liq:,.2f}</div>{desc_info}<div style="font-weight:bold; font-size: 0.9rem; margin-top:5px;">Faturamento: {faturamento}</div><div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{html_m}</ul></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="resumo-card" style="border-top-color: #2e7d32;"><span class="resumo-label">Mensalidade</span><div class="resumo-valor" style="color: #2e7d32;">R$ {t_men_liq:,.2f}</div><div style="font-weight:bold; font-size: 0.9rem; margin-top:5px;">Faturamento: {faturamento}</div><div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{html_m}</ul></div>', unsafe_allow_html=True)
 
     if perfil_venda == "Executivo (Rua)":
         with res_cols[2]:
             html_d = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} x R$ {v:,.2f}</span></li>" for i, q, v in lista_d])
             st.markdown(f'<div class="resumo-card" style="border-top-color: #1976d2;"><span class="resumo-label">Despesas</span><div class="resumo-valor" style="color: #1976d2;">R$ {t_desp:,.2f}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">Faturadas no término</div><div class="resumo-subtitulo">LOGÍSTICA</div><ul class="lista-itens">{html_d}</ul></div>', unsafe_allow_html=True)
+
+    # --- LÓGICA DO WHATSAPP (Apenas se estiver na tela de proposta) ---
+    if tela == "Gerador de Proposta":
+        msg = f"""*Olá, {cliente_nome}!* Segue o resumo da sua proposta *VR Software*:
+    
+🚀 *Investimento de Setup:* R$ {t_imp:,.2f} ({parcelas}x R$ {t_imp/parcelas:,.2f})
+💻 *Mensalidade:* R$ {t_men_liq:,.2f}
+📅 *Faturamento:* {faturamento}
+
+*Sistemas inclusos:*
+"""
+        for i, q, v in lista_m:
+            msg += f"• {i} ({q} un)\n"
+            
+        msg += "\n_Proposta gerada via VR Sales Intelligence._"
+        
+        url_whatsapp = f"https://api.whatsapp.com/send?phone=55{cliente_tel}&text={quote(msg)}"
+        
+        with st.sidebar:
+            if st.link_button("🚀 Enviar para WhatsApp", url_whatsapp, use_container_width=True):
+                st.balloons()
