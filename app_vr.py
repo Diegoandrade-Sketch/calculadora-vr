@@ -17,13 +17,11 @@ st.markdown("""
         line-height: 1; letter-spacing: -3px; text-transform: uppercase;
     }
     
-    /* Titulos das Secoes na Sidebar */
     .sidebar-label {
         color: #ff6600; font-size: 0.9rem; font-weight: 800; text-transform: uppercase;
         margin-top: 20px; margin-bottom: 10px; display: block; letter-spacing: 1px;
     }
 
-    /* BOTAO PREMIUM WHATSAPP */
     div.stButton > button {
         width: 100%;
         background: linear-gradient(90deg, #ff6600 0%, #ff944d 100%);
@@ -58,11 +56,26 @@ st.markdown("""
         font-size: 1.1rem; color: #333; font-weight: bold; margin-top: 20px;
         margin-bottom: 10px; border-bottom: 2px solid #ffefe5; padding-bottom: 5px;
     }
+    
     .lista-itens { font-size: 1.05rem; color: #444; line-height: 1.6; list-style-type: none; padding-left: 0; }
-    .lista-itens li { padding: 8px 0; border-bottom: 1px dashed #f0f0f0; display: flex; justify-content: space-between; align-items: center;}
-    .item-detalhe { color: #777; font-size: 0.85rem; font-weight: 500; }
+    .lista-itens li { 
+        padding: 10px 0; 
+        border-bottom: 1px dashed #e0e0e0; 
+        display: flex; 
+        justify-content: space-between; 
+        align-items: center;
+    }
 
-    /* LOGICA DO BALAO (TOOLTIP) */
+    /* AJUSTE SOLICITADO: Fontes de detalhe maiores e mais escuras */
+    .item-detalhe { 
+        color: #333; 
+        font-size: 1.05rem; 
+        font-weight: 700;
+        background-color: #fcfcfc;
+        padding: 2px 8px;
+        border-radius: 4px;
+    }
+
     .tooltip {
         position: relative;
         display: inline-block;
@@ -114,7 +127,7 @@ with head_col2:
 
 st.markdown("---")
 
-# 4. Dados de Preço e Descrições (Tooltips)
+# 4. Dados de Preço e Descrições
 itens_imp = {
     "Migração Banco de Dados": 201.30, 
     "Definição de Escopo": 201.30, 
@@ -147,14 +160,12 @@ with st.sidebar:
     parcelas = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 5, 6, 10, 12], index=3)
     
     st.write("---")
-    
-    # SEÇÃO DE EXPORTAÇÃO
     st.markdown('<span class="sidebar-label">Exportação</span>', unsafe_allow_html=True)
     if st.button("FORMATAR PARA WHATSAPP"):
         t_i = st.session_state.get('t_imp', 0)
         t_m = st.session_state.get('t_men_liq', 0)
         t_d = st.session_state.get('t_desp', 0)
-        resumo_txt = f"*PROPOSTA VR SOFTWARE*\n\n*Setup:* R$ {t_i:,.2f} em {parcelas}x\n*Mensalidade:* R$ {t_m:,.2f}\n*Despesas:* R$ {t_d:,.2f}\n\n_Valores sujeitos a alteração conforme escopo._"
+        resumo_txt = f"*PROPOSTA VR SOFTWARE*\n\n*Setup:* R$ {t_i:,.2f} em {parcelas}x\n*Mensalidade:* R$ {t_m:,.2f}\n*Despesas:* R$ {t_d:,.2f}"
         st.code(resumo_txt, language="text")
 
 # 5. Interface de Seleção
