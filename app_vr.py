@@ -10,15 +10,16 @@ st.markdown("""
     <style>
     .main { background-color: #ffffff; }
     
-    /* Título PROPOSTA COMERCIAL com fonte ampliada */
-    .main-title {
-        color: #333;
-        font-size: 5rem; /* Fonte aumentada conforme solicitado */
+    /* Novo Título PROPOSTA COMERCIAL: Grande, Nítido e Moderno */
+    .hero-title {
+        color: #262730;
+        font-size: 5.5rem; /* Fonte massiva */
         font-weight: 900;
         margin: 0;
+        padding: 0;
         line-height: 1;
-        letter-spacing: -2px;
-        text-transform: uppercase;
+        letter-spacing: -3px;
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
     }
     
     .section-header {
@@ -46,6 +47,13 @@ st.markdown("""
     }
 
     [data-testid="stMetricValue"] { color: #ff6600; font-size: 2rem; }
+    
+    /* Ajuste para o texto de valor unitário */
+    .unit-price {
+        color: #666;
+        font-size: 0.85rem;
+        font-style: italic;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -59,11 +67,12 @@ with head_col1:
         st.subheader("VR SOFTWARE")
 
 with head_col2:
-    st.markdown('<p class="main-title">PROPOSTA COMERCIAL</p>', unsafe_allow_html=True)
+    # Título Recriado do Zero
+    st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
 
 st.markdown("---")
 
-# 4. Dados de Preço (Inalterados)
+# 4. Dados de Preço
 itens_imp = {
     "Migração Banco de Dados": 201.30, 
     "Definição de Escopo": 201.30, 
@@ -93,32 +102,27 @@ col1, col2, col3 = st.columns(3)
 
 with col1:
     placeholder_imp = st.empty()
-    # Botão de ocultar/exibir usando Expander
     with st.expander("Selecionar Itens de Implantação", expanded=True):
         imp_sel = st.multiselect("Serviços de Setup", list(itens_imp.keys()), default=list(itens_imp.keys()))
     
     t_imp = 0
     for item in imp_sel:
-        h = st.number_input(f"Horas: {item}", min_value=0, value=12 if "Treinamento" not in item else 120, key=f"h_{item}")
-        t_imp += h * itens_imp[item]
+        val_unit = itens_imp[item]
+        h = st.number_input(f"Horas: {item} (R$ {val_unit:,.2f}/h)", min_value=0, value=12 if "Treinamento" not in item else 120, key=f"h_{item}")
+        t_imp += h * val_unit
     
-    placeholder_imp.markdown(f"""
-        <div class="section-header">
-            <span class="section-title">LICENÇA IMPLANTAÇÃO</span>
-            <span class="section-total">R$ {t_imp:,.2f}</span>
-        </div>
-    """, unsafe_allow_html=True)
+    placeholder_imp.markdown(f'<div class="section-header"><span class="section-title">LICENÇA IMPLANTAÇÃO</span><span class="section-total">R$ {t_imp:,.2f}</span></div>', unsafe_allow_html=True)
 
 with col2:
     placeholder_men = st.empty()
-    # Botão de ocultar/exibir usando Expander
     with st.expander("Selecionar Itens Mensais", expanded=True):
         mensal_sel = st.multiselect("Produtos e Licenças", list(itens_mensal.keys()), default=["VR ERP PRO"])
     
     t_men_bruto = 0
     for item in mensal_sel:
-        q = st.number_input(f"Qtd: {item}", min_value=0, value=1, key=f"q_{item}")
-        t_men_bruto += q * itens_mensal[item]
+        val_unit = itens_mensal[item]
+        q = st.number_input(f"Qtd: {item} (R$ {val_unit:,.2f} un)", min_value=0, value=1, key=f"q_{item}")
+        t_men_bruto += q * val_unit
     
     st.markdown("### Negociação")
     desc = st.number_input("Desconto (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.1)
@@ -127,26 +131,16 @@ with col2:
     if desc > 15:
         st.error("Requer aprovação do financeiro.")
 
-    placeholder_men.markdown(f"""
-        <div class="section-header">
-            <span class="section-title">LICENÇA MENSAL</span>
-            <span class="section-total">R$ {t_men_liq:,.2f}</span>
-        </div>
-    """, unsafe_allow_html=True)
+    placeholder_men.markdown(f'<div class="section-header"><span class="section-title">LICENÇA MENSAL</span><span class="section-total">R$ {t_men_liq:,.2f}</span></div>', unsafe_allow_html=True)
 
 with col3:
     placeholder_des = st.empty()
     t_desp = 0
     for item, preco in itens_desp.items():
-        qd = st.number_input(f"{item}", min_value=0, value=0, key=f"d_{item}")
+        qd = st.number_input(f"{item} (R$ {preco:,.2f})", min_value=0, value=0, key=f"d_{item}")
         t_desp += qd * preco
 
-    placeholder_des.markdown(f"""
-        <div class="section-header">
-            <span class="section-title">DESPESAS DE PROJETO</span>
-            <span class="section-total">R$ {t_desp:,.2f}</span>
-        </div>
-    """, unsafe_allow_html=True)
+    placeholder_des.markdown(f'<div class="section-header"><span class="section-title">DESPESAS DE PROJETO</span><span class="section-total">R$ {t_desp:,.2f}</span></div>', unsafe_allow_html=True)
 
 st.markdown("---")
 
