@@ -5,7 +5,7 @@ import os
 # 1. Configuracao da Pagina
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-# 2. Estilizacao CSS (Unificada e Corrigida)
+# 2. Estilizacao CSS
 st.markdown("""
     <style>
     .stApp { background: linear-gradient(135deg, #ffffff 0%, #fff5ed 100%); }
@@ -51,7 +51,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 3. Base de Dados (Preços + Metadados de ROI)
+# 3. Base de Dados
 precos_tabela = {
     "VR ERP PRO": {"setup": 2415.60, "mensal": 1285.71, "cac": 3000.00, "margem": "Alta", "comp": "Alta", "desc": "Sistema de gestão completo para supermercados.", "roi": "Redução média de 15% em perdas de estoque."},
     "VR PDV Convencional": {"setup": 201.30, "mensal": 185.71, "cac": 400.00, "margem": "Média", "comp": "Média", "desc": "Frente de caixa estável e rápido.", "roi": "Aumento de 20% na velocidade de passagem no caixa."},
@@ -83,19 +83,19 @@ with st.sidebar:
         faturamento = st.selectbox("Faturamento", ["Imediato", "30 dias", "60 dias", "Após a implantação"])
         parcelas = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 5, 6], index=3)
 
-# --- 5. TELA DE CONSULTA (COM CORREÇÃO DE RENDERIZAÇÃO HTML) ---
+# --- 5. TELA DE CONSULTA (CORREÇÃO DE RENDERIZAÇÃO) ---
 if tela == "Consulta de Preço":
     st.markdown('<h1 class="hero-title">ANÁLISE TÉCNICA</h1>', unsafe_allow_html=True)
-    prod_sel = st.selectbox("Selecione o Produto para Análise Técnica:", list(precos_tabela.keys()))
+    prod_sel = st.selectbox("Selecione o Produto:", list(precos_tabela.keys()))
     d = precos_tabela[prod_sel]
     
-    # Cálculos ROI Interno
     ltv_24 = (d["mensal"] * 24) + d["setup"]
     payback = ((d["cac"] - d["setup"]) / d["mensal"]) if d["mensal"] > 0 else 0
     
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown(f"""
+        # Bloco Único de HTML para evitar quebra de renderização
+        conteudo_html = f"""
             <div class="resumo-card">
                 <span class="resumo-label">Preço de Venda</span>
                 <div class="resumo-valor">R$ {d['mensal']:,.2f}<small style="font-size:1rem; color:#888;">/mês</small></div>
@@ -124,27 +124,27 @@ if tela == "Consulta de Preço":
                 <div class="resumo-subtitulo">ROI PARA O CLIENTE</div>
                 <p style="font-size:0.9rem; color:#444; line-height:1.4;">{d['roi']}</p>
             </div>
-        """, unsafe_allow_html=True)
+        """
+        st.markdown(conteudo_html, unsafe_allow_html=True)
 
     with c2:
         st.markdown('<div class="section-header"><span class="section-title">ENGENHARIA DE VALOR</span></div>', unsafe_allow_html=True)
         if d["mensal"] > 500: 
-            st.info("**Foco em Retenção:** Produto de alta recorrência. O custo de aquisição é diluído no primeiro semestre.")
+            st.info("**Foco em Retenção:** Produto de alta recorrência.")
         if d["comp"] == "Alta": 
-            st.warning("**Atenção Técnica:** Exige senioridade na implantação para manter o ROI interno esperado.")
+            st.warning("**Atenção Técnica:** Exige senioridade na implantação.")
         if d["margem"] == "Altíssima": 
-            st.success("**Alta Escalabilidade:** Baixo custo de manutenção com margem líquida superior.")
+            st.success("**Alta Escalabilidade:** Margem líquida superior.")
         
         st.write("---")
         st.markdown(f"**Descrição Técnica:**\n\n{d['desc']}")
-        st.markdown(f"**Projeção de Ciclo de Vida:**\n\nAo final de 24 meses, este item gera uma receita bruta total de **R$ {ltv_24:,.2f}**.")
+        st.markdown(f"**Projeção de Ciclo de Vida:**\n\nReceita bruta total em 24 meses: **R$ {ltv_24:,.2f}**.")
 
-# --- 6. TELA DE PROPOSTA (ESTRUTURA DA BASE DE OURO) ---
+# --- 6. TELA DE PROPOSTA ---
 else:
     if not modo_apresentacao:
         st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
 
-    # Inicialização de Session State
     if 'sel_i' not in st.session_state: st.session_state.sel_i = ["Migração Banco de Dados", "Definição de Escopo", "Configuração Servidor / PDV Linux", "Implantação e Treinamento"]
     if 'sel_m' not in st.session_state: st.session_state.sel_m = ["VR ERP PRO"]
 
@@ -172,13 +172,12 @@ else:
                 for i, p in itens_desp.items():
                     st.number_input(f"{i} (R$ {p:,.2f}/un)", min_value=0, value=0, key=f"v_d_{i}")
 
-    # Processamento dos Cálculos
     t_imp, t_men_bruto, t_desp = 0, 0, 0
     lista_i, lista_m, lista_d = [], [], []
 
     for i in st.session_state.sel_i:
         vu = precos_tabela[i]["setup"]
-        h = st.session_state.get(f"v_h_{i}", 12 if "Treinamento" not in i else 120)
+        h = st.session_state.get(f"v_h_{i}", 12)
         t_imp += h * vu
         lista_i.append((i, h, vu))
 
@@ -195,7 +194,6 @@ else:
 
     t_men_liq = t_men_bruto * (1 - (desc/100))
 
-    # Renderização Final dos Cards
     st.markdown("<h2 style='text-align:center; font-weight:800; margin-top:30px;'>DETALHAMENTO DA PROPOSTA</h2>", unsafe_allow_html=True)
     res_cols = st.columns(3) if perfil_venda == "Executivo (Rua)" else st.columns([1, 2, 2, 1])[1:3]
 
@@ -211,4 +209,4 @@ else:
     if perfil_venda == "Executivo (Rua)":
         with res_cols[2]:
             html_d = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} x R$ {v:,.2f}</span></li>" for i, q, v in lista_d])
-            st.markdown(f'<div class="resumo-card" style="border-top-color: #1976d2;"><span class="resumo-label">Despesas</span><div class="resumo-valor" style="color: #1976d2;">R$ {t_desp:,.2f}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">Faturadas no término da implantação</div><div class="resumo-subtitulo">LOGÍSTICA</div><ul class="lista-itens">{html_d}</ul></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="resumo-card" style="border-top-color: #1976d2;"><span class="resumo-label">Despesas</span><div class="resumo-valor" style="color: #1976d2;">R$ {t_desp:,.2f}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">Faturadas no término</div><div class="resumo-subtitulo">LOGÍSTICA</div><ul class="lista-itens">{html_d}</ul></div>', unsafe_allow_html=True)
