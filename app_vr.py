@@ -3,35 +3,66 @@ import pandas as pd
 import os
 
 # 1. Configuração da Página
-st.set_page_config(page_title="VR Software | Simulador Comercial", layout="wide")
+st.set_page_config(page_title="VR Software | Proposta Comercial", layout="wide")
 
-# 2. Estilização Profissional (Laranja e Branco)
+# 2. Estilização CSS Avançada
 st.markdown("""
     <style>
     .main { background-color: #ffffff; }
-    h3 { color: #ff6600; border-bottom: 2px solid #ff6600; padding-bottom: 5px; margin-top: 20px; }
-    [data-testid="stMetricValue"] { color: #ff6600; font-size: 1.8rem; }
-    .stNumberInput label { font-weight: bold; }
-    /* Estilo para o bloco de resumo final */
-    .resumo-container {
-        background-color: #f8f9fa;
-        padding: 20px;
-        border-radius: 8px;
-        border-left: 5px solid #ff6600;
+    
+    /* Títulos das Seções com Totalizadores */
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 2px solid #ff6600;
+        padding-bottom: 5px;
+        margin-bottom: 15px;
+        margin-top: 20px;
     }
+    .section-title {
+        color: #ff6600;
+        font-size: 1.3rem;
+        font-weight: bold;
+        margin: 0;
+    }
+    .section-total {
+        color: #333;
+        font-size: 1.1rem;
+        font-weight: bold;
+        background-color: #fff2e6;
+        padding: 2px 10px;
+        border-radius: 5px;
+    }
+    
+    /* Título Principal ao lado da Logo */
+    .main-title {
+        color: #333;
+        font-size: 2.2rem;
+        font-weight: 800;
+        margin-top: 15px;
+        letter-spacing: -1px;
+    }
+    
+    [data-testid="stMetricValue"] { color: #ff6600; font-size: 2rem; }
     </style>
     """, unsafe_allow_html=True)
 
-# 3. Cabeçalho com Logo Local
-# Se o arquivo logo_vr.png existir na pasta, ele carrega. Se não, usa o título.
-if os.path.exists("logo_vr.png"):
-    st.image("logo_vr.png", width=250)
-else:
-    st.title("VR Software | Simulador Comercial")
+# 3. Cabeçalho (Logo e Título Comercial Lado a Lado)
+head_col1, head_col2 = st.columns([1, 3])
+
+with head_col1:
+    if os.path.exists("logo_vr.png"):
+        st.image("logo_vr.png", width=220)
+    else:
+        st.subheader("VR SOFTWARE")
+
+with head_col2:
+    st.markdown('<p class="main-title">PROPOSTA COMERCIAL</p>', unsafe_allow_html=True)
 
 st.markdown("---")
 
-# 4. Dados de Preço (Baseados na sua Proposta)
+# 4. Dados de Preço (Mantendo os valores da proposta)
 itens_imp = {
     "Migração Banco de Dados": 201.30, 
     "Definição de Escopo": 201.30, 
@@ -44,14 +75,10 @@ itens_mensal = {
     "VR PDV Convencional": 185.71, 
     "PDV Touchscreen": 185.71, 
     "PDV Selfcheckout": 290.44, 
-    "SiTef Express até 3 PDVs": 357.14,
-    "SiTef Express até 6 PDVs": 428.57,
-    "SiTef Express até 8 PDVs": 500.00,
-    "SiTef Express a partir de 9 PDVs": 571.43,
+    "SiTef Express": 357.14,
     "VR TEF": 417.04,
     "Gerenciador XML": 163.84,
-    "VR Mobile": 193.63,
-    "VR Carteira Digital": 275.54
+    "VR Mobile": 193.63
 }
 
 itens_desp = {
@@ -60,78 +87,70 @@ itens_desp = {
     "Deslocamento (KM)": 2.12
 }
 
-# 5. Interface de Montagem em 3 Colunas
+# 5. Lógica de Cálculo Prévia (para alimentar os totalizadores do topo)
+# Criamos containers vazios para atualizar os valores depois
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.subheader("Licença Implantação")
+    # Cabeçalho da Seção com Totalizador dinâmico usando placeholder
+    placeholder_imp = st.empty()
     imp_sel = st.multiselect("Serviços de Setup", list(itens_imp.keys()), default=list(itens_imp.keys()))
-    total_imp = 0
+    t_imp = 0
     for item in imp_sel:
         h = st.number_input(f"Horas: {item}", min_value=0, value=12 if "Treinamento" not in item else 120, key=f"h_{item}")
-        total_imp += h * itens_imp[item]
-    st.write(f"**Subtotal Implantação: R$ {total_imp:,.2f}**")
+        t_imp += h * itens_imp[item]
+    
+    placeholder_imp.markdown(f"""
+        <div class="section-header">
+            <span class="section-title">LICENÇA IMPLANTAÇÃO</span>
+            <span class="section-total">R$ {t_imp:,.2f}</span>
+        </div>
+    """, unsafe_allow_html=True)
 
 with col2:
-    st.subheader("Licença Mensal")
+    placeholder_men = st.empty()
     mensal_sel = st.multiselect("Produtos e Licenças", list(itens_mensal.keys()), default=["VR ERP PRO"])
-    total_mensal_bruto = 0
+    t_men_bruto = 0
     for item in mensal_sel:
         q = st.number_input(f"Qtd: {item}", min_value=0, value=1, key=f"q_{item}")
-        total_mensal_bruto += q * itens_mensal[item]
+        t_men_bruto += q * itens_mensal[item]
     
     st.write("---")
-    desconto = st.number_input("Desconto Comercial (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.1)
-    total_mensal_liquido = total_mensal_bruto * (1 - (desconto/100))
-    
-    if desconto > 15:
-        st.error("Alerta: Requer aprovação da gerência.")
+    desc = st.number_input("Desconto (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.1)
+    t_men_liq = t_men_bruto * (1 - (desc/100))
+
+    placeholder_men.markdown(f"""
+        <div class="section-header">
+            <span class="section-title">LICENÇA MENSAL</span>
+            <span class="section-total">R$ {t_men_liq:,.2f}</span>
+        </div>
+    """, unsafe_allow_html=True)
 
 with col3:
-    st.subheader("Despesas")
-    total_despesas = 0
+    placeholder_des = st.empty()
+    t_desp = 0
     for item, preco in itens_desp.items():
-        qd = st.number_input(f"{item} (Qtd/KM)", min_value=0, value=0, key=f"d_{item}")
-        total_despesas += qd * preco
-    st.write(f"**Previsão de Despesas: R$ {total_despesas:,.2f}**")
+        qd = st.number_input(f"{item}", min_value=0, value=0, key=f"d_{item}")
+        t_desp += qd * preco
+
+    placeholder_des.markdown(f"""
+        <div class="section-header">
+            <span class="section-title">DESPESAS DE PROJETO</span>
+            <span class="section-total">R$ {t_desp:,.2f}</span>
+        </div>
+    """, unsafe_allow_html=True)
 
 st.markdown("---")
 
-# 6. Resumo Executivo
-st.subheader("Resumo do Investimento")
-c1, c2, c3 = st.columns(3)
+# 6. Rodapé de Fechamento
+res1, res2, res3 = st.columns(3)
+with res1:
+    st.metric("Investimento Único", f"R$ {t_imp:,.2f}")
+with res2:
+    st.metric("Investimento Mensal", f"R$ {t_men_liq:,.2f}")
+with res3:
+    st.metric("Total Despesas", f"R$ {t_desp:,.2f}")
 
-with c1:
-    st.metric("Setup Total", f"R$ {total_imp:,.2f}")
-    parc = st.selectbox("Parcelamento Sugerido", [1, 2, 3, 4, 5, 6, 10, 12], index=3)
-    st.caption(f"Parcelas de R$ {total_imp/parc:,.2f}")
-
-with c2:
-    st.metric("Mensalidade Recorrente", f"R$ {total_mensal_liquido:,.2f}")
-    st.caption(f"Valor bruto: R$ {total_mensal_bruto:,.2f}")
-
-with c3:
-    st.metric("Despesas Previstas", f"R$ {total_despesas:,.2f}")
-    st.caption("Faturado pós-implantação")
-
-# 7. Botão para Gerar Texto
-if st.button("Gerar Sumário para Envio"):
-    texto_resumo = f"""
-PROPOSTA COMERCIAL - VR SOFTWARE
-
-1. LICENÇA IMPLANTAÇÃO (INVESTIMENTO ÚNICO)
-- Valor Total: R$ {total_imp:,.2f}
-- Condição: {parc}x de R$ {total_imp/parc:,.2f}
-
-2. LICENÇA MENSAL (RECORRENTE)
-- Investimento Mensal: R$ {total_mensal_liquido:,.2f}
-- Desconto aplicado: {desconto}%
-
-3. DESPESAS DE VIAGEM (ESTIMATIVA)
-- Valor Previsto: R$ {total_despesas:,.2f}
-Obs: Valores referentes a deslocamento, hospedagem e alimentação serão faturados conforme realização.
-
----
-Simulador de Vendas VR Software
-"""
-    st.code(texto_resumo, language="text")
+if st.button("Gerar Sumário Executivo"):
+    resumo = f"PROPOSTA COMERCIAL VR SOFTWARE\n\n- Setup: R$ {t_imp:,.2f}\n- Mensalidade: R$ {t_men_liq:,.2f}\n- Previsão Despesas: R$ {t_desp:,.2f}"
+    st.code(resumo, language="text")
