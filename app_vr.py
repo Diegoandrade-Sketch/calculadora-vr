@@ -139,7 +139,7 @@ else:
     if not modo_apresentacao:
         st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
 
-    # Inicialização de listas persistentes
+    # 1. Inicialização de listas de seleção
     if 'sel_i' not in st.session_state: st.session_state.sel_i = ["Migração Banco de Dados", "Definição de Escopo", "Configuração Servidor / PDV Linux", "Implantação e Treinamento"]
     if 'sel_m' not in st.session_state: st.session_state.sel_m = ["VR ERP PRO"]
 
@@ -152,41 +152,47 @@ else:
             st.session_state.sel_i = st.multiselect("Serviços", list(precos_tabela.keys())[8:12], default=st.session_state.sel_i)
             for i in st.session_state.sel_i:
                 vu = precos_tabela[i]["setup"]
-                # CORREÇÃO: Busca valor anterior no session_state para não zerar no rerun
-                val_padrao = 12 if "Treinamento" not in i else 120
-                st.number_input(f"Horas: {i} (R$ {vu:,.2f}/h)", min_value=0, value=st.session_state.get(f"v_h_{i}", val_padrao), key=f"v_h_{i}")
+                key_h = f"v_h_{i}"
+                if key_h not in st.session_state: 
+                    st.session_state[key_h] = 12 if "Treinamento" not in i else 120
+                st.number_input(f"Horas: {i}", min_value=0, key=key_h)
 
         with col_m:
             st.markdown('<div class="section-header"><span class="section-title">MENSALIDADES</span></div>', unsafe_allow_html=True)
             st.session_state.sel_m = st.multiselect("Produtos", list(precos_tabela.keys())[0:8], default=st.session_state.sel_m)
             for i in st.session_state.sel_m:
                 vu = precos_tabela[i]["mensal"]
-                # CORREÇÃO: Busca valor anterior no session_state para não zerar no rerun
-                st.number_input(f"Qtd: {i} (R$ {vu:,.2f}/un)", min_value=0, value=st.session_state.get(f"v_q_{i}", 1), key=f"v_q_{i}")
+                key_q = f"v_q_{i}"
+                if key_q not in st.session_state: st.session_state[key_q] = 1
+                st.number_input(f"Qtd: {i}", min_value=0, key=key_q)
 
         if col_d:
             with col_d:
                 st.markdown('<div class="section-header"><span class="section-title">DESPESAS</span></div>', unsafe_allow_html=True)
                 for i, p in itens_desp.items():
-                    # CORREÇÃO CRÍTICA: O value agora consulta o session_state antes de assumir 0
-                    st.number_input(f"{i} (R$ {p:,.2f}/un)", min_value=0, value=st.session_state.get(f"v_d_{i}", 0), key=f"v_d_{i}")
+                    key_d = f"v_d_{i}"
+                    # GARANTIA DE PERSISTÊNCIA: Inicializa no session_state apenas se estiver vazio
+                    if key_d not in st.session_state: st.session_state[key_d] = 0
+                    # Widget amarrado à chave interna do Streamlit (sem forçar o value= no parâmetro)
+                    st.number_input(f"{i} (R$ {p:,.2f})", min_value=0, key=key_d)
 
-    # Cálculos finais
+    # 2. Cálculos Finais (Lendo sempre do session_state atualizado pelo widget)
     t_imp, t_men_bruto, t_desp = 0, 0, 0
     lista_i, lista_m, lista_d = [], [], []
 
     for i in st.session_state.sel_i:
         vu = precos_tabela[i]["setup"]
-        h = st.session_state.get(f"v_h_{i}", 12 if "Treinamento" not in i else 120)
+        h = st.session_state.get(f"v_h_{i}", 0)
         t_imp += h * vu
         lista_i.append((i, h, vu))
 
     for i in st.session_state.sel_m:
         vu = precos_tabela[i]["mensal"]
-        q = st.session_state.get(f"v_q_{i}", 1)
+        q = st.session_state.get(f"v_q_{i}", 0)
         t_men_bruto += q * vu
         lista_m.append((i, q, vu))
 
+    # O cálculo de despesas agora é robusto ao Rerun
     for i, p in itens_desp.items():
         qd = st.session_state.get(f"v_d_{i}", 0)
         t_desp += qd * p
