@@ -55,12 +55,12 @@ with st.sidebar:
     
     st.markdown('<span class="sidebar-label">Negociação</span>', unsafe_allow_html=True)
     
-    # Travas de Desconto
-    desc = st.number_input("Desconto Mensal (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.1)
+    # Travas de Desconto (Precisão de 0.01)
+    desc = st.number_input("Desconto Mensal (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.01, format="%.2f")
     if desc > 15.0:
-        st.error("⚠️ Desconto não autorizado! Exige aprovação do financeiro.")
+        st.error(f"⚠️ Desconto de {desc:.2f}% não autorizado! Exige aprovação do financeiro.")
     elif desc > 0:
-        st.success("✅ Desconto autorizado.")
+        st.success(f"✅ Desconto de {desc:.2f}% autorizado.")
 
     # Trava de Parcelamento (Máximo 6x)
     parcelas = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 5, 6], index=0)
@@ -71,7 +71,7 @@ with st.sidebar:
         t_i = st.session_state.get('t_imp', 0)
         t_m = st.session_state.get('t_men_liq', 0)
         t_d = st.session_state.get('t_desp', 0)
-        resumo_txt = f"*PROPOSTA VR SOFTWARE*\n\n*Setup:* R$ {t_i:,.2f} ({parcelas}x)\n*Mensalidade:* R$ {t_m:,.2f}\n*Despesas:* R$ {t_d:,.2f}"
+        resumo_txt = f"*PROPOSTA VR SOFTWARE*\n\n*Setup:* R$ {t_i:,.2f} ({parcelas}x)\n*Mensalidade:* R$ {t_m:,.2f} ({desc:.2f}% desc.)\n*Despesas:* R$ {t_d:,.2f}"
         st.code(resumo_txt, language="text")
 
 # 5. Cabeçalho
@@ -128,6 +128,7 @@ else:
     t_men_bruto = st.session_state.get('t_men_bruto', 0); dados_mensal_final = st.session_state.get('dados_mensal', [])
     t_desp = st.session_state.get('t_desp', 0); dados_desp_final = st.session_state.get('dados_desp', [])
 
+# Cálculo matemático preciso
 t_men_liq = t_men_bruto * (1 - (desc/100))
 st.session_state['t_men_liq'] = t_men_liq
 
@@ -142,7 +143,8 @@ with res_col1:
 with res_col2:
     html_itens = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} un x R$ {v:,.2f}</span></li>" for i, q, v in dados_mensal_final])
     cor_txt = "#d32f2f" if desc > 15.0 else "#2e7d32"
-    st.markdown(f'<div class="resumo-card" style="border-top-color: {cor_txt};"><span class="resumo-label">Mensal</span><div class="resumo-valor">R$ {t_men_liq:,.2f}</div><div style="color:{cor_txt}; font-weight:bold;">Desconto: {desc}%</div><div class="resumo-subtitulo">LICENÇAS</div><ul class="lista-itens">{html_itens if html_itens else "<li>Nenhum item</li>"}</ul></div>', unsafe_allow_html=True)
+    # AJUSTE: desc:.2f garante as duas casas decimais no visual do card
+    st.markdown(f'<div class="resumo-card" style="border-top-color: {cor_txt};"><span class="resumo-label">Mensal</span><div class="resumo-valor">R$ {t_men_liq:,.2f}</div><div style="color:{cor_txt}; font-weight:bold;">Desconto: {desc:.2f}%</div><div class="resumo-subtitulo">LICENÇAS</div><ul class="lista-itens">{html_itens if html_itens else "<li>Nenhum item</li>"}</ul></div>', unsafe_allow_html=True)
 
 with res_col3:
     html_itens = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} x R$ {v:,.2f}</span></li>" for i, q, v in dados_desp_final])
