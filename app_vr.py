@@ -10,14 +10,15 @@ st.markdown("""
     <style>
     .main { background-color: #ffffff; }
     
-    /* Título PROPOSTA COMERCIAL com fonte grande */
+    /* Título PROPOSTA COMERCIAL com fonte ampliada */
     .main-title {
         color: #333;
-        font-size: 4rem; /* Tamanho de grande impacto */
+        font-size: 5rem; /* Fonte aumentada conforme solicitado */
         font-weight: 900;
         margin: 0;
         line-height: 1;
         letter-spacing: -2px;
+        text-transform: uppercase;
     }
     
     .section-header {
@@ -58,7 +59,6 @@ with head_col1:
         st.subheader("VR SOFTWARE")
 
 with head_col2:
-    # Título ampliado conforme solicitado
     st.markdown('<p class="main-title">PROPOSTA COMERCIAL</p>', unsafe_allow_html=True)
 
 st.markdown("---")
@@ -93,7 +93,10 @@ col1, col2, col3 = st.columns(3)
 
 with col1:
     placeholder_imp = st.empty()
-    imp_sel = st.multiselect("Serviços de Setup", list(itens_imp.keys()), default=list(itens_imp.keys()))
+    # Botão de ocultar/exibir usando Expander
+    with st.expander("Selecionar Itens de Implantação", expanded=True):
+        imp_sel = st.multiselect("Serviços de Setup", list(itens_imp.keys()), default=list(itens_imp.keys()))
+    
     t_imp = 0
     for item in imp_sel:
         h = st.number_input(f"Horas: {item}", min_value=0, value=12 if "Treinamento" not in item else 120, key=f"h_{item}")
@@ -108,15 +111,17 @@ with col1:
 
 with col2:
     placeholder_men = st.empty()
-    mensal_sel = st.multiselect("Produtos e Licenças", list(itens_mensal.keys()), default=["VR ERP PRO"])
+    # Botão de ocultar/exibir usando Expander
+    with st.expander("Selecionar Itens Mensais", expanded=True):
+        mensal_sel = st.multiselect("Produtos e Licenças", list(itens_mensal.keys()), default=["VR ERP PRO"])
+    
     t_men_bruto = 0
     for item in mensal_sel:
         q = st.number_input(f"Qtd: {item}", min_value=0, value=1, key=f"q_{item}")
         t_men_bruto += q * itens_mensal[item]
     
-    # Área lateral de desconto dentro da coluna da mensalidade para maior visibilidade
     st.markdown("### Negociação")
-    desc = st.number_input("Desconto (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.1, help="Preencha o percentual de desconto comercial.")
+    desc = st.number_input("Desconto (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.1)
     t_men_liq = t_men_bruto * (1 - (desc/100))
 
     if desc > 15:
