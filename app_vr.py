@@ -39,17 +39,18 @@ st.markdown("""
     .lista-itens li { padding: 6px 0; border-bottom: 1px dashed #f0f0f0; display: flex; justify-content: space-between; }
     .item-detalhe { color: #777; font-size: 0.9rem; }
 
+    /* Botoes da Sidebar */
     [data-testid="stSidebar"] .stButton > button {
         width: 100%; border-radius: 5px; height: 3em; font-weight: bold;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# Inicializacao do estado de visibilidade
-if 'exibir_edicao' not in st.session_state:
-    st.session_state.exibir_edicao = True
+# Inicializacao do estado para controlar a visibilidade dos seletores
+if 'mostrar_seletores' not in st.session_state:
+    st.session_state.mostrar_seletores = True
 
-# Funcao para Gerar Imagem de Resumo
+# Funcao para Gerar Imagem
 def gerar_imagem_resumo(t_imp, p_imp, t_men, t_desp):
     img = Image.new('RGB', (800, 600), color='#ffffff')
     draw = ImageDraw.Draw(img)
@@ -87,20 +88,19 @@ with head_col2:
 st.markdown("---")
 
 # 4. Dados de Preco Fixos
-itens_imp = {"Migracao Banco de Dados": 201.30, "Definicao de Escopo": 201.30, "Configuracao Servidor / PDV Linux": 201.30, "Implantacao e Treinamento": 201.30}
+itens_imp = {"Migracao Banco de Dados": 201.30, "Definicao de Escopo": 201.30, "Configuracao Servidor PDV Linux": 201.30, "Implantacao e Treinamento": 201.30}
 itens_mensal = {"VR ERP PRO": 1285.71, "VR PDV Convencional": 185.71, "PDV Touchscreen": 185.71, "PDV Selfcheckout": 290.44, "SiTef Express": 357.14, "VR TEF": 417.04, "Gerenciador XML": 163.84, "VR Mobile": 193.63}
 itens_desp = {"Alimentacao": 49.00, "Hospedagem": 195.00, "Deslocamento KM": 2.12}
 
-# --- BARRA LATERAL ---
+# --- BARRA LATERAL (Sidebar) ---
 with st.sidebar:
-    st.title("PAINEL DE CONTROLE")
-    st.subheader("Negociacao")
+    st.title("OPCOES")
     desc = st.number_input("Desconto Mensal Porcentagem", min_value=0.0, max_value=30.0, value=0.0, step=0.1)
     parcelas = st.selectbox("Parcelas Setup", [1, 2, 3, 4, 5, 6, 10, 12], index=3)
     
     st.write("---")
-    st.subheader("Exportar")
-    if st.button("Gerar Texto Whatsapp"):
+    
+    if st.button("Gerar Texto para Whatsapp"):
         t_i = st.session_state.get('t_imp', 0)
         t_m = st.session_state.get('t_men_liq', 0)
         t_d = st.session_state.get('t_desp', 0)
@@ -108,16 +108,16 @@ with st.sidebar:
         st.code(msg, language="text")
 
     img_data = gerar_imagem_resumo(st.session_state.get('t_imp', 0), parcelas, st.session_state.get('t_men_liq', 0), st.session_state.get('t_desp', 0))
-    st.download_button(label="Baixar Card Proposta", data=img_data, file_name="proposta_vr.png", mime="image/png")
+    st.download_button(label="Baixar Imagem da Proposta", data=img_data, file_name="proposta_vr.png", mime="image/png")
 
-# 5. Area de Inclusao de Itens
-if st.session_state.exibir_edicao:
+# 5. Interface de Selecao (Ocultavel)
+if st.session_state.mostrar_seletores:
     col1, col2, col3 = st.columns(3)
     
     dados_imp_final = []
     with col1:
-        st.markdown('<div class="section-header"><span class="section-title">IMPLANTACAO</span></div>', unsafe_allow_html=True)
-        imp_sel = st.multiselect("Servicos", list(itens_imp.keys()), default=list(itens_imp.keys()))
+        st.markdown('<div class="section-header"><span class="section-title">SERVICOS</span></div>', unsafe_allow_html=True)
+        imp_sel = st.multiselect("Selecione os servicos", list(itens_imp.keys()), default=list(itens_imp.keys()))
         t_imp = 0
         for item in imp_sel:
             v_u = itens_imp[item]
@@ -127,8 +127,8 @@ if st.session_state.exibir_edicao:
     
     dados_mensal_final = []
     with col2:
-        st.markdown('<div class="section-header"><span class="section-title">ITENS MENSAIS</span></div>', unsafe_allow_html=True)
-        mensal_sel = st.multiselect("Produtos", list(itens_mensal.keys()), default=["VR ERP PRO"])
+        st.markdown('<div class="section-header"><span class="section-title">PRODUTOS</span></div>', unsafe_allow_html=True)
+        mensal_sel = st.multiselect("Selecione os produtos", list(itens_mensal.keys()), default=["VR ERP PRO"])
         t_men_bruto = 0
         for item in mensal_sel:
             v_u = itens_mensal[item]
@@ -146,9 +146,17 @@ if st.session_state.exibir_edicao:
             t_desp += qd * preco
             if qd > 0: dados_desp_final.append((item, qd, preco))
 
-    # Atualiza o estado da sessao
+    # Salva no estado para quando for ocultado
     st.session_state.update({'t_imp': t_imp, 'dados_imp': dados_imp_final, 't_men_liq': t_men_liq, 'dados_mensal': dados_mensal_final, 't_desp': t_desp, 'dados_desp': dados_desp_final})
-else:
+
+# Botao para Ocultar/Exibir (Logo abaixo dos seletores)
+btn_label = "OCULTAR SELECAO DE ITENS" if st.session_state.mostrar_seletores else "EXIBIR SELECAO DE ITENS"
+if st.button(btn_label):
+    st.session_state.mostrar_seletores = not st.session_state.mostrar_seletores
+    st.rerun()
+
+# 6. Exibicao Final (Resumo)
+if not st.session_state.mostrar_seletores:
     t_imp = st.session_state.get('t_imp', 0)
     dados_imp_final = st.session_state.get('dados_imp', [])
     t_men_liq = st.session_state.get('t_men_liq', 0)
@@ -156,24 +164,17 @@ else:
     t_desp = st.session_state.get('t_desp', 0)
     dados_desp_final = st.session_state.get('dados_desp', [])
 
-# Botao de Controle de Visibilidade (Centralizado)
-st.markdown("<br>", unsafe_allow_html=True)
-if st.button("OCULTAR ITENS DE EDICAO" if st.session_state.exibir_edicao else "EXIBIR ITENS DE EDICAO"):
-    st.session_state.exibir_edicao = not st.session_state.exibir_edicao
-    st.rerun()
-
-# 6. Detalhamento da Proposta (Sempre Visivel)
-st.markdown("<br><h2 style='text-align: center; color: #333; font-weight: 800;'>DETALHAMENTO DA PROPOSTA</h2>", unsafe_allow_html=True)
+st.markdown("<br><h2 style='text-align: center; color: #333; font-weight: 800;'>RESUMO DA PROPOSTA</h2>", unsafe_allow_html=True)
 res_col1, res_col2, res_col3 = st.columns(3)
 
 with res_col1:
     h_i = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{h}h x R$ {v:,.2f}</span></li>" for i, h, v in dados_imp_final])
-    st.markdown(f'<div class="resumo-card"><span class="resumo-label">Investimento Setup</span><div class="resumo-valor">R$ {t_imp:,.2f}</div><div style="font-size: 1.2rem; font-weight: bold;">{parcelas}x de R$ {t_imp/parcelas:,.2f}</div><div class="resumo-subtitulo">SERVICOS INCLUSOS</div><ul class="lista-itens">{h_i if h_i else "<li>Nenhum item selecionado</li>"}</ul></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="resumo-card"><span class="resumo-label">Investimento Setup</span><div class="resumo-valor">R$ {t_imp:,.2f}</div><div style="font-size: 1.2rem; font-weight: bold;">{parcelas}x de R$ {t_imp/parcelas:,.2f}</div><div class="resumo-subtitulo">DETALHES DO SETUP</div><ul class="lista-itens">{h_i if h_i else "<li>Nenhum item</li>"}</ul></div>', unsafe_allow_html=True)
 
 with res_col2:
-    h_m = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} Lic. x R$ {v:,.2f}</span></li>" for i, q, v in dados_mensal_final])
-    st.markdown(f'<div class="resumo-card" style="border-top-color: #2e7d32;"><span class="resumo-label">Investimento Mensal</span><div class="resumo-valor">R$ {t_men_liq:,.2f}</div><div style="font-size: 1.1rem; color: #2e7d32; font-weight: bold;">Desconto: {desc}%</div><div class="resumo-subtitulo">SISTEMAS E LICENCAS</div><ul class="lista-itens">{h_m if h_m else "<li>Nenhum item selecionado</li>"}</ul></div>', unsafe_allow_html=True)
+    h_m = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} Qtd x R$ {v:,.2f}</span></li>" for i, q, v in dados_mensal_final])
+    st.markdown(f'<div class="resumo-card" style="border-top-color: #2e7d32;"><span class="resumo-label">Investimento Mensal</span><div class="resumo-valor">R$ {t_men_liq:,.2f}</div><div style="font-size: 1.1rem; color: #2e7d32; font-weight: bold;">Desconto aplicado: {desc}%</div><div class="resumo-subtitulo">ITENS MENSAIS</div><ul class="lista-itens">{h_m if h_m else "<li>Nenhum item</li>"}</ul></div>', unsafe_allow_html=True)
 
 with res_col3:
-    h_d = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} Qtd. x R$ {v:,.2f}</span></li>" for i, q, v in dados_desp_final])
-    st.markdown(f'<div class="resumo-card" style="border-top-color: #1976d2;"><span class="resumo-label">Previsao de Despesas</span><div class="resumo-valor">R$ {t_desp:,.2f}</div><div style="font-size: 1rem; color: #d32f2f; font-weight: bold;">Faturadas ao termino da implantacao</div><div class="resumo-subtitulo">DETALHAMENTO LOGISTICO</div><ul class="lista-itens">{h_d if h_d else "<li>Nenhuma despesa selecionada</li>"}</ul></div>', unsafe_allow_html=True)
+    h_d = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} Un x R$ {v:,.2f}</span></li>" for i, q, v in dados_desp_final])
+    st.markdown(f'<div class="resumo-card" style="border-top-color: #1976d2;"><span class="resumo-label">Previsao de Despesas</span><div class="resumo-valor">R$ {t_desp:,.2f}</div><div style="font-size: 1rem; color: #d32f2f; font-weight: bold;">Faturado conforme uso</div><div class="resumo-subtitulo">ITENS DE LOGISTICA</div><ul class="lista-itens">{h_d if h_d else "<li>Nenhuma despesa</li>"}</ul></div>', unsafe_allow_html=True)
