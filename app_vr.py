@@ -5,7 +5,7 @@ import os
 # 1. Configuracao da Pagina
 st.set_page_config(page_title="VR Software | Proposta Comercial", layout="wide")
 
-# 2. Estilizacao CSS (Fiel ao Original com Sombreamentos e Cores)
+# 2. Estilizacao CSS (Com Sombreamentos e Correcao de Renderizacao)
 st.markdown("""
     <style>
     .stApp { background: linear-gradient(135deg, #ffffff 0%, #fff5ed 100%); }
@@ -42,7 +42,6 @@ st.markdown("""
     .tooltip:hover .tooltiptext { visibility: visible; opacity: 1; }
 
     .section-header {
-        display: flex; justify-content: space-between; align-items: center;
         background: linear-gradient(90deg, #ff6600 0%, #ff944d 100%);
         padding: 8px 15px; border-radius: 5px; margin-bottom: 15px; margin-top: 20px;
     }
@@ -51,20 +50,20 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 3. Base de Dados Centralizada
+# 3. Base de Dados
 precos_tabela = {
     "VR ERP PRO": {"setup": 2415.60, "mensal": 1285.71, "desc": "Sistema de gestão completo para supermercados.", "roi": "Redução média de 15% em perdas de estoque."},
     "VR PDV Convencional": {"setup": 201.30, "mensal": 185.71, "desc": "Frente de caixa estável e rápido.", "roi": "Aumento de 20% na velocidade de passagem no caixa."},
     "PDV Touchscreen": {"setup": 201.30, "mensal": 185.71, "desc": "Interface moderna para telas de toque.", "roi": "Facilidade no treinamento de novos operadores."},
-    "PDV Selfcheckout": {"setup": 500.00, "mensal": 290.44, "desc": "Autoatendimento para clientes.", "roi": "Redução de custos operacionais com frente de caixa."},
-    "SiTef Express": {"setup": 0.00, "mensal": 357.14, "desc": "Integração de pagamentos em nuvem.", "roi": "Segurança total contra fraudes de cartão."},
-    "VR TEF": {"setup": 0.00, "mensal": 417.04, "desc": "Transferência Eletrônica de Fundos VR.", "roi": "Conciliação bancária 100% automatizada."},
-    "Gerenciador XML": {"setup": 0.00, "mensal": 163.84, "desc": "Gestão automática de notas fiscais.", "roi": "Economia de 5 horas/semana do setor fiscal."},
-    "VR Mobile": {"setup": 201.30, "mensal": 193.63, "desc": "Gestão e vendas na palma da mão.", "roi": "Decisões baseadas em dados em tempo real."},
-    "Migração Banco de Dados": {"setup": 201.30, "mensal": 0.00, "desc": "Cópia do cadastro do sistema anterior.", "roi": "Segurança na transição de dados."},
-    "Definição de Escopo": {"setup": 201.30, "mensal": 0.00, "desc": "Mapeamento dos processos da empresa.", "roi": "Evita retrabalho e custos extras."},
-    "Configuração Servidor / PDV Linux": {"setup": 201.30, "mensal": 0.00, "desc": "Preparação do ambiente Linux.", "roi": "Estabilidade e imunidade a vírus."},
-    "Implantação e Treinamento": {"setup": 201.30, "mensal": 0.00, "desc": "Capacitação da equipe nos módulos.", "roi": "Equipe operando com máxima eficiência."}
+    "PDV Selfcheckout": {"setup": 500.00, "mensal": 290.44, "desc": "Autoatendimento para clientes.", "roi": "Redução de custos operacionais."},
+    "SiTef Express": {"setup": 0.00, "mensal": 357.14, "desc": "Integração de pagamentos em nuvem.", "roi": "Segurança total contra fraudes."},
+    "VR TEF": {"setup": 0.00, "mensal": 417.04, "desc": "Transferência Eletrônica de Fundos VR.", "roi": "Conciliação bancária automatizada."},
+    "Gerenciador XML": {"setup": 0.00, "mensal": 163.84, "desc": "Gestão automática de notas fiscais.", "roi": "Economia de tempo no setor fiscal."},
+    "VR Mobile": {"setup": 201.30, "mensal": 193.63, "desc": "Gestão na palma da mão.", "roi": "Decisões baseadas em dados reais."},
+    "Migração Banco de Dados": {"setup": 201.30, "mensal": 0.00, "desc": "Cópia do cadastro anterior.", "roi": "Segurança na transição."},
+    "Definição de Escopo": {"setup": 201.30, "mensal": 0.00, "desc": "Mapeamento de processos.", "roi": "Evita surpresas no projeto."},
+    "Configuração Servidor / PDV Linux": {"setup": 201.30, "mensal": 0.00, "desc": "Ambiente Linux estável.", "roi": "Imunidade a vírus."},
+    "Implantação e Treinamento": {"setup": 201.30, "mensal": 0.00, "desc": "Capacitação da equipe.", "roi": "Equipe 100% produtiva."}
 }
 itens_desp = {"Alimentação": 49.00, "Hospedagem": 195.00, "Deslocamento (KM)": 2.12}
 
@@ -75,11 +74,11 @@ with st.sidebar:
     st.write("---")
 
     if tela == "Gerador de Proposta":
-        st.markdown('<span class="sidebar-label">Configurações de Venda</span>', unsafe_allow_html=True)
-        perfil_venda = st.selectbox("Perfil do Vendedor", ["Executivo (Rua)", "CS (Base)"])
+        st.markdown('<span class="sidebar-label">Configurações</span>', unsafe_allow_html=True)
+        perfil_venda = st.selectbox("Perfil", ["Executivo (Rua)", "CS (Base)"])
         modo_apresentacao = st.toggle("Modo Apresentação")
         desc = st.number_input("Desconto Mensal (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.1)
-        exibir_detalhe_desc = st.toggle("Exibir Desconto nos Cards", value=True)
+        exibir_detalhe_desc = st.toggle("Exibir Desconto", value=True)
         faturamento = st.selectbox("Faturamento", ["Imediato", "30 dias", "60 dias", "Apos a implantacao"])
         parcelas = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 5, 6], index=3)
 
@@ -96,14 +95,14 @@ if tela == "Consulta de Preços":
 
 # --- 6. TELA DE PROPOSTA ---
 else:
+    # Correção do Erro de Renderização do Título
     if not modo_apresentacao:
-        st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>')
+        st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
 
-    # INICIALIZAÇÃO DO ESTADO PARA NÃO PERDER DADOS
+    # Inicialização de Session State para persistência
     if 'sel_i' not in st.session_state: st.session_state.sel_i = ["Migração Banco de Dados", "Definição de Escopo", "Configuração Servidor / PDV Linux", "Implantação e Treinamento"]
     if 'sel_m' not in st.session_state: st.session_state.sel_m = ["VR ERP PRO"]
 
-    # ÁREA DE INPUTS (OCULTA NO MODO APRESENTAÇÃO)
     if not modo_apresentacao:
         st.markdown("---")
         col_i, col_m, col_d = st.columns(3) if perfil_venda == "Executivo (Rua)" else (*st.columns(2), None)
@@ -113,40 +112,37 @@ else:
             st.session_state.sel_i = st.multiselect("Serviços", list(precos_tabela.keys())[8:12], default=st.session_state.sel_i)
             for i in st.session_state.sel_i:
                 vu = precos_tabela[i]["setup"]
-                st.number_input(f"Horas: {i}", min_value=0, value=12 if "Treinamento" not in i else 120, key=f"v_h_{i}")
+                st.number_input(f"Horas: {i} (R$ {vu:,.2f}/h)", min_value=0, value=12 if "Treinamento" not in i else 120, key=f"v_h_{i}")
 
         with col_m:
             st.markdown('<div class="section-header"><span class="section-title">MENSALIDADES</span></div>', unsafe_allow_html=True)
             st.session_state.sel_m = st.multiselect("Produtos", list(precos_tabela.keys())[0:8], default=st.session_state.sel_m)
             for i in st.session_state.sel_m:
                 vu = precos_tabela[i]["mensal"]
-                st.number_input(f"Qtd: {i}", min_value=0, value=1, key=f"v_q_{i}")
+                st.number_input(f"Qtd: {i} (R$ {vu:,.2f}/un)", min_value=0, value=1, key=f"v_q_{i}")
 
         if col_d:
             with col_d:
                 st.markdown('<div class="section-header"><span class="section-title">DESPESAS</span></div>', unsafe_allow_html=True)
                 for i, p in itens_desp.items():
-                    st.number_input(f"{i}", min_value=0, value=0, key=f"v_d_{i}")
+                    st.number_input(f"{i} (R$ {p:,.2f}/un)", min_value=0, value=0, key=f"v_d_{i}")
 
-    # CÁLCULOS (SEMPRE EXECUTADOS, INDEPENDENTE DO MODO)
+    # Cálculos Processados
     t_imp, t_men_bruto, t_desp = 0, 0, 0
     lista_i, lista_m, lista_d = [], [], []
 
-    # Processa Implantação
     for i in st.session_state.sel_i:
         vu = precos_tabela[i]["setup"]
         h = st.session_state.get(f"v_h_{i}", 12 if "Treinamento" not in i else 120)
         t_imp += h * vu
         lista_i.append((i, h, vu))
 
-    # Processa Mensalidades
     for i in st.session_state.sel_m:
         vu = precos_tabela[i]["mensal"]
         q = st.session_state.get(f"v_q_{i}", 1)
         t_men_bruto += q * vu
         lista_m.append((i, q, vu))
 
-    # Processa Despesas
     for i, p in itens_desp.items():
         qd = st.session_state.get(f"v_d_{i}", 0)
         t_desp += qd * p
@@ -154,7 +150,7 @@ else:
 
     t_men_liq = t_men_bruto * (1 - (desc/100))
 
-    # EXIBIÇÃO DOS CARDS (SEMPRE VISÍVEIS)
+    # Renderização dos Cards (Sempre visíveis e com Valores Unitários)
     st.markdown("<h2 style='text-align:center; font-weight:800; margin-top:30px;'>DETALHAMENTO DA PROPOSTA</h2>", unsafe_allow_html=True)
     res_cols = st.columns(3) if perfil_venda == "Executivo (Rua)" else st.columns([1, 2, 2, 1])[1:3]
 
