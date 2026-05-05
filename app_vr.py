@@ -10,16 +10,15 @@ st.markdown("""
     <style>
     .main { background-color: #ffffff; }
     
-    /* Novo Título PROPOSTA COMERCIAL: Grande, Nítido e Moderno */
+    /* Título PROPOSTA COMERCIAL: Grande e Nítido */
     .hero-title {
         color: #262730;
-        font-size: 5.5rem; /* Fonte massiva */
+        font-size: 5.5rem;
         font-weight: 900;
         margin: 0;
         padding: 0;
         line-height: 1;
         letter-spacing: -3px;
-        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
     }
     
     .section-header {
@@ -47,13 +46,6 @@ st.markdown("""
     }
 
     [data-testid="stMetricValue"] { color: #ff6600; font-size: 2rem; }
-    
-    /* Ajuste para o texto de valor unitário */
-    .unit-price {
-        color: #666;
-        font-size: 0.85rem;
-        font-style: italic;
-    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -67,7 +59,6 @@ with head_col1:
         st.subheader("VR SOFTWARE")
 
 with head_col2:
-    # Título Recriado do Zero
     st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
 
 st.markdown("---")
@@ -97,6 +88,17 @@ itens_desp = {
     "Deslocamento (KM)": 2.12
 }
 
+# --- CAMPO DE NEGOCIAÇÃO (OCULTO NA BARRA LATERAL) ---
+with st.sidebar:
+    st.header("⚙️ Negociação")
+    st.markdown("Use este campo para aplicar descontos na **Licença Mensal**.")
+    desc = st.number_input("Desconto (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.1)
+    
+    if desc > 15:
+        st.error("⚠️ Requer aprovação do financeiro.")
+    elif desc > 0:
+        st.success(f"Desconto de {desc}% aplicado.")
+
 # 5. Interface Principal em 3 Colunas
 col1, col2, col3 = st.columns(3)
 
@@ -124,12 +126,8 @@ with col2:
         q = st.number_input(f"Qtd: {item} (R$ {val_unit:,.2f} un)", min_value=0, value=1, key=f"q_{item}")
         t_men_bruto += q * val_unit
     
-    st.markdown("### Negociação")
-    desc = st.number_input("Desconto (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.1)
+    # Cálculo com o desconto vindo da barra lateral
     t_men_liq = t_men_bruto * (1 - (desc/100))
-
-    if desc > 15:
-        st.error("Requer aprovação do financeiro.")
 
     placeholder_men.markdown(f'<div class="section-header"><span class="section-title">LICENÇA MENSAL</span><span class="section-total">R$ {t_men_liq:,.2f}</span></div>', unsafe_allow_html=True)
 
