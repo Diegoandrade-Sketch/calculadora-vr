@@ -4,10 +4,10 @@ import os
 from PIL import Image, ImageDraw, ImageFont
 import io
 
-# 1. Configuração da Página
+# 1. Configuracao da Pagina
 st.set_page_config(page_title="VR Software | Proposta Comercial", layout="wide")
 
-# 2. Estilização CSS
+# 2. Estilizacao CSS
 st.markdown("""
     <style>
     .stApp {
@@ -40,15 +40,16 @@ st.markdown("""
     .item-detalhe { color: #777; font-size: 0.9rem; }
 
     [data-testid="stSidebar"] .stButton > button {
-        width: 100%;
-        border-radius: 5px;
-        height: 3em;
-        font-weight: bold;
+        width: 100%; border-radius: 5px; height: 3em; font-weight: bold;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# Função para Gerar Imagem de Resumo
+# Inicializacao do estado de visibilidade
+if 'exibir_edicao' not in st.session_state:
+    st.session_state.exibir_edicao = True
+
+# Funcao para Gerar Imagem de Resumo
 def gerar_imagem_resumo(t_imp, p_imp, t_men, t_desp):
     img = Image.new('RGB', (800, 600), color='#ffffff')
     draw = ImageDraw.Draw(img)
@@ -73,7 +74,7 @@ def gerar_imagem_resumo(t_imp, p_imp, t_men, t_desp):
     img.save(buf, format="PNG")
     return buf.getvalue()
 
-# 3. Cabeçalho
+# 3. Cabecalho
 head_col1, head_col2 = st.columns([1, 4])
 with head_col1:
     if os.path.exists("logo_vr.png"):
@@ -85,7 +86,7 @@ with head_col2:
 
 st.markdown("---")
 
-# 4. Dados de Preço Fixos
+# 4. Dados de Preco Fixos
 itens_imp = {"Migracao Banco de Dados": 201.30, "Definicao de Escopo": 201.30, "Configuracao Servidor / PDV Linux": 201.30, "Implantacao e Treinamento": 201.30}
 itens_mensal = {"VR ERP PRO": 1285.71, "VR PDV Convencional": 185.71, "PDV Touchscreen": 185.71, "PDV Selfcheckout": 290.44, "SiTef Express": 357.14, "VR TEF": 417.04, "Gerenciador XML": 163.84, "VR Mobile": 193.63}
 itens_desp = {"Alimentacao": 49.00, "Hospedagem": 195.00, "Deslocamento KM": 2.12}
@@ -93,38 +94,24 @@ itens_desp = {"Alimentacao": 49.00, "Hospedagem": 195.00, "Deslocamento KM": 2.1
 # --- BARRA LATERAL ---
 with st.sidebar:
     st.title("PAINEL DE CONTROLE")
-    modo_apresentacao = st.toggle("Modo Apresentacao", value=False)
-    
-    st.write("---")
     st.subheader("Negociacao")
     desc = st.number_input("Desconto Mensal Porcentagem", min_value=0.0, max_value=30.0, value=0.0, step=0.1)
     parcelas = st.selectbox("Parcelas Setup", [1, 2, 3, 4, 5, 6, 10, 12], index=3)
     
     st.write("---")
     st.subheader("Exportar")
-    
-    if st.button("Copiar Texto Whatsapp"):
+    if st.button("Gerar Texto Whatsapp"):
         t_i = st.session_state.get('t_imp', 0)
         t_m = st.session_state.get('t_men_liq', 0)
         t_d = st.session_state.get('t_desp', 0)
         msg = f"PROPOSTA VR SOFTWARE\n\nSetup: R$ {t_i:,.2f} ({parcelas}x)\nMensal: R$ {t_m:,.2f}\nDespesas: R$ {t_d:,.2f}"
         st.code(msg, language="text")
 
-    img_data = gerar_imagem_resumo(
-        st.session_state.get('t_imp', 0), 
-        parcelas, 
-        st.session_state.get('t_men_liq', 0), 
-        st.session_state.get('t_desp', 0)
-    )
-    st.download_button(
-        label="Baixar Card Proposta",
-        data=img_data,
-        file_name="proposta_vr.png",
-        mime="image/png"
-    )
+    img_data = gerar_imagem_resumo(st.session_state.get('t_imp', 0), parcelas, st.session_state.get('t_men_liq', 0), st.session_state.get('t_desp', 0))
+    st.download_button(label="Baixar Card Proposta", data=img_data, file_name="proposta_vr.png", mime="image/png")
 
-# 5. Interface de Seleção (OCULTÁVEL pelo Modo Apresentação)
-if not modo_apresentacao:
+# 5. Area de Inclusao de Itens
+if st.session_state.exibir_edicao:
     col1, col2, col3 = st.columns(3)
     
     dados_imp_final = []
@@ -159,11 +146,9 @@ if not modo_apresentacao:
             t_desp += qd * preco
             if qd > 0: dados_desp_final.append((item, qd, preco))
 
+    # Atualiza o estado da sessao
     st.session_state.update({'t_imp': t_imp, 'dados_imp': dados_imp_final, 't_men_liq': t_men_liq, 'dados_mensal': dados_mensal_final, 't_desp': t_desp, 'dados_desp': dados_desp_final})
-    st.markdown("<br><br>", unsafe_allow_html=True)
-
 else:
-    # Recupera os dados para exibição no modo apresentação
     t_imp = st.session_state.get('t_imp', 0)
     dados_imp_final = st.session_state.get('dados_imp', [])
     t_men_liq = st.session_state.get('t_men_liq', 0)
@@ -171,8 +156,14 @@ else:
     t_desp = st.session_state.get('t_desp', 0)
     dados_desp_final = st.session_state.get('dados_desp', [])
 
-# 6. RESUMO VISUAL (DETALHAMENTO DA PROPOSTA)
-st.markdown("<h2 style='text-align: center; color: #333; font-weight: 800;'>DETALHAMENTO DA PROPOSTA</h2>", unsafe_allow_html=True)
+# Botao de Controle de Visibilidade (Centralizado)
+st.markdown("<br>", unsafe_allow_html=True)
+if st.button("OCULTAR ITENS DE EDICAO" if st.session_state.exibir_edicao else "EXIBIR ITENS DE EDICAO"):
+    st.session_state.exibir_edicao = not st.session_state.exibir_edicao
+    st.rerun()
+
+# 6. Detalhamento da Proposta (Sempre Visivel)
+st.markdown("<br><h2 style='text-align: center; color: #333; font-weight: 800;'>DETALHAMENTO DA PROPOSTA</h2>", unsafe_allow_html=True)
 res_col1, res_col2, res_col3 = st.columns(3)
 
 with res_col1:
