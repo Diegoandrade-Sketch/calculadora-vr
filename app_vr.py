@@ -84,7 +84,7 @@ with st.sidebar:
         faturamento = st.selectbox("Faturamento", ["Imediato", "30 dias", "60 dias", "Após a implantação"])
         parcelas = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 5, 6], index=3)
 
-# --- 5. TELA DE CONSULTA (REPARO TOTAL NA RENDERIZAÇÃO) ---
+# --- 5. TELA DE CONSULTA ---
 if tela == "Consulta de Preço":
     st.markdown('<h1 class="hero-title">ANÁLISE TÉCNICA</h1>', unsafe_allow_html=True)
     prod_sel = st.selectbox("Selecione o Produto:", list(precos_tabela.keys()))
@@ -95,7 +95,6 @@ if tela == "Consulta de Preço":
     
     c1, c2 = st.columns(2)
     with c1:
-        # Usando dedent para garantir que o Streamlit receba HTML limpo
         html_markup = textwrap.dedent(f"""
             <div class="resumo-card">
                 <span class="resumo-label">Preço de Venda</span>
@@ -131,7 +130,6 @@ if tela == "Consulta de Preço":
         if d["mensal"] > 500: st.info("**Foco em Retenção:** Produto de alta recorrência.")
         if d["comp"] == "Alta": st.warning("**Atenção Técnica:** Exige senioridade na implantação.")
         if d["margem"] == "Altíssima": st.success("**Alta Escalabilidade:** Margem líquida superior.")
-        
         st.write("---")
         st.markdown(f"**Descrição Técnica:**  \n{d['desc']}")
         st.markdown(f"**Projeção de Ciclo de Vida:**  \nReceita bruta total em 24 meses: **R$ {ltv_24:,.2f}**.")
@@ -141,6 +139,7 @@ else:
     if not modo_apresentacao:
         st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
 
+    # Inicialização de listas persistentes
     if 'sel_i' not in st.session_state: st.session_state.sel_i = ["Migração Banco de Dados", "Definição de Escopo", "Configuração Servidor / PDV Linux", "Implantação e Treinamento"]
     if 'sel_m' not in st.session_state: st.session_state.sel_m = ["VR ERP PRO"]
 
@@ -153,27 +152,32 @@ else:
             st.session_state.sel_i = st.multiselect("Serviços", list(precos_tabela.keys())[8:12], default=st.session_state.sel_i)
             for i in st.session_state.sel_i:
                 vu = precos_tabela[i]["setup"]
-                st.number_input(f"Horas: {i} (R$ {vu:,.2f}/h)", min_value=0, value=12 if "Treinamento" not in i else 120, key=f"v_h_{i}")
+                # CORREÇÃO: Busca valor anterior no session_state para não zerar no rerun
+                val_padrao = 12 if "Treinamento" not in i else 120
+                st.number_input(f"Horas: {i} (R$ {vu:,.2f}/h)", min_value=0, value=st.session_state.get(f"v_h_{i}", val_padrao), key=f"v_h_{i}")
 
         with col_m:
             st.markdown('<div class="section-header"><span class="section-title">MENSALIDADES</span></div>', unsafe_allow_html=True)
             st.session_state.sel_m = st.multiselect("Produtos", list(precos_tabela.keys())[0:8], default=st.session_state.sel_m)
             for i in st.session_state.sel_m:
                 vu = precos_tabela[i]["mensal"]
-                st.number_input(f"Qtd: {i} (R$ {vu:,.2f}/un)", min_value=0, value=1, key=f"v_q_{i}")
+                # CORREÇÃO: Busca valor anterior no session_state para não zerar no rerun
+                st.number_input(f"Qtd: {i} (R$ {vu:,.2f}/un)", min_value=0, value=st.session_state.get(f"v_q_{i}", 1), key=f"v_q_{i}")
 
         if col_d:
             with col_d:
                 st.markdown('<div class="section-header"><span class="section-title">DESPESAS</span></div>', unsafe_allow_html=True)
                 for i, p in itens_desp.items():
-                    st.number_input(f"{i} (R$ {p:,.2f}/un)", min_value=0, value=0, key=f"v_d_{i}")
+                    # CORREÇÃO CRÍTICA: O value agora consulta o session_state antes de assumir 0
+                    st.number_input(f"{i} (R$ {p:,.2f}/un)", min_value=0, value=st.session_state.get(f"v_d_{i}", 0), key=f"v_d_{i}")
 
+    # Cálculos finais
     t_imp, t_men_bruto, t_desp = 0, 0, 0
     lista_i, lista_m, lista_d = [], [], []
 
     for i in st.session_state.sel_i:
         vu = precos_tabela[i]["setup"]
-        h = st.session_state.get(f"v_h_{i}", 12)
+        h = st.session_state.get(f"v_h_{i}", 12 if "Treinamento" not in i else 120)
         t_imp += h * vu
         lista_i.append((i, h, vu))
 
