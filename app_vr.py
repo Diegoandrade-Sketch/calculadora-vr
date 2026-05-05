@@ -1,12 +1,12 @@
 import streamlit as st
-import pandas as pd  # <-- O erro estava aqui, faltava o 'pandas'
+import pandas as pd
 import urllib.parse
 import os
 
 # 1. Configuracao da Pagina
 st.set_page_config(page_title="VR Software | Proposta Comercial", layout="wide")
 
-# 2. Estilizacao CSS Avançada (Base mantida com novas classes para etiquetas)
+# 2. Estilizacao CSS Avançada
 st.markdown("""
     <style>
     .stApp { background: linear-gradient(135deg, #ffffff 0%, #fff5ed 100%); }
@@ -38,11 +38,11 @@ st.markdown("""
     .resumo-card {
         background-color: #ffffff; border: 1px solid #f0f0f0; border-top: 8px solid #ff6600;
         padding: 25px; border-radius: 8px; min-height: 520px; box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+        display: flex; flex-direction: column;
     }
     .resumo-valor { color: #ff6600; font-size: 2.5rem; font-weight: 900; margin-bottom: 5px; }
     .resumo-label { color: #888; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; display: block; }
     
-    /* Etiqueta de Condição de Faturamento */
     .faturamento-tag {
         font-size: 0.85rem; color: #2e7d32; font-weight: 700; 
         background: #e8f5e9; padding: 4px 10px; border-radius: 4px;
@@ -94,7 +94,7 @@ with st.sidebar:
     st.markdown('<span class="sidebar-label">Negociação</span>', unsafe_allow_html=True)
     desc = st.number_input("Desconto Mensal (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.1)
     if desc > 15.0:
-        st.warning("⚠️ Desconto não autorizado. Necessária aprovação financeira.")
+        st.warning("Alerta: Desconto não autorizado. Necessária aprovação financeira.")
     
     condicao_faturamento = st.selectbox(
         "Faturamento da Mensalidade", 
@@ -112,13 +112,13 @@ with st.sidebar:
         
         resumo_txt = (f"*PROPOSTA VR SOFTWARE*\n\n"
                       f"*Setup:* R$ {t_i:,.2f} em {parcelas}x\n"
-                      f"*Mensalidade:* R$ {t_m:,.2f} ({condicao_faturamento})")
+                      f"*Mensalidade:* R$ {t_m:,.2f} (Faturamento {condicao_faturamento})")
         if perfil_venda == "Executivo (Rua)":
             resumo_txt += f"\n*Despesas:* R$ {t_d:,.2f}"
             
         st.code(resumo_txt, language="text")
 
-# 4. Cabeçalho e Dados Base (Mantidos conforme código principal)
+# 4. Cabeçalho
 head_col1, head_col2 = st.columns([1, 4])
 with head_col1:
     st.subheader("VR SOFTWARE")
@@ -130,6 +130,7 @@ with head_col2:
 if not modo_apresentacao:
     st.markdown("---")
 
+# 5. Dados Base
 itens_imp = {"Migração Banco de Dados": 201.30, "Definição de Escopo": 201.30, "Configuração Servidor / PDV Linux": 201.30, "Implantação e Treinamento": 201.30}
 descricoes_imp = {"Migração Banco de Dados": "Cópia do cadastro de produtos e fornecedores.", "Definição de Escopo": "Mapeamento estratégico de processos.", "Configuração Servidor / PDV Linux": "Preparação técnica do ambiente Linux.", "Implantação e Treinamento": "Capacitação da equipe nos módulos."}
 itens_mensal = {"VR ERP PRO": 1285.71, "VR PDV Convencional": 185.71, "PDV Touchscreen": 185.71, "PDV Selfcheckout": 290.44, "SiTef Express": 357.14, "VR TEF": 417.04, "Gerenciador XML": 163.84, "VR Mobile": 193.63}
@@ -147,15 +148,23 @@ if not modo_apresentacao:
     with col1:
         st.markdown('<div class="section-header"><span class="section-title">SERVIÇOS DE IMPLANTAÇÃO</span></div>', unsafe_allow_html=True)
         imp_sel = st.multiselect("Selecione os itens", list(itens_imp.keys()), default=list(itens_imp.keys()))
-        t_imp = sum([st.number_input(f"Horas: {i} (R$ {itens_imp[i]:,.2f})", 0, 200, 12 if "Treinamento" not in i else 120, key=f"h_{i}") * itens_imp[i] for i in imp_sel])
-        dados_imp_final = [(i, st.session_state[f"h_{i}"], itens_imp[i]) for i in imp_sel]
+        t_imp = 0
+        for i in imp_sel:
+            v_u = itens_imp[i]
+            h = st.number_input(f"Horas: {i} (R$ {v_u:,.2f}/h)", 0, 200, 12 if "Treinamento" not in i else 120, key=f"h_{i}")
+            t_imp += h * v_u
+            dados_imp_final.append((i, h, v_u))
 
     dados_mensal_final = []
     with col2:
         st.markdown('<div class="section-header"><span class="section-title">ITENS MENSAIS</span></div>', unsafe_allow_html=True)
         mensal_sel = st.multiselect("Selecione os produtos", list(itens_mensal.keys()), default=["VR ERP PRO"])
-        t_men_bruto = sum([st.number_input(f"Qtd: {i} (R$ {itens_mensal[i]:,.2f})", 0, 100, 1, key=f"q_{i}") * itens_mensal[i] for i in mensal_sel])
-        dados_mensal_final = [(i, st.session_state[f"q_{i}"], itens_mensal[i]) for i in mensal_sel]
+        t_men_bruto = 0
+        for i in mensal_sel:
+            v_u = itens_mensal[i]
+            q = st.number_input(f"Qtd: {i} (R$ {v_u:,.2f})", 0, 100, 1, key=f"q_{i}")
+            t_men_bruto += q * v_u
+            dados_mensal_final.append((i, q, v_u))
 
     dados_desp_final = []
     t_desp = 0
@@ -187,7 +196,7 @@ else:
 
 with res_col1:
     html_itens = "".join([f"<li><span><span class='tooltip'>{i}<span class='tooltiptext'>{descricoes_imp.get(i)}</span></span></span><span class='item-detalhe'>{h}h x R$ {v:,.2f}</span></li>" for i, h, v in dados_imp_final])
-    st.markdown(f'<div class="resumo-card"><span class="resumo-label">Investimento Setup</span><div class="resumo-valor">R$ {t_imp:,.2f}</div><div style="font-size: 1.2rem; font-weight: bold;">{parcelas}x de R$ {t_imp/parcelas:,.2f}</div><div class="resumo-subtitulo">SERVIÇOS DE IMPLANTAÇÃO</div><ul class="lista-itens">{html_itens}</ul></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="resumo-card"><span class="resumo-label">Investimento Setup</span><div class="resumo-valor">R$ {t_imp:,.2f}</div><div style="font-size: 1.2rem; font-weight: bold;">{parcelas}x de R$ {t_imp/parcelas:,.2f}</div><div class="resumo-subtitulo">SERVIÇOS DE IMPLANTAÇÃO</div><ul class="lista-itens">{html_itens if html_itens else "<li>Nenhum item selecionado</li>"}</ul></div>', unsafe_allow_html=True)
 
 with res_col2:
     html_itens = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} Lic. x R$ {v:,.2f}</span></li>" for i, q, v in dados_mensal_final])
@@ -196,12 +205,12 @@ with res_col2:
             <span class="resumo-label">Investimento Mensal</span>
             <div class="resumo-valor" style="color: #2e7d32;">R$ {t_men_liq:,.2f}</div>
             <div style="font-size: 1.1rem; color: #2e7d32; font-weight: bold;">Desconto: {desc:,.2f}%</div>
-            <div class="faturamento-tag">📅 Faturamento: {condicao_faturamento}</div>
+            <div class="faturamento-tag">Faturamento: {condicao_faturamento}</div>
             <div class="resumo-subtitulo">SISTEMAS E LICENÇAS</div>
-            <ul class="lista-itens">{html_itens}</ul>
+            <ul class="lista-itens">{html_itens if html_itens else "<li>Nenhum item selecionado</li>"}</ul>
         </div>
     """, unsafe_allow_html=True)
 
 if res_col3:
     html_itens = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} Qtd. x R$ {v:,.2f}</span></li>" for i, q, v in dados_desp_final])
-    st.markdown(f'<div class="resumo-card" style="border-top-color: #1976d2;"><span class="resumo-label">Previsão de Despesas</span><div class="resumo-valor" style="color: #1976d2;">R$ {t_desp:,.2f}</div><div style="font-size: 1rem; color: #d32f2f; font-weight: bold; background: #fff5f5; padding: 5px; border-radius: 4px;">Faturadas ao término da implantação</div><div class="resumo-subtitulo">DETALHAMENTO LOGÍSTICO</div><ul class="lista-itens">{html_itens}</ul></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="resumo-card" style="border-top-color: #1976d2;"><span class="resumo-label">Previsão de Despesas</span><div class="resumo-valor" style="color: #1976d2;">R$ {t_desp:,.2f}</div><div style="font-size: 1rem; color: #d32f2f; font-weight: bold; background: #fff5f5; padding: 5px; border-radius: 4px;">Faturadas ao término da implantação</div><div class="resumo-subtitulo">DETALHAMENTO LOGÍSTICO</div><ul class="lista-itens">{html_itens if html_itens else "<li>Nenhuma despesa selecionada</li>"}</ul></div>', unsafe_allow_html=True)
