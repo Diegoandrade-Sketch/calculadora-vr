@@ -114,7 +114,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. BARRA LATERAL (Movida para cima para controlar o cabeçalho) ---
+# --- 3. BARRA LATERAL ---
 with st.sidebar:
     st.title("PAINEL DE CONTROLE")
     modo_apresentacao = st.toggle("Modo Apresentação", value=False)
@@ -126,6 +126,7 @@ with st.sidebar:
     st.write("---")
     st.markdown('<span class="sidebar-label">Exportação</span>', unsafe_allow_html=True)
     if st.button("FORMATAR PARA WHATSAPP"):
+        # Usa os valores finais calculados para o texto
         t_i = st.session_state.get('t_imp', 0)
         t_m = st.session_state.get('t_men_liq', 0)
         t_d = st.session_state.get('t_desp', 0)
@@ -141,15 +142,13 @@ with head_col1:
         st.subheader("VR SOFTWARE")
 
 with head_col2:
-    # A mágica acontece aqui: O título só aparece se o modo apresentação estiver DESLIGADO
     if not modo_apresentacao:
         st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
 
-# Só mostra a linha divisória se não for modo apresentação (mais leveza)
 if not modo_apresentacao:
     st.markdown("---")
 
-# 5. Dados de Preço e Descrições (Inalterados)
+# 5. Dados Base
 itens_imp = {
     "Migração Banco de Dados": 201.30, 
     "Definição de Escopo": 201.30, 
@@ -172,7 +171,7 @@ itens_mensal = {
 
 itens_desp = {"Alimentação": 49.00, "Hospedagem": 195.00, "Deslocamento (KM)": 2.12}
 
-# 6. Interface de Seleção
+# 6. Lógica de Interface e Cálculos
 if not modo_apresentacao:
     col1, col2, col3 = st.columns(3)
     
@@ -197,7 +196,6 @@ if not modo_apresentacao:
             q = st.number_input(f"Qtd: {item}", min_value=0, value=1, key=f"q_{item}")
             t_men_bruto += q * v_u
             dados_mensal_final.append((item, q, v_u))
-        t_men_liq = t_men_bruto * (1 - (desc/100))
 
     dados_desp_final = []
     with col3:
@@ -208,16 +206,29 @@ if not modo_apresentacao:
             t_desp += qd * preco
             if qd > 0: dados_desp_final.append((item, qd, preco))
 
-    st.session_state.update({'t_imp': t_imp, 'dados_imp': dados_imp_final, 't_men_liq': t_men_liq, 'dados_mensal': dados_mensal_final, 't_desp': t_desp, 'dados_desp': dados_desp_final})
+    # Salvamos o Bruto para poder recalcular o desconto em qualquer modo
+    st.session_state.update({
+        't_imp': t_imp, 
+        'dados_imp': dados_imp_final, 
+        't_men_bruto': t_men_bruto, # Salva o bruto
+        'dados_mensal': dados_mensal_final, 
+        't_desp': t_desp, 
+        'dados_desp': dados_desp_final
+    })
 else:
     t_imp = st.session_state.get('t_imp', 0)
     dados_imp_final = st.session_state.get('dados_imp', [])
-    t_men_liq = st.session_state.get('t_men_liq', 0)
+    t_men_bruto = st.session_state.get('t_men_bruto', 0) # Recupera o bruto
     dados_mensal_final = st.session_state.get('dados_mensal', [])
     t_desp = st.session_state.get('t_desp', 0)
     dados_desp_final = st.session_state.get('dados_desp', [])
 
-# 7. SEÇÃO DE RESUMO VISUAL (Inalterada)
+# --- CORREÇÃO: O cálculo do valor líquido acontece AQUI, fora dos IFs ---
+t_men_liq = t_men_bruto * (1 - (desc/100))
+# Atualiza o state para o botão do WhatsApp ler o valor correto
+st.session_state['t_men_liq'] = t_men_liq
+
+# 7. SEÇÃO DE RESUMO VISUAL
 st.markdown("<h2 style='text-align: center; color: #333; font-weight: 800; margin-bottom: 25px;'>DETALHAMENTO DA PROPOSTA</h2>", unsafe_allow_html=True)
 res_col1, res_col2, res_col3 = st.columns(3)
 
