@@ -45,7 +45,6 @@ st.markdown("""
         border-radius: 5px;
     }
 
-    /* Estilo dos Cards do Resumo - Sem emojis e com fontes maiores */
     .resumo-card {
         background-color: #ffffff;
         border: 1px solid #d1d1d1;
@@ -86,6 +85,13 @@ st.markdown("""
     .lista-itens li {
         padding: 5px 0;
         border-bottom: 1px dashed #f0f0f0;
+        display: flex;
+        justify-content: space-between;
+    }
+    .item-detalhe {
+        color: #666;
+        font-size: 0.95rem;
+        font-weight: normal;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -139,6 +145,7 @@ with st.sidebar:
 # 5. Interface Principal de Seleção
 col1, col2, col3 = st.columns(3)
 
+dados_imp_final = []
 with col1:
     placeholder_imp = st.empty()
     with st.expander("ITENS DE IMPLANTAÇÃO", expanded=True):
@@ -148,8 +155,10 @@ with col1:
         val_unit = itens_imp[item]
         h = st.number_input(f"Horas: {item} (R$ {val_unit:,.2f})", min_value=0, value=12 if "Treinamento" not in item else 120, key=f"h_{item}")
         t_imp += h * val_unit
+        dados_imp_final.append(f"<li><span>{item}</span><span class='item-detalhe'>{h}h x R$ {val_unit:,.2f}</span></li>")
     placeholder_imp.markdown(f'<div class="section-header"><span class="section-title">IMPLANTAÇÃO TOTAL</span><span class="section-total">R$ {t_imp:,.2f}</span></div>', unsafe_allow_html=True)
 
+dados_mensal_final = []
 with col2:
     placeholder_men = st.empty()
     with st.expander("ITENS MENSAIS", expanded=True):
@@ -159,15 +168,19 @@ with col2:
         val_unit = itens_mensal[item]
         q = st.number_input(f"Qtd: {item} (R$ {val_unit:,.2f})", min_value=0, value=1, key=f"q_{item}")
         t_men_bruto += q * val_unit
+        dados_mensal_final.append(f"<li><span>{item}</span><span class='item-detalhe'>{q}un x R$ {val_unit:,.2f}</span></li>")
     t_men_liq = t_men_bruto * (1 - (desc/100))
     placeholder_men.markdown(f'<div class="section-header"><span class="section-title">MENSALIDADE TOTAL</span><span class="section-total">R$ {t_men_liq:,.2f}</span></div>', unsafe_allow_html=True)
 
+dados_desp_final = []
 with col3:
     placeholder_des = st.empty()
     t_desp = 0
     for item, preco in itens_desp.items():
         qd = st.number_input(f"{item} (R$ {preco:,.2f})", min_value=0, value=0, key=f"d_{item}")
         t_desp += qd * preco
+        if qd > 0:
+            dados_desp_final.append(f"<li><span>{item}</span><span class='item-detalhe'>{qd}un x R$ {preco:,.2f}</span></li>")
     placeholder_des.markdown(f'<div class="section-header"><span class="section-title">DESPESAS TOTAIS</span><span class="section-total">R$ {t_desp:,.2f}</span></div>', unsafe_allow_html=True)
 
 st.markdown("<br><br>", unsafe_allow_html=True)
@@ -177,10 +190,6 @@ st.markdown("<h2 style='text-align: center; color: #333;'>DETALHAMENTO DA PROPOS
 
 res_col1, res_col2, res_col3 = st.columns(3)
 
-def gerar_lista_html(itens):
-    if not itens: return "<li>Nenhum item selecionado</li>"
-    return "".join([f"<li>{item}</li>" for item in itens])
-
 with res_col1:
     st.markdown(f"""
         <div class="resumo-card">
@@ -189,7 +198,7 @@ with res_col1:
             <div style="font-size: 1.2rem; font-weight: bold;">{parcelas}x de R$ {t_imp/parcelas:,.2f}</div>
             <div class="resumo-subtitulo">SERVIÇOS INCLUSOS</div>
             <ul class="lista-itens">
-                {gerar_lista_html(imp_sel)}
+                {"".join(dados_imp_final) if dados_imp_final else "<li>Nenhum item selecionado</li>"}
             </ul>
         </div>
     """, unsafe_allow_html=True)
@@ -202,7 +211,7 @@ with res_col2:
             <div style="font-size: 1.2rem; color: #2e7d32; font-weight: bold;">Desconto aplicado: {desc}%</div>
             <div class="resumo-subtitulo">SISTEMAS E LICENÇAS</div>
             <ul class="lista-itens">
-                {gerar_lista_html(mensal_sel)}
+                {"".join(dados_mensal_final) if dados_mensal_final else "<li>Nenhum item selecionado</li>"}
             </ul>
         </div>
     """, unsafe_allow_html=True)
@@ -212,17 +221,15 @@ with res_col3:
         <div class="resumo-card" style="border-top-color: #1976d2;">
             <span class="resumo-label">Previsão de Despesas</span>
             <div class="resumo-valor">R$ {t_desp:,.2f}</div>
-            <div style="font-size: 1.1rem;">Custos de deslocamento e estadia</div>
-            <div class="resumo-subtitulo">POLÍTICA DE REEMBOLSO</div>
+            <div style="font-size: 1.1rem; color: #d32f2f; font-weight: bold;">Faturadas ao término da implantação</div>
+            <div class="resumo-subtitulo">DETALHAMENTO LOGÍSTICO</div>
             <ul class="lista-itens">
-                <li>Alimentação</li>
-                <li>Hospedagem</li>
-                <li>Kilometragem Rodada</li>
+                {"".join(dados_desp_final) if dados_desp_final else "<li>Nenhuma despesa selecionada</li>"}
             </ul>
         </div>
     """, unsafe_allow_html=True)
 
 st.write("---")
 if st.button("FORMATAR PARA WHATSAPP"):
-    resumo_txt = f"PROPOSTA VR SOFTWARE\n\nIMPLANTAÇÃO: R$ {t_imp:,.2f} em {parcelas}x\nMENSALIDADE: R$ {t_men_liq:,.2f}\nDESPESAS: R$ {t_desp:,.2f}"
+    resumo_txt = f"PROPOSTA VR SOFTWARE\n\nIMPLANTAÇÃO: R$ {t_imp:,.2f} em {parcelas}x\nMENSALIDADE: R$ {t_men_liq:,.2f}\nDESPESAS (Faturadas): R$ {t_desp:,.2f}"
     st.code(resumo_txt, language="text")
