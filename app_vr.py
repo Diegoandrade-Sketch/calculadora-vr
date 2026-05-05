@@ -168,7 +168,8 @@ with col2:
         val_unit = itens_mensal[item]
         q = st.number_input(f"Qtd: {item} (R$ {val_unit:,.2f})", min_value=0, value=1, key=f"q_{item}")
         t_men_bruto += q * val_unit
-        dados_mensal_final.append(f"<li><span>{item}</span><span class='item-detalhe'>{q}un x R$ {val_unit:,.2f}</span></li>")
+        # Alterado de 'un' para 'Lic.'
+        dados_mensal_final.append(f"<li><span>{item}</span><span class='item-detalhe'>{q} Lic. x R$ {val_unit:,.2f}</span></li>")
     t_men_liq = t_men_bruto * (1 - (desc/100))
     placeholder_men.markdown(f'<div class="section-header"><span class="section-title">MENSALIDADE TOTAL</span><span class="section-total">R$ {t_men_liq:,.2f}</span></div>', unsafe_allow_html=True)
 
@@ -177,10 +178,11 @@ with col3:
     placeholder_des = st.empty()
     t_desp = 0
     for item, preco in itens_desp.items():
-        qd = st.number_input(f"{item} (R$ {preco:,.2f})", min_value=0, value=0, key=f"d_{item}")
+        qd = st.number_input(f"Qtd: {item} (R$ {preco:,.2f})", min_value=0, value=0, key=f"d_{item}")
         t_desp += qd * preco
         if qd > 0:
-            dados_desp_final.append(f"<li><span>{item}</span><span class='item-detalhe'>{qd}un x R$ {preco:,.2f}</span></li>")
+            # Alterado de 'un' para 'Qtd.'
+            dados_desp_final.append(f"<li><span>{item}</span><span class='item-detalhe'>{qd} Qtd. x R$ {preco:,.2f}</span></li>")
     placeholder_des.markdown(f'<div class="section-header"><span class="section-title">DESPESAS TOTAIS</span><span class="section-total">R$ {t_desp:,.2f}</span></div>', unsafe_allow_html=True)
 
 st.markdown("<br><br>", unsafe_allow_html=True)
