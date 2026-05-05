@@ -5,24 +5,30 @@ import os
 # 1. Configuracao da Pagina
 st.set_page_config(page_title="VR Software | Proposta Comercial", layout="wide")
 
-# 2. Estilizacao CSS (Versão Estável)
+# 2. Estilizacao CSS Avançada
 st.markdown("""
     <style>
     .stApp {
         background: linear-gradient(135deg, #ffffff 0%, #fff5ed 100%);
     }
     
+    /* ALINHAMENTO DO CABEÇALHO */
+    /* Este seletor força as colunas do Streamlit a alinharem os itens pelo centro vertical */
+    [data-testid="stHorizontalBlock"] {
+        align-items: center;
+    }
+    
     .hero-title {
-        color: #262730;
-        font-size: 3.5rem; 
+        color: #262730; 
+        font-size: 4.5rem; /* Ajustado para não quebrar linha */
         font-weight: 900; 
         margin: 0; 
-        padding-top: 25px; 
+        padding: 0;
         line-height: 1; 
-        letter-spacing: -1px; 
+        letter-spacing: -2px; 
         text-transform: uppercase;
     }
-
+    
     .sidebar-label {
         color: #ff6600; font-size: 0.9rem; font-weight: 800; text-transform: uppercase;
         margin-top: 20px; margin-bottom: 10px; display: block; letter-spacing: 1px;
@@ -38,6 +44,7 @@ st.markdown("""
         font-weight: bold;
         font-size: 1rem;
         transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(255, 102, 0, 0.2);
     }
 
     .section-header {
@@ -52,83 +59,130 @@ st.markdown("""
         padding: 25px; border-radius: 8px; min-height: 520px; box-shadow: 0 10px 25px rgba(0,0,0,0.05);
     }
     .resumo-valor { color: #ff6600; font-size: 2.5rem; font-weight: 900; margin-bottom: 5px; }
-    
-    .item-detalhe { 
-        color: #222; 
-        font-size: 1.1rem; 
-        font-weight: 800;
-        text-align: right;
+    .resumo-subtitulo {
+        font-size: 1.1rem; color: #333; font-weight: bold; margin-top: 20px;
+        margin-bottom: 10px; border-bottom: 2px solid #ffefe5; padding-bottom: 5px;
     }
-
+    
+    .lista-itens { font-size: 1.05rem; color: #444; line-height: 1.6; list-style-type: none; padding-left: 0; }
     .lista-itens li { 
-        padding: 12px 0; 
+        padding: 10px 0; 
         border-bottom: 1px dashed #e0e0e0; 
         display: flex; 
         justify-content: space-between; 
         align-items: center;
     }
+
+    .item-detalhe { 
+        color: #333; 
+        font-size: 1.05rem; 
+        font-weight: 700;
+        background-color: #fcfcfc;
+        padding: 2px 8px;
+        border-radius: 4px;
+    }
+
+    /* TOOLTIP */
+    .tooltip {
+        position: relative;
+        display: inline-block;
+        cursor: help;
+        border-bottom: 1px dotted #ff6600;
+        color: #222;
+        font-weight: 600;
+    }
+
+    .tooltip .tooltiptext {
+        visibility: hidden;
+        width: 280px;
+        background-color: #262730;
+        color: #fff;
+        border-radius: 8px;
+        padding: 12px;
+        position: absolute;
+        z-index: 10;
+        bottom: 135%;
+        left: 50%;
+        margin-left: -140px;
+        opacity: 0;
+        transition: opacity 0.3s;
+        font-size: 0.85rem;
+    }
+
+    .tooltip:hover .tooltiptext {
+        visibility: visible;
+        opacity: 1;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# 3. Cabeçalho (Voltou ao Original Seguro)
-head_col1, head_col2 = st.columns([1, 2])
+# 3. BARRA LATERAL (Definida antes para controle do Modo Apresentação)
+with st.sidebar:
+    st.title("PAINEL DE CONTROLE")
+    modo_apresentacao = st.toggle("Modo Apresentação", value=False)
+    
+    st.markdown('<span class="sidebar-label">Negociação</span>', unsafe_allow_html=True)
+    desc = st.number_input("Desconto Mensal (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.1)
+    parcelas = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 5, 6, 10, 12], index=3)
 
+# 4. Cabeçalho Dinâmico e Alinhado
+head_col1, head_col2 = st.columns([1, 3])
 with head_col1:
     if os.path.exists("logo_vr.png"):
-        st.image("logo_vr.png", width=300)
+        st.image("logo_vr.png", width=300) # Logo um pouco maior para equilibrar
     else:
         st.subheader("VR SOFTWARE")
 
 with head_col2:
-    st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
+    # Só exibe se NÃO estiver em modo apresentação
+    if not modo_apresentacao:
+        st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
 
 st.markdown("---")
 
-# --- LÓGICA DE DADOS (Dicionários completos mantidos) ---
+# 5. Dados e Lógica (Mantidos conforme sua estrutura)
 itens_imp = {"Migração Banco de Dados": 201.30, "Definição de Escopo": 201.30, "Configuração Servidor / PDV Linux": 201.30, "Implantação e Treinamento": 201.30}
+descricoes_imp = {
+    "Migração Banco de Dados": "Cópia do cadastro de produtos e fornecedores vindos do sistema anterior.",
+    "Definição de Escopo": "Alinhamento estratégico para mapear os processos da sua empresa.",
+    "Configuração Servidor / PDV Linux": "Preparação técnica do servidor e terminais Linux.",
+    "Implantação e Treinamento": "Acompanhamento capacitivo da equipe nos módulos contratados."
+}
 itens_mensal = {"VR ERP PRO": 1285.71, "VR PDV Convencional": 185.71, "PDV Touchscreen": 185.71, "PDV Selfcheckout": 290.44, "SiTef Express": 357.14, "VR TEF": 417.04, "Gerenciador XML": 163.84, "VR Mobile": 193.63}
 itens_desp = {"Alimentação": 49.00, "Hospedagem": 195.00, "Deslocamento (KM)": 2.12}
 
-# --- BARRA LATERAL ---
-with st.sidebar:
-    st.title("PAINEL DE CONTROLE")
-    modo_apresentacao = st.toggle("Modo Apresentação", value=False)
-    desc = st.number_input("Desconto Mensal (%)", 0.0, 30.0, 0.0)
-    parcelas = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 6, 10, 12], index=2)
-
-# 4. Interface de Seleção
 if not modo_apresentacao:
     col1, col2, col3 = st.columns(3)
     
+    dados_imp_final = []
     with col1:
         st.markdown('<div class="section-header"><span class="section-title">SERVIÇOS DE IMPLANTAÇÃO</span></div>', unsafe_allow_html=True)
-        imp_sel = st.multiselect("Itens", list(itens_imp.keys()), default=list(itens_imp.keys()))
+        imp_sel = st.multiselect("Selecione os itens", list(itens_imp.keys()), default=list(itens_imp.keys()))
         t_imp = 0
-        dados_imp_final = []
         for item in imp_sel:
             v_u = itens_imp[item]
-            h = st.number_input(f"Hrs: {item}", 0, 200, 12, key=f"h_{item}")
+            h = st.number_input(f"Horas: {item}", min_value=0, value=12 if "Treinamento" not in item else 120, key=f"h_{item}")
             t_imp += h * v_u
             dados_imp_final.append((item, h, v_u))
 
+    dados_mensal_final = []
     with col2:
         st.markdown('<div class="section-header"><span class="section-title">ITENS MENSAIS</span></div>', unsafe_allow_html=True)
-        mensal_sel = st.multiselect("Produtos", list(itens_mensal.keys()), default=["VR ERP PRO"])
+        mensal_sel = st.multiselect("Selecione os produtos", list(itens_mensal.keys()), default=["VR ERP PRO"])
         t_men_bruto = 0
-        dados_mensal_final = []
         for item in mensal_sel:
             v_u = itens_mensal[item]
-            q = st.number_input(f"Qtd: {item}", 0, 50, 1, key=f"q_{item}")
+            q = st.number_input(f"Qtd: {item}", min_value=0, value=1, key=f"q_{item}")
             t_men_bruto += q * v_u
             dados_mensal_final.append((item, q, v_u))
         t_men_liq = t_men_bruto * (1 - (desc/100))
 
+    dados_desp_final = []
     with col3:
         st.markdown('<div class="section-header"><span class="section-title">PREVISÃO DE DESPESAS</span></div>', unsafe_allow_html=True)
         t_desp = 0
-        dados_desp_final = []
         for item, preco in itens_desp.items():
-            qd = st.number_input(f"{item}", 0, 1000, 0, key=f"d_{item}")
+            qd = st.number_input(f"{item}", min_value=0, value=0, key=f"d_{item}")
             t_desp += qd * preco
             if qd > 0: dados_desp_final.append((item, qd, preco))
 
@@ -141,18 +195,18 @@ else:
     t_desp = st.session_state.get('t_desp', 0)
     dados_desp_final = st.session_state.get('dados_desp', [])
 
-# 5. RESUMO VISUAL
-st.markdown("<h2 style='text-align: center; color: #333; font-weight: 800; margin-bottom: 30px;'>DETALHAMENTO DA PROPOSTA</h2>", unsafe_allow_html=True)
+# 6. SEÇÃO DE RESUMO VISUAL
+st.markdown("<h2 style='text-align: center; color: #333; font-weight: 800; margin-bottom: 25px;'>DETALHAMENTO DA PROPOSTA</h2>", unsafe_allow_html=True)
 res_col1, res_col2, res_col3 = st.columns(3)
 
 with res_col1:
-    html_itens = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{h}h x R$ {v:,.2f}</span></li>" for i, h, v in dados_imp_final])
-    st.markdown(f'<div class="resumo-card">Investimento Setup<div class="resumo-valor">R$ {t_imp:,.2f}</div><div style="font-weight: bold;">{parcelas}x de R$ {t_imp/parcelas:,.2f}</div><ul class="lista-itens">{html_itens}</ul></div>', unsafe_allow_html=True)
+    html_itens = "".join([f"<li><span><span class='tooltip'>{i}<span class='tooltiptext'>{descricoes_imp.get(i,'')}</span></span></span><span class='item-detalhe'>{h}h x R$ {v:,.2f}</span></li>" for i, h, v in dados_imp_final])
+    st.markdown(f'<div class="resumo-card"><span class="resumo-label">Investimento Setup</span><div class="resumo-valor">R$ {t_imp:,.2f}</div><div style="font-size: 1.2rem; font-weight: bold;">{parcelas}x de R$ {t_imp/parcelas:,.2f}</div><div class="resumo-subtitulo">SERVIÇOS DE IMPLANTAÇÃO</div><ul class="lista-itens">{html_itens}</ul></div>', unsafe_allow_html=True)
 
 with res_col2:
     html_itens = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} Lic. x R$ {v:,.2f}</span></li>" for i, q, v in dados_mensal_final])
-    st.markdown(f'<div class="resumo-card" style="border-top-color: #2e7d32;">Investimento Mensal<div class="resumo-valor">R$ {t_men_liq:,.2f}</div><div style="color: #2e7d32; font-weight: bold;">Desconto: {desc}%</div><ul class="lista-itens">{html_itens}</ul></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="resumo-card" style="border-top-color: #2e7d32;"><span class="resumo-label">Investimento Mensal</span><div class="resumo-valor">R$ {t_men_liq:,.2f}</div><div style="font-size: 1.1rem; color: #2e7d32; font-weight: bold;">Desconto aplicado: {desc}%</div><div class="resumo-subtitulo">SISTEMAS E LICENÇAS</div><ul class="lista-itens">{html_itens}</ul></div>', unsafe_allow_html=True)
 
 with res_col3:
     html_itens = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} Qtd. x R$ {v:,.2f}</span></li>" for i, q, v in dados_desp_final])
-    st.markdown(f'<div class="resumo-card" style="border-top-color: #1976d2;">Previsão de Despesas<div class="resumo-valor">R$ {t_desp:,.2f}</div><ul class="lista-itens">{html_itens}</ul></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="resumo-card" style="border-top-color: #1976d2;"><span class="resumo-label">Previsão de Despesas</span><div class="resumo-valor">R$ {t_desp:,.2f}</div><div style="font-size: 1rem; color: #d32f2f; font-weight: bold; background: #fff5f5; padding: 5px; border-radius: 4px;">Faturadas ao término</div><div class="resumo-subtitulo">DETALHAMENTO LOGÍSTICO</div><ul class="lista-itens">{html_itens}</ul></div>', unsafe_allow_html=True)
