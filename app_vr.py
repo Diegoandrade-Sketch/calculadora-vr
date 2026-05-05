@@ -12,34 +12,13 @@ st.markdown("""
         background: linear-gradient(135deg, #ffffff 0%, #fff5ed 100%);
     }
     
-    /* HEADER HARMONIZADO */
-    .header-container {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 40px;
-        padding: 20px 0;
-        margin-bottom: 30px;
-        border-bottom: 2px solid #ffefe5;
-    }
-    
-    .logo-img {
-        max-width: 300px;
-    }
-    
-    .divider {
-        width: 2px;
-        height: 80px;
-        background-color: #ff6600;
-        opacity: 0.3;
-    }
-
+    /* TITULO HARMONIZADO */
     .hero-title {
         color: #262730;
         font-size: 3.5rem; 
         font-weight: 900; 
         margin: 0; 
-        padding: 0;
+        padding-top: 25px; /* Empurra o texto um pouco para baixo para alinhar com o meio da logo */
         line-height: 1; 
         letter-spacing: -1px; 
         text-transform: uppercase;
@@ -62,6 +41,11 @@ st.markdown("""
         font-size: 1rem;
         transition: all 0.3s ease;
         box-shadow: 0 4px 15px rgba(255, 102, 0, 0.2);
+    }
+    div.stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(255, 102, 0, 0.4);
+        color: white;
     }
 
     .section-header {
@@ -136,16 +120,19 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 3. Cabeçalho em Harmonia (Logo + Título Lado a Lado)
-st.markdown(f"""
-    <div class="header-container">
-        <img src="https://www.vrsoftware.com.br/assets/img/logo-vr.png" class="logo-img">
-        <div class="divider"></div>
-        <h1 class="hero-title">Proposta<br>Comercial</h1>
-    </div>
-""", unsafe_allow_html=True)
-# Nota: Caso a imagem local não carregue no HTML direto, você pode voltar para st.image, 
-# mas o container HTML garante a harmonia visual que você pediu.
+# 3. Cabeçalho Harmonizado (Colunas Nativas)
+head_col1, head_col2 = st.columns([1, 2]) # Proporção: Logo ocupa menos espaço, Título mais espaço
+
+with head_col1:
+    if os.path.exists("logo_vr.png"):
+        st.image("logo_vr.png", width=300)
+    else:
+        st.markdown("<h2 style='text-align: left;'>VR SOFTWARE</h2>", unsafe_allow_html=True)
+
+with head_col2:
+    st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
+
+st.markdown("---")
 
 # 4. Dados e Descrições
 itens_imp = {
