@@ -66,7 +66,6 @@ st.markdown("""
         align-items: center;
     }
 
-    /* AJUSTE SOLICITADO: Fontes de detalhe maiores e mais escuras */
     .item-detalhe { 
         color: #333; 
         font-size: 1.05rem; 
@@ -115,19 +114,42 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 3. Cabeçalho
+# --- 3. BARRA LATERAL (Movida para cima para controlar o cabeçalho) ---
+with st.sidebar:
+    st.title("PAINEL DE CONTROLE")
+    modo_apresentacao = st.toggle("Modo Apresentação", value=False)
+    
+    st.markdown('<span class="sidebar-label">Negociação</span>', unsafe_allow_html=True)
+    desc = st.number_input("Desconto Mensal (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.1)
+    parcelas = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 5, 6, 10, 12], index=3)
+    
+    st.write("---")
+    st.markdown('<span class="sidebar-label">Exportação</span>', unsafe_allow_html=True)
+    if st.button("FORMATAR PARA WHATSAPP"):
+        t_i = st.session_state.get('t_imp', 0)
+        t_m = st.session_state.get('t_men_liq', 0)
+        t_d = st.session_state.get('t_desp', 0)
+        resumo_txt = f"*PROPOSTA VR SOFTWARE*\n\n*Setup:* R$ {t_i:,.2f} em {parcelas}x\n*Mensalidade:* R$ {t_m:,.2f}\n*Despesas:* R$ {t_d:,.2f}"
+        st.code(resumo_txt, language="text")
+
+# 4. Cabeçalho Dinâmico
 head_col1, head_col2 = st.columns([1, 4])
 with head_col1:
     if os.path.exists("logo_vr.png"):
         st.image("logo_vr.png", width=220)
     else:
         st.subheader("VR SOFTWARE")
+
 with head_col2:
-    st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
+    # A mágica acontece aqui: O título só aparece se o modo apresentação estiver DESLIGADO
+    if not modo_apresentacao:
+        st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
 
-st.markdown("---")
+# Só mostra a linha divisória se não for modo apresentação (mais leveza)
+if not modo_apresentacao:
+    st.markdown("---")
 
-# 4. Dados de Preço e Descrições
+# 5. Dados de Preço e Descrições (Inalterados)
 itens_imp = {
     "Migração Banco de Dados": 201.30, 
     "Definição de Escopo": 201.30, 
@@ -150,25 +172,7 @@ itens_mensal = {
 
 itens_desp = {"Alimentação": 49.00, "Hospedagem": 195.00, "Deslocamento (KM)": 2.12}
 
-# --- BARRA LATERAL ---
-with st.sidebar:
-    st.title("PAINEL DE CONTROLE")
-    modo_apresentacao = st.toggle("Modo Apresentação", value=False)
-    
-    st.markdown('<span class="sidebar-label">Negociação</span>', unsafe_allow_html=True)
-    desc = st.number_input("Desconto Mensal (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.1)
-    parcelas = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 5, 6, 10, 12], index=3)
-    
-    st.write("---")
-    st.markdown('<span class="sidebar-label">Exportação</span>', unsafe_allow_html=True)
-    if st.button("FORMATAR PARA WHATSAPP"):
-        t_i = st.session_state.get('t_imp', 0)
-        t_m = st.session_state.get('t_men_liq', 0)
-        t_d = st.session_state.get('t_desp', 0)
-        resumo_txt = f"*PROPOSTA VR SOFTWARE*\n\n*Setup:* R$ {t_i:,.2f} em {parcelas}x\n*Mensalidade:* R$ {t_m:,.2f}\n*Despesas:* R$ {t_d:,.2f}"
-        st.code(resumo_txt, language="text")
-
-# 5. Interface de Seleção
+# 6. Interface de Seleção
 if not modo_apresentacao:
     col1, col2, col3 = st.columns(3)
     
@@ -213,8 +217,8 @@ else:
     t_desp = st.session_state.get('t_desp', 0)
     dados_desp_final = st.session_state.get('dados_desp', [])
 
-# 6. SEÇÃO DE RESUMO VISUAL
-st.markdown("<h2 style='text-align: center; color: #333; font-weight: 800;'>DETALHAMENTO DA PROPOSTA</h2>", unsafe_allow_html=True)
+# 7. SEÇÃO DE RESUMO VISUAL (Inalterada)
+st.markdown("<h2 style='text-align: center; color: #333; font-weight: 800; margin-bottom: 25px;'>DETALHAMENTO DA PROPOSTA</h2>", unsafe_allow_html=True)
 res_col1, res_col2, res_col3 = st.columns(3)
 
 with res_col1:
