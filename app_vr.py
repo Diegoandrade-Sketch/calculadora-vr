@@ -132,7 +132,9 @@ with st.sidebar:
     if desc > 15.0:
         st.warning("Desconto não autorizado. Esta proposta precisará passar pela aprovação do financeiro.")
     
-    # Nova Condicao de Faturamento
+    # Botão para ocultar/exibir desconto
+    exibir_detalhe_desc = st.toggle("Exibir detalhamento de desconto", value=True)
+    
     faturamento = st.selectbox("Faturamento Mensalidade", ["Imediato", "30 dias", "60 dias", "Apos a implantacao"])
     
     parcelas = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 5, 6], index=3)
@@ -144,7 +146,13 @@ with st.sidebar:
         t_m = st.session_state.get('t_men_liq', 0)
         t_d = st.session_state.get('t_desp', 0)
         
-        resumo_txt = f"*PROPOSTA VR SOFTWARE*\n\n*Setup:* R$ {t_i:,.2f} em {parcelas}x\n*Mensalidade:* R$ {t_m:,.2f} ({faturamento})"
+        # Lógica de texto WhatsApp respeitando a visibilidade do desconto
+        if exibir_detalhe_desc and desc > 0:
+            txt_mensal = f"R$ {t_m:,.2f} (com {desc:,.2f}% de desconto)"
+        else:
+            txt_mensal = f"R$ {t_m:,.2f}"
+
+        resumo_txt = f"*PROPOSTA VR SOFTWARE*\n\n*Setup:* R$ {t_i:,.2f} em {parcelas}x\n*Mensalidade:* {txt_mensal} ({faturamento})"
         if perfil_venda == "Executivo (Rua)":
             resumo_txt += f"\n*Despesas:* R$ {t_d:,.2f}"
             
@@ -153,10 +161,7 @@ with st.sidebar:
 # 4. Cabeçalho Dinâmico
 head_col1, head_col2 = st.columns([1, 4])
 with head_col1:
-    if os.path.exists("logo_vr.png"):
-        st.image("logo_vr.png", width=220)
-    else:
-        st.subheader("VR SOFTWARE")
+    st.subheader("VR SOFTWARE")
 
 with head_col2:
     if not modo_apresentacao:
@@ -233,29 +238,20 @@ else:
     res_col3 = None
 
 with res_col1:
-    html_itens = ""
-    for i, h, v in dados_imp_final:
-        desc_text = descricoes_imp.get(i, "Descrição não disponível.")
-        item_display = f'<span class="tooltip">{i}<span class="tooltiptext">{desc_text}</span></span>'
-        html_itens += f"<li><span>{item_display}</span><span class='item-detalhe'>{h}h x R$ {v:,.2f}</span></li>"
-        
-    st.markdown(f"""
-        <div class="resumo-card">
-            <span class="resumo-label">Investimento Setup</span>
-            <div class="resumo-valor">R$ {t_imp:,.2f}</div>
-            <div style="font-size: 1.2rem; font-weight: bold;">{parcelas}x de R$ {t_imp/parcelas:,.2f}</div>
-            <div class="resumo-subtitulo">SERVIÇOS DE IMPLANTAÇÃO</div>
-            <ul class="lista-itens">{html_itens if html_itens else "<li>Nenhum item selecionado</li>"}</ul>
-        </div>
-    """, unsafe_allow_html=True)
+    html_itens = "".join([f"<li><span><span class='tooltip'>{i}<span class='tooltiptext'>{descricoes_imp.get(i)}</span></span></span><span class='item-detalhe'>{h}h x R$ {v:,.2f}</span></li>" for i, h, v in dados_imp_final])
+    st.markdown(f'<div class="resumo-card"><span class="resumo-label">Investimento Setup</span><div class="resumo-valor">R$ {t_imp:,.2f}</div><div style="font-size: 1.2rem; font-weight: bold;">{parcelas}x de R$ {t_imp/parcelas:,.2f}</div><div class="resumo-subtitulo">SERVIÇOS DE IMPLANTAÇÃO</div><ul class="lista-itens">{html_itens if html_itens else "<li>Nenhum item selecionado</li>"}</ul></div>', unsafe_allow_html=True)
 
 with res_col2:
     html_itens = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} Lic. x R$ {v:,.2f}</span></li>" for i, q, v in dados_mensal_final])
+    
+    # Lógica de exibição do desconto no card
+    linha_desconto = f'<div style="font-size: 1.1rem; color: #2e7d32; font-weight: bold;">Desconto aplicado: {desc:,.2f}%</div>' if exibir_detalhe_desc and desc > 0 else ""
+    
     st.markdown(f"""
         <div class="resumo-card" style="border-top-color: #2e7d32;">
             <span class="resumo-label">Investimento Mensal</span>
             <div class="resumo-valor" style="color: #2e7d32;">R$ {t_men_liq:,.2f}</div>
-            <div style="font-size: 1.1rem; color: #2e7d32; font-weight: bold;">Desconto aplicado: {desc:,.2f}%</div>
+            {linha_desconto}
             <div style="font-size: 0.9rem; color: #444; font-weight: bold; margin-top: 5px;">Faturamento: {faturamento}</div>
             <div class="resumo-subtitulo">SISTEMAS E LICENÇAS</div>
             <ul class="lista-itens">{html_itens if html_itens else "<li>Nenhum item selecionado</li>"}</ul>
@@ -265,12 +261,4 @@ with res_col2:
 if res_col3:
     with res_col3:
         html_itens = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} Qtd. x R$ {v:,.2f}</span></li>" for i, q, v in dados_desp_final])
-        st.markdown(f"""
-            <div class="resumo-card" style="border-top-color: #1976d2;">
-                <span class="resumo-label">Previsão de Despesas</span>
-                <div class="resumo-valor" style="color: #1976d2;">R$ {t_desp:,.2f}</div>
-                <div style="font-size: 1rem; color: #d32f2f; font-weight: bold; background: #fff5f5; padding: 5px; border-radius: 4px;">Faturadas ao término da implantação</div>
-                <div class="resumo-subtitulo">DETALHAMENTO LOGÍSTICO</div>
-                <ul class="lista-itens">{html_itens if html_itens else "<li>Nenhuma despesa selecionada</li>"}</ul>
-            </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f'<div class="resumo-card" style="border-top-color: #1976d2;"><span class="resumo-label">Previsão de Despesas</span><div class="resumo-valor" style="color: #1976d2;">R$ {t_desp:,.2f}</div><div style="font-size: 1rem; color: #d32f2f; font-weight: bold; background: #fff5f5; padding: 5px; border-radius: 4px;">Faturadas ao término da implantação</div><div class="resumo-subtitulo">DETALHAMENTO LOGÍSTICO</div><ul class="lista-itens">{html_itens if html_itens else "<li>Nenhuma despesa selecionada</li>"}</ul></div>', unsafe_allow_html=True)
