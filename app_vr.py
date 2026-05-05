@@ -1,5 +1,5 @@
 import streamlit as st
-import pd
+import pandas as pd  # <-- O erro estava aqui, faltava o 'pandas'
 import urllib.parse
 import os
 
