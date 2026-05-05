@@ -1,70 +1,77 @@
 import streamlit as st
 
-# Configuração da Página com a identidade visual correta
-st.set_page_config(page_title="VR Software | Propostas 2026", layout="wide")
+# Configuração da Página para um ambiente corporativo
+st.set_page_config(page_title="VR Software | Propostas Comerciais", layout="wide")
 
-# Estilização Personalizada (CSS) - Foco em Laranja e Branco
+# Estilização Personalizada (CSS) - Foco em Clean Design
 st.markdown("""
     <style>
-    /* Fundo e áreas principais */
-    .main { background-color: #ffffff; }
-    div[data-testid="stMetricValue"] { color: #ff6600; } /* Laranja VR nos valores */
+    /* Estilização Geral */
+    .main { background-color: #ffffff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     
-    /* Customização da Barra Lateral */
-    [data-testid="stSidebar"] { background-color: #f0f2f6; border-right: 2px solid #ff6600; }
+    /* Cores das métricas */
+    div[data-testid="stMetricValue"] { color: #ff6600; font-weight: 700; }
     
-    /* Botões em Laranja */
+    /* Barra Lateral Sóbria */
+    [data-testid="stSidebar"] { 
+        background-color: #f8f9fa; 
+        border-right: 1px solid #dee2e6; 
+    }
+    
+    /* Botões Profissionais */
     .stButton>button { 
         background-color: #ff6600; 
         color: white; 
-        border-radius: 8px; 
-        font-weight: bold;
+        border-radius: 4px; 
+        font-weight: 600;
         border: none;
+        height: 3em;
+        transition: 0.3s;
     }
-    .stButton>button:hover { background-color: #e65c00; border: none; color: white; }
+    .stButton>button:hover { background-color: #cc5200; color: white; }
     
-    /* Cartões de métricas */
+    /* Cartões de métricas refinados */
     .stMetric { 
         background-color: #ffffff; 
-        padding: 15px; 
-        border-radius: 10px; 
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        border-top: 4px solid #ff6600;
+        padding: 20px; 
+        border-radius: 4px; 
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        border-left: 5px solid #ff6600;
     }
+
+    /* Ajuste de títulos */
+    h1, h2, h3 { color: #333333; }
     </style>
     """, unsafe_allow_html=True)
 
-# Cabeçalho com Logo (Ajustado para o fundo branco)
-# Usei a logo que aparece no topo do site oficial
-st.image("https://vrsoft.com.br/wp-content/uploads/2022/07/Logo-VR-Software.png", width=220)
-st.title("🚀 Gerador de Orçamentos Comercial")
+# Cabeçalho Institucional
+st.image("https://vrsoft.com.br/wp-content/uploads/2022/07/Logo-VR-Software.png", width=200)
+st.title("Simulador de Propostas Comerciais")
 st.markdown("---")
 
-# --- Sidebar (Configurações) ---
-st.sidebar.header("📋 Dados da Negociação")
-tipo_venda = st.sidebar.selectbox("Tipo de Venda", ["Novo Cliente (VR ERP PRO)", "Loja Adicional (Expansão)"])
-qtd_cnpj = st.sidebar.number_input("Quantidade de CNPJs", min_value=1, value=1)
-qtd_pdv = st.sidebar.number_input("Quantidade de PDVs", min_value=1, value=1)
-tipo_pdv = st.sidebar.selectbox("Modelo do PDV", ["Comum", "Touchscreen", "Self-Checkout"])
+# --- Sidebar (Parâmetros Técnicos) ---
+st.sidebar.subheader("Parâmetros da Operação")
+tipo_venda = st.sidebar.selectbox("Modelo de Negócio", ["Novo Cliente (VR ERP PRO)", "Loja Adicional (Expansão)"])
+qtd_cnpj = st.sidebar.number_input("Quantidade de Unidades (CNPJ)", min_value=1, value=1)
+qtd_pdv = st.sidebar.number_input("Quantidade de Pontos de Venda (PDV)", min_value=1, value=1)
+tipo_pdv = st.sidebar.selectbox("Tecnologia de PDV", ["Comum", "Touchscreen", "Self-Checkout"])
 
 st.sidebar.markdown("---")
-st.sidebar.header("🎁 Módulos & Bonificações")
-bonificar_xml = st.sidebar.checkbox("Bonificar VR Gerenciador XML")
+st.sidebar.subheader("Módulos Adicionais")
+bonificar_xml = st.sidebar.checkbox("Bonificar Gerenciador XML")
 bonificar_mobile = st.sidebar.checkbox("Bonificar VR Mobile")
 
 st.sidebar.markdown("---")
-st.sidebar.header("📉 Negociação")
-desconto = st.sidebar.slider("Percentual de Desconto", 0, 30, 0)
+st.sidebar.subheader("Política de Descontos")
+desconto = st.sidebar.slider("Percentual Aplicado", 0, 30, 0)
 
-# Alerta de desconto com a lógica que você pediu
+# Mensagens de validação sérias
 if desconto > 15:
-    st.sidebar.error("⚠️ Desconto acima de 15%: Requer aprovação do Financeiro.")
+    st.sidebar.error("Atenção: Percentual acima da alçada comercial. Requer aprovação da gerência financeira.")
 elif desconto > 0:
-    st.sidebar.warning(f"Desconto de {desconto}% aplicado.")
-else:
-    st.sidebar.info("Desconto máximo permitido: 15%")
+    st.sidebar.warning(f"Desconto de {desconto}% aplicado conforme negociação.")
 
-# --- Lógica de Preços (Conforme seu arquivo Excel) ---
+# --- Lógica de Preços (Conforme Tabela 2026) ---
 PRECO_BASE_PRO = 1090.91 
 PRECO_PDV = {"Comum": 165.00, "Touchscreen": 168.83, "Self-Checkout": 201.30}
 
@@ -74,47 +81,51 @@ elif qtd_pdv <= 5: preco_tef = 510.00
 elif qtd_pdv <= 8: preco_tef = 627.00
 else: preco_tef = 803.00
 
-# --- Cálculos Finais ---
+# --- Processamento de Valores ---
 valor_mensalidade_base = qtd_cnpj * PRECO_BASE_PRO
 valor_total_pdvs = qtd_pdv * PRECO_PDV[tipo_pdv]
 
 subtotal = valor_mensalidade_base + valor_total_pdvs + preco_tef
 valor_final = subtotal * (1 - (desconto/100))
 
-# --- Exibição Visual em Cartões ---
-c1, c2, c3 = st.columns(3)
-with c1:
-    st.metric("VR ERP PRO", f"R$ {valor_mensalidade_base:,.2f}")
-    if bonificar_xml: st.caption("✅ XML Bonificado")
-with c2:
-    st.metric("Total PDVs", f"R$ {valor_total_pdvs:,.2f}")
-    st.caption(f"{qtd_pdv} un. ({tipo_pdv})")
-with c3:
+# --- Dashboard de Resultados ---
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.metric("Software (Mensalidade)", f"R$ {valor_mensalidade_base:,.2f}")
+    if bonificar_xml: st.caption("Incluso: Gerenciador XML (Bonificado)")
+with col2:
+    st.metric("Licenciamento PDV", f"R$ {valor_total_pdvs:,.2f}")
+    st.caption(f"Configuração: {qtd_pdv} unidade(s) {tipo_pdv}")
+with col3:
     st.metric("TEF Express", f"R$ {preco_tef:,.2f}")
-    if bonificar_mobile: st.caption("✅ Mobile Bonificado")
+    if bonificar_mobile: st.caption("Incluso: VR Mobile (Bonificado)")
 
 st.markdown("---")
-# Destaque para o valor final em Laranja
+
+# Quadro de Resumo Final
 st.markdown(f"""
-    <div style="background-color: #ff6600; padding: 20px; border-radius: 10px; text-align: center;">
-        <h2 style="color: white; margin: 0;">Total Mensal: R$ {valor_final:,.2f}</h2>
+    <div style="background-color: #ff6600; padding: 25px; border-radius: 4px; text-align: center;">
+        <p style="color: white; margin: 0; font-size: 1.1em; font-weight: 300;">Investimento Total Estimado</p>
+        <h1 style="color: white; margin: 0; font-size: 2.5em;">R$ {valor_final:,.2f} / mês</h1>
     </div>
 """, unsafe_allow_html=True)
 
-# --- Gerador de Resumo ---
+# --- Formalização ---
 st.write("")
-if st.button("📱 Gerar Resumo para WhatsApp"):
-    status = "⚠️ *Pendente Aprovação Financeira*" if desconto > 15 else "✅ *Proposta dentro da alçada*"
+if st.button("Gerar Sumário Executivo para Compartilhamento"):
+    alçada = "Pendente de Aprovação Financeira" if desconto > 15 else "Dentro da Alçada Comercial"
     resumo = f"""
-*PROPOSTA COMERCIAL VR SOFTWARE*
-{status}
+PROPOSTA COMERCIAL - VR SOFTWARE 2026
+Status: {alçada}
 
-📍 *Tipo:* {tipo_venda}
-🏢 *CNPJs:* {qtd_cnpj}
-💻 *PDVs:* {qtd_pdv} ({tipo_pdv})
-🎁 *Bonificações:* {"XML " if bonificar_xml else ""}{"Mobile" if bonificar_mobile else "Nenhuma"}
+Detalhamento da Operação:
+- Modelo: {tipo_venda}
+- Unidades (CNPJ): {qtd_cnpj}
+- Pontos de Venda: {qtd_pdv} ({tipo_pdv})
+- Módulos Adicionais: {"Gerenciador XML " if bonificar_xml else ""}{"VR Mobile" if bonificar_mobile else "Padrão"}
 
-📉 *Desconto:* {desconto}%
-💵 *Total Mensal: R$ {valor_final:,.2f}*
+Condições Comerciais:
+- Desconto Aplicado: {desconto}%
+- Investimento Mensal: R$ {valor_final:,.2f}
     """
-    st.code(resumo)
+    st.code(resumo, language="text")
