@@ -6,42 +6,34 @@ import textwrap
 # 1. Configuracao da Pagina
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-# 2. Estilizacao CSS
+# --- NOVO: FUNÇÃO DE SINCRONIZAÇÃO (BLINDAGEM) ---
+def sync_state(key_permanente, key_widget):
+    st.session_state[key_permanente] = st.session_state[key_widget]
+
+# 2. Estilizacao CSS (Mantida original)
 st.markdown("""
     <style>
     .stApp { background: linear-gradient(135deg, #ffffff 0%, #fff5ed 100%); }
     .hero-title { color: #262730; font-size: 5.5rem; font-weight: 900; margin: 0; line-height: 1; text-transform: uppercase; letter-spacing: -3px; }
     .sidebar-label { color: #ff6600; font-size: 0.9rem; font-weight: 800; text-transform: uppercase; margin-top: 20px; margin-bottom: 10px; display: block; }
-    
     .resumo-card {
         background-color: #ffffff; border: 1px solid #f0f0f0; border-top: 8px solid #ff6600;
         padding: 25px; border-radius: 8px; min-height: 480px; 
         box-shadow: 0 10px 25px rgba(0,0,0,0.1); 
         display: flex; flex-direction: column;
     }
-    
     .resumo-valor { color: #ff6600; font-size: 2.5rem; font-weight: 900; margin-bottom: 5px; }
     .resumo-label { color: #888; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; display: block; }
     .resumo-subtitulo { font-size: 1.1rem; color: #333; font-weight: bold; margin-top: 20px; margin-bottom: 10px; border-bottom: 2px solid #ffefe5; padding-bottom: 5px; }
-    
-    .roi-interno-box {
-        background-color: #f8f9fa; border-left: 5px solid #262730;
-        padding: 15px; margin-top: 10px; border-radius: 4px;
-    }
+    .roi-interno-box { background-color: #f8f9fa; border-left: 5px solid #262730; padding: 15px; margin-top: 10px; border-radius: 4px; }
     .roi-metrica { display: flex; justify-content: space-between; margin-bottom: 8px; border-bottom: 1px solid #eee; padding-bottom: 4px; }
     .roi-label-int { font-weight: bold; color: #555; font-size: 0.85rem; }
     .roi-num-int { font-weight: 800; color: #262730; font-size: 0.85rem; }
-
     .lista-itens { list-style-type: none; padding-left: 0; margin-top: 10px; }
     .lista-itens li { padding: 10px 0; border-bottom: 1px dashed #e0e0e0; display: flex; justify-content: space-between; align-items: center; }
     .item-detalhe { color: #333; font-size: 1.05rem; font-weight: 700; background-color: #fcfcfc; padding: 2px 8px; border-radius: 4px; }
-
-    .section-header {
-        background: linear-gradient(90deg, #ff6600 0%, #ff944d 100%);
-        padding: 8px 15px; border-radius: 5px; margin-bottom: 15px; margin-top: 20px;
-    }
+    .section-header { background: linear-gradient(90deg, #ff6600 0%, #ff944d 100%); padding: 8px 15px; border-radius: 5px; margin-bottom: 15px; margin-top: 20px; }
     .section-title { color: #ffffff; font-size: 1.1rem; font-weight: bold; margin: 0; }
-    
     .tooltip { position: relative; display: inline-block; cursor: help; border-bottom: 1px dotted #ff6600; color: #222; font-weight: 600; }
     .tooltip .tooltiptext {
         visibility: hidden; width: 280px; background-color: #262730; color: #fff; text-align: left;
@@ -69,6 +61,17 @@ precos_tabela = {
 }
 itens_desp = {"Alimentação": 49.00, "Hospedagem": 195.00, "Deslocamento (KM)": 2.12}
 
+# --- INICIALIZAÇÃO DO ESTADO PERMANENTE ---
+if 'sel_i' not in st.session_state: st.session_state.sel_i = ["Migração Banco de Dados", "Definição de Escopo", "Configuração Servidor / PDV Linux", "Implantação e Treinamento"]
+if 'sel_m' not in st.session_state: st.session_state.sel_m = ["VR ERP PRO"]
+
+# Criamos chaves permanentes que o Streamlit nunca deleta
+for i in list(precos_tabela.keys()):
+    if f"perm_h_{i}" not in st.session_state: st.session_state[f"perm_h_{i}"] = 12 if "Treinamento" not in i else 120
+    if f"perm_q_{i}" not in st.session_state: st.session_state[f"perm_q_{i}"] = 1
+for d in itens_desp.keys():
+    if f"perm_d_{d}" not in st.session_state: st.session_state[f"perm_d_{d}"] = 0
+
 # --- 4. MENU LATERAL ---
 with st.sidebar:
     if os.path.exists("logo_vr.png"): st.image("logo_vr.png", width=200)
@@ -84,18 +87,16 @@ with st.sidebar:
         faturamento = st.selectbox("Faturamento", ["Imediato", "30 dias", "60 dias", "Após a implantação"])
         parcelas = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 5, 6], index=3)
 
-# --- 5. TELA DE CONSULTA (REPARO TOTAL NA RENDERIZAÇÃO) ---
+# --- 5. TELA DE CONSULTA ---
 if tela == "Consulta de Preço":
     st.markdown('<h1 class="hero-title">ANÁLISE TÉCNICA</h1>', unsafe_allow_html=True)
     prod_sel = st.selectbox("Selecione o Produto:", list(precos_tabela.keys()))
     d = precos_tabela[prod_sel]
-    
     ltv_24 = (d["mensal"] * 24) + d["setup"]
     payback = ((d["cac"] - d["setup"]) / d["mensal"]) if d["mensal"] > 0 else 0
     
     c1, c2 = st.columns(2)
     with c1:
-        # Usando dedent para garantir que o Streamlit receba HTML limpo
         html_markup = textwrap.dedent(f"""
             <div class="resumo-card">
                 <span class="resumo-label">Preço de Venda</span>
@@ -103,48 +104,29 @@ if tela == "Consulta de Preço":
                 <div style="font-weight:bold; color:#555; margin-bottom:10px;">Setup: R$ {d['setup']:,.2f}</div>
                 <div class="section-header"><span class="section-title">ROI ESTRATÉGICO VR</span></div>
                 <div class="roi-interno-box">
-                    <div class="roi-metrica">
-                        <span class="roi-label-int">LTV (24 Meses)</span>
-                        <span class="roi-num-int">R$ {ltv_24:,.2f}</span>
-                    </div>
-                    <div class="roi-metrica">
-                        <span class="roi-label-int">Breakeven</span>
-                        <span class="roi-num-int">{round(payback, 1) if d['mensal'] > 0 else 'N/A'} meses</span>
-                    </div>
-                    <div class="roi-metrica">
-                        <span class="roi-label-int">Margem</span>
-                        <span class="roi-num-int">{d['margem']}</span>
-                    </div>
-                    <div class="roi-metrica">
-                        <span class="roi-label-int">Complexidade</span>
-                        <span class="roi-num-int">{d['comp']}</span>
-                    </div>
+                    <div class="roi-metrica"><span class="roi-label-int">LTV (24 Meses)</span><span class="roi-num-int">R$ {ltv_24:,.2f}</span></div>
+                    <div class="roi-metrica"><span class="roi-label-int">Breakeven</span><span class="roi-num-int">{round(payback, 1) if d['mensal'] > 0 else 'N/A'} meses</span></div>
+                    <div class="roi-metrica"><span class="roi-label-int">Margem</span><span class="roi-num-int">{d['margem']}</span></div>
+                    <div class="roi-metrica"><span class="roi-label-int">Complexidade</span><span class="roi-num-int">{d['comp']}</span></div>
                 </div>
                 <div class="resumo-subtitulo">ROI PARA O CLIENTE</div>
                 <p style="font-size:0.9rem; color:#444; line-height:1.4;">{d['roi']}</p>
             </div>
         """)
         st.markdown(html_markup, unsafe_allow_html=True)
-
     with c2:
         st.markdown('<div class="section-header"><span class="section-title">ENGENHARIA DE VALOR</span></div>', unsafe_allow_html=True)
         if d["mensal"] > 500: st.info("**Foco em Retenção:** Produto de alta recorrência.")
         if d["comp"] == "Alta": st.warning("**Atenção Técnica:** Exige senioridade na implantação.")
         if d["margem"] == "Altíssima": st.success("**Alta Escalabilidade:** Margem líquida superior.")
-        
         st.write("---")
-        st.markdown(f"**Descrição Técnica:**  \n{d['desc']}")
-        st.markdown(f"**Projeção de Ciclo de Vida:**  \nReceita bruta total em 24 meses: **R$ {ltv_24:,.2f}**.")
+        st.markdown(f"**Descrição Técnica:** \n{d['desc']}")
+        st.markdown(f"**Projeção de Ciclo de Vida:** \nReceita bruta total em 24 meses: **R$ {ltv_24:,.2f}**.")
 
 # --- 6. TELA DE PROPOSTA ---
 else:
     if not modo_apresentacao:
         st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
-
-    if 'sel_i' not in st.session_state: st.session_state.sel_i = ["Migração Banco de Dados", "Definição de Escopo", "Configuração Servidor / PDV Linux", "Implantação e Treinamento"]
-    if 'sel_m' not in st.session_state: st.session_state.sel_m = ["VR ERP PRO"]
-
-    if not modo_apresentacao:
         st.markdown("---")
         col_i, col_m, col_d = st.columns(3) if perfil_venda == "Executivo (Rua)" else (*st.columns(2), None)
         
@@ -152,41 +134,49 @@ else:
             st.markdown('<div class="section-header"><span class="section-title">IMPLANTAÇÃO</span></div>', unsafe_allow_html=True)
             st.session_state.sel_i = st.multiselect("Serviços", list(precos_tabela.keys())[8:12], default=st.session_state.sel_i)
             for i in st.session_state.sel_i:
-                vu = precos_tabela[i]["setup"]
-                st.number_input(f"Horas: {i} (R$ {vu:,.2f}/h)", min_value=0, value=12 if "Treinamento" not in i else 120, key=f"v_h_{i}")
+                st.number_input(f"Horas: {i}", min_value=0, 
+                                value=st.session_state[f"perm_h_{i}"], 
+                                key=f"tmp_h_{i}", 
+                                on_change=sync_state, args=(f"perm_h_{i}", f"tmp_h_{i}"))
 
         with col_m:
             st.markdown('<div class="section-header"><span class="section-title">MENSALIDADES</span></div>', unsafe_allow_html=True)
             st.session_state.sel_m = st.multiselect("Produtos", list(precos_tabela.keys())[0:8], default=st.session_state.sel_m)
             for i in st.session_state.sel_m:
-                vu = precos_tabela[i]["mensal"]
-                st.number_input(f"Qtd: {i} (R$ {vu:,.2f}/un)", min_value=0, value=1, key=f"v_q_{i}")
+                st.number_input(f"Qtd: {i}", min_value=0, 
+                                value=st.session_state[f"perm_q_{i}"], 
+                                key=f"tmp_q_{i}", 
+                                on_change=sync_state, args=(f"perm_q_{i}", f"tmp_q_{i}"))
 
         if col_d:
             with col_d:
                 st.markdown('<div class="section-header"><span class="section-title">DESPESAS</span></div>', unsafe_allow_html=True)
                 for i, p in itens_desp.items():
-                    st.number_input(f"{i} (R$ {p:,.2f}/un)", min_value=0, value=0, key=f"v_d_{i}")
+                    # BLINDAGEM: O input usa uma chave temporária, mas salva na permanente via on_change
+                    st.number_input(f"{i}", min_value=0, 
+                                    value=st.session_state[f"perm_d_{i}"], 
+                                    key=f"tmp_d_{i}", 
+                                    on_change=sync_state, args=(f"perm_d_{i}", f"tmp_d_{i}"))
 
+    # CÁLCULOS FINAIS (Lendo sempre do ESTADO PERMANENTE)
     t_imp, t_men_bruto, t_desp = 0, 0, 0
     lista_i, lista_m, lista_d = [], [], []
 
     for i in st.session_state.sel_i:
-        vu = precos_tabela[i]["setup"]
-        h = st.session_state.get(f"v_h_{i}", 12)
-        t_imp += h * vu
-        lista_i.append((i, h, vu))
+        h = st.session_state[f"perm_h_{i}"]
+        t_imp += h * precos_tabela[i]["setup"]
+        lista_i.append((i, h, precos_tabela[i]["setup"]))
 
     for i in st.session_state.sel_m:
-        vu = precos_tabela[i]["mensal"]
-        q = st.session_state.get(f"v_q_{i}", 1)
-        t_men_bruto += q * vu
-        lista_m.append((i, q, vu))
+        q = st.session_state[f"perm_q_{i}"]
+        t_men_bruto += q * precos_tabela[i]["mensal"]
+        lista_m.append((i, q, precos_tabela[i]["mensal"]))
 
     for i, p in itens_desp.items():
-        qd = st.session_state.get(f"v_d_{i}", 0)
-        t_desp += qd * p
-        if qd > 0: lista_d.append((i, qd, p))
+        qd = st.session_state[f"perm_d_{i}"]
+        if qd > 0:
+            t_desp += qd * p
+            lista_d.append((i, qd, p))
 
     t_men_liq = t_men_bruto * (1 - (desc/100))
 
