@@ -21,14 +21,14 @@ def limpar_valor(valor):
 def sync_state(key_permanente, key_widget):
     st.session_state[key_permanente] = st.session_state[key_widget]
 
-# --- CARREGAMENTO DE DADOS (AJUSTADO PARA PANDAS NOVO) ---
+# --- CARREGAMENTO DE DADOS ---
 @st.cache_data(ttl=60)
 def carregar_dados_vendas():
     try:
         df = pd.read_csv(SHEET_URL)
         df.columns = [str(c).strip() for c in df.columns]
         
-        # --- CORREÇÃO AQUI: map em vez de applymap ---
+        # Ajuste para versões novas do Pandas
         df = df.map(lambda x: x.strip() if isinstance(x, str) else x)
         
         col_tipo = next((c for c in df.columns if c.lower() == 'tipo'), 'Tipo')
@@ -92,13 +92,21 @@ with st.sidebar:
     st.write("---")
 
     if tela == "Gerador de Proposta":
-        st.markdown('<span class="sidebar-label">Configurações</span>', unsafe_allow_html=True)
+        st.markdown('<span class="sidebar-label">Configurações Gerais</span>', unsafe_allow_html=True)
         perfil_venda = st.selectbox("Perfil", ["Executivo (Rua)", "CS (Base)"])
         modo_apresentacao = st.toggle("Modo Apresentação")
+        
+        st.markdown('<span class="sidebar-label">Faturamento e Prazos</span>', unsafe_allow_html=True)
         desc = st.number_input("Desconto Mensal (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.1)
         exibir_detalhe_desc = st.toggle("Exibir Desconto na Proposta", value=True)
-        faturamento = st.selectbox("Faturamento", ["Imediato", "30 dias", "60 dias", "Após a implantação"])
-        parcelas = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 5, 6], index=3)
+        faturamento_sistema = st.selectbox("Faturamento Sistema", ["Imediato", "30 dias", "60 dias", "Após a implantação"])
+        parcelas_setup = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 5, 6], index=3)
+        
+        # --- NOVA REGRA DE LOGÍSTICA ---
+        regra_logistica = st.selectbox("Faturamento Logística", [
+            "Faturar junto com o Setup (Antecipado)",
+            "Faturar após a Implantação (Ao Término)"
+        ])
 
 # --- 5. TELA GERADOR DE PROPOSTA ---
 if tela == "Gerador de Proposta":
@@ -150,14 +158,14 @@ if tela == "Gerador de Proposta":
             q = st.session_state[f"perm_val_{i}"]
             v = servicos_db[i]["Valor"]
             t_imp += q * v
-            lista_i.append((i, q, v, servicos_db[i].get("Descricao", "Sem descrição")))
+            lista_i.append((i, q, v, servicos_db[i].get("Descricao", "")))
 
     for i in st.session_state.sel_m:
         if i in sistemas_db:
             q = st.session_state[f"perm_val_{i}"]
             v = sistemas_db[i]["Valor"]
             t_men_bruto += q * v
-            lista_m.append((i, q, v, sistemas_db[i].get("Descricao", "Sem descrição")))
+            lista_m.append((i, q, v, sistemas_db[i].get("Descricao", "")))
 
     for i in despesas_db.keys():
         q = st.session_state[f"perm_val_{i}"]
@@ -168,7 +176,7 @@ if tela == "Gerador de Proposta":
 
     t_men_liq = t_men_bruto * (1 - (desc/100))
 
-    # --- EXIBIÇÃO DOS CARDS ---
+    # --- EXIBIÇÃO ---
     st.markdown("<h2 style='text-align:center; font-weight:800; margin-top:30px;'>DETALHAMENTO DA PROPOSTA</h2>", unsafe_allow_html=True)
     res_cols = st.columns(3) if perfil_venda == "Executivo (Rua)" else st.columns([1, 2, 2, 1])[1:3]
 
@@ -178,7 +186,7 @@ if tela == "Gerador de Proposta":
             <div class="resumo-card">
                 <span class="resumo-label">Investimento Setup</span>
                 <div class="resumo-valor">R$ {t_imp:,.2f}</div>
-                <div style="font-weight:bold;">{parcelas}x R$ {t_imp/parcelas:,.2f}</div>
+                <div style="font-weight:bold;">{parcelas_setup}x R$ {t_imp/parcelas_setup:,.2f}</div>
                 <div class="resumo-subtitulo">SERVIÇOS</div>
                 <ul class="lista-itens">{html_i if html_i else "<li>Nenhum item selecionado</li>"}</ul>
             </div>
@@ -186,14 +194,13 @@ if tela == "Gerador de Proposta":
 
     with res_cols[1]:
         html_m = "".join([f"<li><span><span class='tooltip'>{i}<span class='tooltiptext'>{d}</span></span></span><span class='item-detalhe'>{q} un x R$ {v:,.2f}</span></li>" for i, q, v, d in lista_m])
-        desc_info = f'<div style="color: #2e7d32; font-weight: bold;">Desconto: {desc:,.2f}%</div>' if exibir_detalhe_desc and desc > 0 else '<div style="height:21px"></div>'
-        
+        desc_txt = f'<div style="color: #2e7d32; font-weight: bold;">Desconto: {desc:,.2f}%</div>' if exibir_detalhe_desc and desc > 0 else '<div style="height:21px"></div>'
         st.markdown(f"""
             <div class="resumo-card" style="border-top-color: #2e7d32;">
                 <span class="resumo-label">Mensalidade</span>
                 <div class="resumo-valor" style="color: #2e7d32;">R$ {t_men_liq:,.2f}</div>
-                {desc_info}
-                <div style="font-weight:bold; font-size: 0.9rem; margin-top:5px;">Faturamento: {faturamento}</div>
+                {desc_txt}
+                <div style="font-weight:bold; font-size: 0.9rem; margin-top:5px;">Faturamento: {faturamento_sistema}</div>
                 <div class="resumo-subtitulo">SISTEMAS</div>
                 <ul class="lista-itens">{html_m if html_m else "<li>Nenhum item selecionado</li>"}</ul>
             </div>
@@ -202,12 +209,15 @@ if tela == "Gerador de Proposta":
     if perfil_venda == "Executivo (Rua)":
         with res_cols[2]:
             html_d = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} x R$ {v:,.2f}</span></li>" for i, q, v, d in lista_d])
+            # TEXTO DINÂMICO DA REGRA DE FATURAMENTO
+            msg_logistica = "Cobrança junto com o Setup" if "Antecipado" in regra_logistica else "Emitido após conclusão técnica"
+            
             st.markdown(f"""
                 <div class="resumo-card" style="border-top-color: #1976d2;">
-                    <span class="resumo-label">Despesas</span>
+                    <span class="resumo-label">Despesas Logísticas</span>
                     <div class="resumo-valor" style="color: #1976d2;">R$ {t_desp:,.2f}</div>
-                    <div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">Faturadas conforme realização</div>
-                    <div class="resumo-subtitulo">LOGÍSTICA</div>
+                    <div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">{msg_logistica}</div>
+                    <div class="resumo-subtitulo">ITENS DE LOGÍSTICA</div>
                     <ul class="lista-itens">{html_d if html_d else "<li>Sem despesas previstas</li>"}</ul>
                 </div>
             """, unsafe_allow_html=True)
