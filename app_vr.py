@@ -152,6 +152,7 @@ def aplicar_mapeamento():
     for p, qtd in pdv_map.items():
         if p in sistemas_db:
             st.session_state[f"perm_val_{p}"] = qtd
+            st.session_state[f"tmp_m_{p}"] = qtd  # Sincroniza visual Parte 2
             if qtd > 0 and p not in st.session_state.sel_m: st.session_state.sel_m.append(p)
             elif qtd == 0 and p in st.session_state.sel_m: st.session_state.sel_m.remove(p)
     
@@ -163,6 +164,7 @@ def aplicar_mapeamento():
         escolhido = tef_opcoes[0] if total_pdvs <= 3 else tef_opcoes[1] if total_pdvs <= 6 else tef_opcoes[2] if total_pdvs <= 8 else tef_opcoes[3]
         if escolhido in sistemas_db:
             st.session_state[f"perm_val_{escolhido}"] = 1
+            st.session_state[f"tmp_m_{escolhido}"] = 1  # Sincroniza visual Parte 2
             st.session_state.sel_m.append(escolhido)
 
     # Sistemas Extras (Toggles)
@@ -180,16 +182,22 @@ def aplicar_mapeamento():
     for item, ativo in exp_map.items():
         if item in sistemas_db:
             st.session_state[f"perm_val_{item}"] = 1 if ativo else 0
+            st.session_state[f"tmp_m_{item}"] = 1 if ativo else 0  # Sincroniza visual Parte 2
             if ativo and item not in st.session_state.sel_m: st.session_state.sel_m.append(item)
             elif not ativo and item in st.session_state.sel_m: st.session_state.sel_m.remove(item)
 
-    # VR Mobile (Lógica de Adição)
+    # VR Mobile (Lógica de Adição e Sincronização)
     m_mobile_item = "VR Mobile"
     if m_mobile_item in sistemas_db and st.session_state.m_mobile > 0:
         if m_mobile_item not in st.session_state.sel_m:
             st.session_state.sel_m.append(m_mobile_item)
-        # Acumula o valor e zera no assistente para evitar duplicação ao clicar novamente
+        
+        # Soma o valor
         st.session_state[f"perm_val_{m_mobile_item}"] += st.session_state.m_mobile
+        # Força o campo visual da Parte 2 a mostrar a soma correta
+        st.session_state[f"tmp_m_{m_mobile_item}"] = st.session_state[f"perm_val_{m_mobile_item}"]
+        
+        # Zera os campos lógico e visual da Parte 1
         st.session_state.m_mobile = 0
         if 'tmp_mobile' in st.session_state:
             st.session_state.tmp_mobile = 0
@@ -204,6 +212,7 @@ def aplicar_mapeamento():
     for s_item, s_horas in serv_map.items():
         if s_item in servicos_db:
             st.session_state[f"perm_val_{s_item}"] = s_horas
+            st.session_state[f"tmp_i_{s_item}"] = s_horas  # Sincroniza visual Parte 2
             if s_horas > 0 and s_item not in st.session_state.sel_i: st.session_state.sel_i.append(s_item)
             elif s_horas == 0 and s_item in st.session_state.sel_i: st.session_state.sel_i.remove(s_item)
 
@@ -211,10 +220,12 @@ def aplicar_mapeamento():
     ali, hos = "Alimentacao", "Hospedagem"
     if ali in despesas_db: 
         st.session_state[f"perm_val_{ali}"] = sem * 10
+        st.session_state[f"tmp_d_{ali}"] = sem * 10  # Sincroniza visual Parte 2
         if sem > 0 and ali not in st.session_state.sel_d: st.session_state.sel_d.append(ali)
         elif sem == 0 and ali in st.session_state.sel_d: st.session_state.sel_d.remove(ali)
     if hos in despesas_db: 
         st.session_state[f"perm_val_{hos}"] = sem * 4
+        st.session_state[f"tmp_d_{hos}"] = sem * 4  # Sincroniza visual Parte 2
         if sem > 0 and hos not in st.session_state.sel_d: st.session_state.sel_d.append(hos)
         elif sem == 0 and hos in st.session_state.sel_d: st.session_state.sel_d.remove(hos)
 
