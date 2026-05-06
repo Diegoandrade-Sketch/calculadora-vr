@@ -35,7 +35,6 @@ def carregar_dados_vendas():
         df['Tipo_Busca'] = df[col_tipo].astype(str).str.lower()
         df['Valor'] = df['Valor'].apply(limpar_valor)
         
-        # Filtros por categoria
         sist = df[df['Tipo_Busca'].str.contains('sist', na=False)].set_index('Produto').to_dict('index')
         serv = df[df['Tipo_Busca'].str.contains('serv', na=False)].set_index('Produto').to_dict('index')
         desp = df[df['Tipo_Busca'].str.contains('desp', na=False)].set_index('Produto').to_dict('index')
@@ -61,7 +60,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. INICIALIZAÇÃO DO ESTADO ---
+# --- 3. ESTADO ---
 if 'sel_i' not in st.session_state: st.session_state.sel_i = []
 if 'sel_m' not in st.session_state: st.session_state.sel_m = []
 
@@ -87,105 +86,76 @@ with st.sidebar:
         modo_apresentacao = st.toggle("Modo Apresentação")
         perfil_venda = st.selectbox("Perfil do Cliente", ["Executivo (Rua)", "CS (Base)"])
         desc = st.number_input("Bonificação Mensal (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.5)
+        
+        # O BOTÃO VOLTOU:
+        exibir_detalhe_desc = st.toggle("Exibir Desconto na Tela", value=True)
+        
         faturamento_sistema = st.selectbox("Início Mensalidade", ["Na assinatura", "30 dias", "60 dias", "Após implantação"])
         parcelas_setup = st.selectbox("Parcelas Setup", [1, 2, 3, 4, 5, 6], index=3)
         regra_logistica = st.selectbox("Faturamento Logística", ["Faturamento na assinatura do contrato", "Faturamento ao término da Implantação"])
 
-# --- 5. LÓGICA DE MAPEAMENTO (AUTOMATIZAÇÃO) ---
+# --- 5. LÓGICA DE AUTOMATIZAÇÃO ---
 def aplicar_mapeamento():
-    # 1. Regra de PDVs
-    pdv_map = {
-        "VR PDV Convencional": st.session_state.m_pdv_conv,
-        "PDV Touchscreen": st.session_state.m_pdv_touch,
-        "PDV Selfcheckout": st.session_state.m_pdv_self
-    }
+    pdv_map = {"VR PDV Convencional": st.session_state.m_pdv_conv, "PDV Touchscreen": st.session_state.m_pdv_touch, "PDV Selfcheckout": st.session_state.m_pdv_self}
     for p, qtd in pdv_map.items():
         if p in sistemas_db:
             st.session_state[f"perm_val_{p}"] = qtd
             if qtd > 0 and p not in st.session_state.sel_m: st.session_state.sel_m.append(p)
     
-    # 2. Regra de TEF Inteligente
-    total_pdvs = st.session_state.m_pdv_conv + st.session_state.m_pdv_touch + st.session_state.m_pdv_self
-    tef_opcoes = ["SiTef Express até 3 PDVs", "SiTef Express até 6 PDVs", "SiTef Express até 8 PDVs", "SiTef Express acima de 8 PDVs"]
-    
-    # Limpa seleções anteriores de TEF para não duplicar
+    total_pdvs = sum(pdv_map.values())
     st.session_state.sel_m = [item for item in st.session_state.sel_m if "SiTef" not in item]
-    
     if st.session_state.m_tef == "SiTef Express":
-        if total_pdvs <= 3: escolhido = tef_opcoes[0]
-        elif total_pdvs <= 6: escolhido = tef_opcoes[1]
-        elif total_pdvs <= 8: escolhido = tef_opcoes[2]
-        else: escolhido = tef_opcoes[3]
-        
+        tef_opcoes = ["SiTef Express até 3 PDVs", "SiTef Express até 6 PDVs", "SiTef Express até 8 PDVs", "SiTef Express acima de 8 PDVs"]
+        escolhido = tef_opcoes[0] if total_pdvs <= 3 else tef_opcoes[1] if total_pdvs <= 6 else tef_opcoes[2] if total_pdvs <= 8 else tef_opcoes[3]
         if escolhido in sistemas_db:
             st.session_state[f"perm_val_{escolhido}"] = 1
             st.session_state.sel_m.append(escolhido)
 
-    # 3. Regra de Semanas (Implantação + Logística)
     sem = st.session_state.m_semanas
-    # Implantação
     it = "Implantação e Treinamento"
     if it in servicos_db:
         st.session_state[f"perm_val_{it}"] = sem * 44
         if sem > 0 and it not in st.session_state.sel_i: st.session_state.sel_i.append(it)
     
-    # Logística (Alimentação e Hospedagem)
-    ali, hos = "Alimentacao", "Hospedagem"
-    if ali in despesas_db: st.session_state[f"perm_val_{ali}"] = sem * 10
-    if hos in despesas_db: st.session_state[f"perm_val_{hos}"] = sem * 4
+    if "Alimentacao" in despesas_db: st.session_state[f"perm_val_Alimentacao"] = sem * 10
+    if "Hospedagem" in despesas_db: st.session_state[f"perm_val_Hospedagem"] = sem * 4
 
-    # 4. Regra de Migração
-    mig = "Migração Banco de Dados"
-    if st.session_state.m_migracao and mig in servicos_db:
-        if mig not in st.session_state.sel_i: st.session_state.sel_i.append(mig)
-        if st.session_state[f"perm_val_{mig}"] == 0: st.session_state[f"perm_val_{mig}"] = 8
-
-# --- 6. TELA GERADOR DE PROPOSTA ---
+# --- 6. TELA GERADOR ---
 if tela == "Gerador de Proposta":
     if not modo_apresentacao:
         st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
-        
         if mapeamento_ativo:
             st.markdown('<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">🛒 Mapeamento da Operação</h3></div>', unsafe_allow_html=True)
             c1, c2, c3 = st.columns(3)
             with c1:
-                st.number_input("Qtd PDV Convencional", min_value=0, key="tmp_pdv_conv", value=st.session_state.m_pdv_conv, on_change=sync_state, args=("m_pdv_conv", "tmp_pdv_conv"))
-                st.number_input("Qtd PDV Touch", min_value=0, key="tmp_pdv_touch", value=st.session_state.m_pdv_touch, on_change=sync_state, args=("m_pdv_touch", "tmp_pdv_touch"))
+                st.number_input("PDV Convencional", min_value=0, key="tmp_pdv_conv", value=st.session_state.m_pdv_conv, on_change=sync_state, args=("m_pdv_conv", "tmp_pdv_conv"))
                 st.selectbox("Solução de TEF", ["Não utiliza", "SiTef Express", "VR TEF"], key="tmp_tef", index=["Não utiliza", "SiTef Express", "VR TEF"].index(st.session_state.m_tef), on_change=sync_state, args=("m_tef", "tmp_tef"))
             with c2:
-                st.number_input("Qtd PDV Self", min_value=0, key="tmp_pdv_self", value=st.session_state.m_pdv_self, on_change=sync_state, args=("m_pdv_self", "tmp_pdv_self"))
-                st.toggle("E-commerce / App?", key="tmp_ecommerce", value=st.session_state.m_ecommerce, on_change=sync_state, args=("m_ecommerce", "tmp_ecommerce"))
+                st.number_input("PDV Selfcheckout", min_value=0, key="tmp_pdv_self", value=st.session_state.m_pdv_self, on_change=sync_state, args=("m_pdv_self", "tmp_pdv_self"))
                 st.checkbox("Migração de Banco?", key="tmp_migracao", value=st.session_state.m_migracao, on_change=sync_state, args=("m_migracao", "tmp_migracao"))
             with c3:
                 st.number_input("Semanas de Implantação", min_value=0, key="tmp_semanas", value=st.session_state.m_semanas, on_change=sync_state, args=("m_semanas", "tmp_semanas"))
                 st.button("✨ Aplicar Inteligência", on_click=aplicar_mapeamento, use_container_width=True)
             st.markdown("---")
 
-        # COLUNAS DE SELEÇÃO
         col_i, col_m, col_d = st.columns(3) if perfil_venda == "Executivo (Rua)" else (*st.columns(2), None)
-        
         with col_i:
             st.markdown('<div class="section-header"><span class="section-title">IMPLANTAÇÃO</span></div>', unsafe_allow_html=True)
             st.session_state.sel_i = st.multiselect("Serviços", list(servicos_db.keys()), default=[s for s in st.session_state.sel_i if s in servicos_db])
             for i in st.session_state.sel_i:
-                vu = servicos_db[i]["Valor"]
-                st.number_input(f"{i} (R$ {vu:,.2f}/h)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_i_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_i_{i}"))
-
+                st.number_input(f"{i} (R$ {servicos_db[i]['Valor']:,.2f}/h)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_i_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_i_{i}"))
         with col_m:
             st.markdown('<div class="section-header"><span class="section-title">MENSALIDADES</span></div>', unsafe_allow_html=True)
             st.session_state.sel_m = st.multiselect("Sistemas", list(sistemas_db.keys()), default=[s for s in st.session_state.sel_m if s in sistemas_db])
             for i in st.session_state.sel_m:
-                vu = sistemas_db[i]["Valor"]
-                st.number_input(f"{i} (R$ {vu:,.2f}/un)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_m_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_m_{i}"))
-
+                st.number_input(f"{i} (R$ {sistemas_db[i]['Valor']:,.2f}/un)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_m_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_m_{i}"))
         if col_d:
             with col_d:
                 st.markdown('<div class="section-header"><span class="section-title">DESPESAS</span></div>', unsafe_allow_html=True)
                 for i in despesas_db.keys():
-                    vu = despesas_db[i]["Valor"]
-                    st.number_input(f"{i} (R$ {vu:,.2f}/un)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_d_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_d_{i}"))
+                    st.number_input(f"{i} (R$ {despesas_db[i]['Valor']:,.2f}/un)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_d_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_d_{i}"))
 
-    # --- CÁLCULOS E RESUMO ---
+    # CÁLCULOS
     t_imp = sum(st.session_state[f"perm_val_{i}"] * servicos_db[i]["Valor"] for i in st.session_state.sel_i if i in servicos_db)
     t_men_bruto = sum(st.session_state[f"perm_val_{i}"] * sistemas_db[i]["Valor"] for i in st.session_state.sel_m if i in sistemas_db)
     t_desp = sum(st.session_state[f"perm_val_{i}"] * despesas_db[i]["Valor"] for i in despesas_db.keys())
@@ -200,17 +170,13 @@ if tela == "Gerador de Proposta":
 
     with res_cols[1]:
         html_m = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{st.session_state[f'perm_val_{i}']} un x R$ {sistemas_db[i]['Valor']:,.2f}</span></li>" for i in st.session_state.sel_m if i in sistemas_db])
-        desc_txt = f'<div style="color: #2e7d32; font-weight: bold;">Bonificação: {desc:,.2f}%</div>' if desc > 0 else '<div style="height:21px"></div>'
+        
+        # LÓGICA DO BOTÃO DESCONTO AQUI:
+        desc_txt = f'<div style="color: #2e7d32; font-weight: bold;">Bonificação: {desc:,.2f}%</div>' if exibir_detalhe_desc and desc > 0 else '<div style="height:21px"></div>'
+        
         st.markdown(f'<div class="resumo-card" style="border-top-color: #2e7d32;"><span class="resumo-label">Manutenção Mensal</span><div class="resumo-valor" style="color: #2e7d32;">R$ {t_men_liq:,.2f}</div>{desc_txt}<div style="font-weight:bold; font-size: 0.9rem; margin-top:5px;">Início: {faturamento_sistema}</div><div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{html_m if html_m else "<li>Nenhum selecionado</li>"}</ul></div>', unsafe_allow_html=True)
 
     if perfil_venda == "Executivo (Rua)":
         with res_cols[2]:
             html_d = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{st.session_state[f'perm_val_{i}']} un x R$ {despesas_db[i]['Valor']:,.2f}</span></li>" for i in despesas_db.keys() if st.session_state[f"perm_val_{i}"] > 0])
             st.markdown(f'<div class="resumo-card" style="border-top-color: #1976d2;"><span class="resumo-label">Despesas de Viagem e Logística</span><div class="resumo-valor" style="color: #1976d2;">R$ {t_desp:,.2f}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">{regra_logistica}</div><div class="resumo-subtitulo">DETALHAMENTO DE LOGÍSTICA</div><ul class="lista-itens">{html_d if html_d else "<li>Sem despesas previstas</li>"}</ul></div>', unsafe_allow_html=True)
-
-elif tela == "Consulta de Preço":
-    st.markdown('<h1 class="hero-title">ANÁLISE TÉCNICA</h1>', unsafe_allow_html=True)
-    if full_db:
-        prod_sel = st.selectbox("Produto para consulta:", list(full_db.keys()))
-        d = full_db[prod_sel]
-        st.markdown(f'<div class="resumo-card" style="min-height:auto;"><span class="resumo-label">Valor</span><div class="resumo-valor">R$ {d["Valor"]:,.2f}</div><p><b>Tipo:</b> {d["Tipo"]}</p><hr><p>{d["Descricao"]}</p></div>', unsafe_allow_html=True)
