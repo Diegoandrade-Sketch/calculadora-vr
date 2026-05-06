@@ -27,8 +27,6 @@ def carregar_dados_vendas():
     try:
         df = pd.read_csv(SHEET_URL)
         df.columns = [str(c).strip() for c in df.columns]
-        
-        # Ajuste para versões novas do Pandas
         df = df.map(lambda x: x.strip() if isinstance(x, str) else x)
         
         col_tipo = next((c for c in df.columns if c.lower() == 'tipo'), 'Tipo')
@@ -102,10 +100,10 @@ with st.sidebar:
         faturamento_sistema = st.selectbox("Faturamento Sistema", ["Imediato", "30 dias", "60 dias", "Após a implantação"])
         parcelas_setup = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 5, 6], index=3)
         
-        # --- NOVA REGRA DE LOGÍSTICA ---
-        regra_logistica = st.selectbox("Faturamento Logística", [
-            "Faturar junto com o Setup (Antecipado)",
-            "Faturar após a Implantação (Ao Término)"
+        # --- NOMENCLATURAS MELHORADAS PARA O VENDEDOR ---
+        regra_logistica = st.selectbox("Cobrança da Logística", [
+            "Faturamento na assinatura (Antecipado)",
+            "Faturamento após entrega técnica (No término)"
         ])
 
 # --- 5. TELA GERADOR DE PROPOSTA ---
@@ -176,10 +174,11 @@ if tela == "Gerador de Proposta":
 
     t_men_liq = t_men_bruto * (1 - (desc/100))
 
-    # --- EXIBIÇÃO ---
+    # --- EXIBIÇÃO DOS CARDS ---
     st.markdown("<h2 style='text-align:center; font-weight:800; margin-top:30px;'>DETALHAMENTO DA PROPOSTA</h2>", unsafe_allow_html=True)
     res_cols = st.columns(3) if perfil_venda == "Executivo (Rua)" else st.columns([1, 2, 2, 1])[1:3]
 
+    # Card 1: Setup
     with res_cols[0]:
         html_i = "".join([f"<li><span><span class='tooltip'>{i}<span class='tooltiptext'>{d}</span></span></span><span class='item-detalhe'>{q}h x R$ {v:,.2f}</span></li>" for i, q, v, d in lista_i])
         st.markdown(f"""
@@ -192,32 +191,36 @@ if tela == "Gerador de Proposta":
             </div>
         """, unsafe_allow_html=True)
 
+    # Card 2: Mensalidade
     with res_cols[1]:
         html_m = "".join([f"<li><span><span class='tooltip'>{i}<span class='tooltiptext'>{d}</span></span></span><span class='item-detalhe'>{q} un x R$ {v:,.2f}</span></li>" for i, q, v, d in lista_m])
-        desc_txt = f'<div style="color: #2e7d32; font-weight: bold;">Desconto: {desc:,.2f}%</div>' if exibir_detalhe_desc and desc > 0 else '<div style="height:21px"></div>'
+        desc_info = f'<div style="color: #2e7d32; font-weight: bold;">Desconto: {desc:,.2f}%</div>' if exibir_detalhe_desc and desc > 0 else '<div style="height:21px"></div>'
+        
         st.markdown(f"""
             <div class="resumo-card" style="border-top-color: #2e7d32;">
                 <span class="resumo-label">Mensalidade</span>
                 <div class="resumo-valor" style="color: #2e7d32;">R$ {t_men_liq:,.2f}</div>
-                {desc_txt}
+                {desc_info}
                 <div style="font-weight:bold; font-size: 0.9rem; margin-top:5px;">Faturamento: {faturamento_sistema}</div>
                 <div class="resumo-subtitulo">SISTEMAS</div>
                 <ul class="lista-itens">{html_m if html_m else "<li>Nenhum item selecionado</li>"}</ul>
             </div>
         """, unsafe_allow_html=True)
 
+    # Card 3: Despesas (O ÚNICO COM LINGUAGEM REFINADA PARA O CLIENTE)
     if perfil_venda == "Executivo (Rua)":
         with res_cols[2]:
             html_d = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} x R$ {v:,.2f}</span></li>" for i, q, v, d in lista_d])
-            # TEXTO DINÂMICO DA REGRA DE FATURAMENTO
-            msg_logistica = "Cobrança junto com o Setup" if "Antecipado" in regra_logistica else "Emitido após conclusão técnica"
+            
+            # --- TRADUÇÃO PARA LÍNGUA DO CLIENTE ---
+            msg_cliente = "Faturamento na assinatura do contrato" if "assinatura" in regra_logistica else "Faturamento após a entrega técnica"
             
             st.markdown(f"""
                 <div class="resumo-card" style="border-top-color: #1976d2;">
-                    <span class="resumo-label">Despesas Logísticas</span>
+                    <span class="resumo-label">Despesas de Viagem e Logística</span>
                     <div class="resumo-valor" style="color: #1976d2;">R$ {t_desp:,.2f}</div>
-                    <div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">{msg_logistica}</div>
-                    <div class="resumo-subtitulo">ITENS DE LOGÍSTICA</div>
+                    <div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">{msg_cliente}</div>
+                    <div class="resumo-subtitulo">DETALHAMENTO</div>
                     <ul class="lista-itens">{html_d if html_d else "<li>Sem despesas previstas</li>"}</ul>
                 </div>
             """, unsafe_allow_html=True)
