@@ -5,7 +5,7 @@ import os
 # 1. CONFIGURAÇÃO DA PÁGINA
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-# --- DATA SOURCE ---
+# --- DATA SOURCE (USANDO SEU ARQUIVO EXCEL) ---
 EXCEL_FILE = "tabela_preco_chat.xlsx"
 
 # --- FUNÇÕES DE APOIO ---
@@ -28,7 +28,7 @@ def carregar_dados_vendas():
             df = df.map(lambda x: x.strip() if isinstance(x, str) else x)
             df['Valor'] = df['Valor'].apply(limpar_valor)
             
-            # Filtro defensivo: procura termos que contenham a categoria
+            # Filtros Flexíveis para não quebrar a tela
             sist = df[df['Tipo'].str.contains('Sist', case=False, na=False)].set_index('Produto').to_dict('index')
             serv = df[df['Tipo'].str.contains('Serv', case=False, na=False)].set_index('Produto').to_dict('index')
             desp = df[df['Tipo'].str.contains('Desp', case=False, na=False)].set_index('Produto').to_dict('index')
@@ -39,7 +39,7 @@ def carregar_dados_vendas():
 
 sistemas_db, servicos_db, despesas_db, full_db = carregar_dados_vendas()
 
-# 2. ESTILIZAÇÃO CSS
+# 2. ESTILIZAÇÃO CSS (VR BRANDING)
 st.markdown("""
     <style>
     .stApp { background: linear-gradient(135deg, #ffffff 0%, #fff5ed 100%); }
@@ -55,13 +55,12 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. ESTADO GLOBAL ---
+# --- 3. INICIALIZAÇÃO DO ESTADO ---
 if 'sel_i' not in st.session_state: st.session_state.sel_i = []
 if 'sel_m' not in st.session_state: st.session_state.sel_m = []
 
-# Inicialização de valores fixos para mapeamento
-map_fields = ['m_pdv_conv', 'm_pdv_touch', 'm_pdv_self', 'm_tef', 'm_semanas', 'm_migracao', 'm_ecommerce', 'm_app', 'm_connect']
-for k in map_fields:
+map_keys = ['m_pdv_conv', 'm_pdv_touch', 'm_pdv_self', 'm_tef', 'm_semanas', 'm_migracao', 'm_ecommerce', 'm_app', 'm_connect']
+for k in map_keys:
     if k not in st.session_state:
         st.session_state[k] = 0 if any(x in k for x in ['pdv', 'semanas']) else "Não utiliza" if 'tef' in k else False
 
@@ -70,7 +69,7 @@ for nome in full_db.keys():
         st.session_state[f"perm_val_{nome}"] = 0
 
 def limpar_tudo():
-    for k in map_fields:
+    for k in map_keys:
         st.session_state[k] = 0 if any(x in k for x in ['pdv', 'semanas']) else "Não utiliza" if 'tef' in k else False
     st.session_state.sel_i = []
     st.session_state.sel_m = []
@@ -79,15 +78,15 @@ def limpar_tudo():
 
 # --- 4. LÓGICA DE INTELIGÊNCIA ---
 def aplicar_mapeamento():
-    # 1. Regra de PDVs
-    pdvs = {"VR PDV Convencional": st.session_state.m_pdv_conv, "PDV Touchscreen": st.session_state.m_pdv_touch, "PDV Selfcheckout": st.session_state.m_pdv_self}
-    for p, qtd in pdvs.items():
+    # 1. PDVs
+    pdv_map = {"VR PDV Convencional": st.session_state.m_pdv_conv, "PDV Touchscreen": st.session_state.m_pdv_touch, "PDV Selfcheckout": st.session_state.m_pdv_self}
+    for p, qtd in pdv_map.items():
         if p in sistemas_db:
             st.session_state[f"perm_val_{p}"] = qtd
             if qtd > 0 and p not in st.session_state.sel_m: st.session_state.sel_m.append(p)
-
-    # 2. TEF Inteligente
-    total = sum(pdvs.values())
+    
+    # 2. TEF
+    total = sum(pdv_map.values())
     st.session_state.sel_m = [item for item in st.session_state.sel_m if "SiTef" not in item]
     if st.session_state.m_tef == "SiTef Express":
         tef_key = "SiTef Express até 3 PDVs" if total <= 3 else "SiTef Express até 6 PDVs" if total <= 6 else "SiTef Express até 8 PDVs" if total <= 8 else "SiTef Express a partir de 9 PDVs"
@@ -95,32 +94,25 @@ def aplicar_mapeamento():
             st.session_state[f"perm_val_{tef_key}"] = 1
             st.session_state.sel_m.append(tef_key)
 
-    # 3. Semanas e Logística
+    # 3. Semanas (Implantação + Logística)
     sem = st.session_state.m_semanas
-    # Implantação
     it_nome = next((k for k in servicos_db.keys() if "Implantação e Treinamento" in k), None)
     if it_nome:
         st.session_state[f"perm_val_{it_nome}"] = sem * 44
         if sem > 0 and it_nome not in st.session_state.sel_i: st.session_state.sel_i.append(it_nome)
     
-    # Alimentação e Hospedagem (Busca flexível pelo nome no Excel)
-    ali_nome = next((k for k in despesas_db.keys() if "Alimentacao" in k), None)
-    hos_nome = next((k for k in despesas_db.keys() if "Hospedagem" in k), None)
-    if ali_nome: st.session_state[f"perm_val_{ali_nome}"] = sem * 10
-    if hos_nome: st.session_state[f"perm_val_{hos_nome}"] = sem * 4
+    # Busca flexível de Logística
+    ali = next((k for k in despesas_db.keys() if "Alimentacao" in k), None)
+    hos = next((k for k in despesas_db.keys() if "Hospedagem" in k), None)
+    if ali: st.session_state[f"perm_val_{ali}"] = sem * 10
+    if hos: st.session_state[f"perm_val_{hos}"] = sem * 4
 
-    # 4. Expansão Toggles
-    exp_map = {"E-Commerce": st.session_state.m_ecommerce, "M-Commerce": st.session_state.m_app, "VR Connect (Android/IOS)": st.session_state.m_connect}
-    for item, ativo in exp_map.items():
+    # 4. Toggles
+    exp = {"E-Commerce": st.session_state.m_ecommerce, "M-Commerce": st.session_state.m_app, "VR Connect (Android/IOS)": st.session_state.m_connect}
+    for item, ativo in exp.items():
         if item in sistemas_db:
             st.session_state[f"perm_val_{item}"] = 1 if ativo else 0
             if ativo and item not in st.session_state.sel_m: st.session_state.sel_m.append(item)
-
-    # 5. Migração
-    mig_nome = next((k for k in servicos_db.keys() if "Migração" in k), None)
-    if st.session_state.m_migracao and mig_nome:
-        st.session_state[f"perm_val_{mig_nome}"] = 8
-        if mig_nome not in st.session_state.sel_i: st.session_state.sel_i.append(mig_nome)
 
 # --- 5. MENU LATERAL ---
 with st.sidebar:
@@ -147,9 +139,9 @@ if tela == "Gerador de Proposta":
             st.markdown('<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">🛒 Mapeamento da Operação</h3></div>', unsafe_allow_html=True)
             c1, c2, c3 = st.columns(3)
             with c1:
-                st.number_input("Qtd PDV Convencional", min_value=0, key="tmp_pdv_conv", value=st.session_state.m_pdv_conv, on_change=sync_state, args=("m_pdv_conv", "tmp_pdv_conv"))
-                st.number_input("Qtd PDV Touchscreen", min_value=0, key="tmp_pdv_touch", value=st.session_state.m_pdv_touch, on_change=sync_state, args=("m_pdv_touch", "tmp_pdv_touch"))
-                st.number_input("Qtd PDV Selfcheckout", min_value=0, key="tmp_pdv_self", value=st.session_state.m_pdv_self, on_change=sync_state, args=("m_pdv_self", "tmp_pdv_self"))
+                st.number_input("PDV Convencional", min_value=0, key="tmp_pdv_conv", value=st.session_state.m_pdv_conv, on_change=sync_state, args=("m_pdv_conv", "tmp_pdv_conv"))
+                st.number_input("PDV Touchscreen", min_value=0, key="tmp_pdv_touch", value=st.session_state.m_pdv_touch, on_change=sync_state, args=("m_pdv_touch", "tmp_pdv_touch"))
+                st.number_input("PDV Selfcheckout", min_value=0, key="tmp_pdv_self", value=st.session_state.m_pdv_self, on_change=sync_state, args=("m_pdv_self", "tmp_pdv_self"))
             with c2:
                 st.selectbox("Solução de TEF", ["Não utiliza", "SiTef Express", "VR TEF"], key="tmp_tef", index=["Não utiliza", "SiTef Express", "VR TEF"].index(st.session_state.m_tef), on_change=sync_state, args=("m_tef", "tmp_tef"))
                 st.number_input("Semanas Implantação", min_value=0, key="tmp_semanas", value=st.session_state.m_semanas, on_change=sync_state, args=("m_semanas", "tmp_semanas"))
@@ -162,22 +154,23 @@ if tela == "Gerador de Proposta":
                 st.button("🗑️ Limpar Tudo", on_click=limpar_tudo, use_container_width=True)
             st.markdown("---")
 
+        # ÁREA DE SELEÇÃO MANUAL (RECUPERADA)
         col_i, col_m, col_d = st.columns(3) if perfil_venda == "Executivo (Rua)" else (*st.columns(2), None)
         with col_i:
             st.markdown('<div class="section-header"><span class="section-title">IMPLANTAÇÃO</span></div>', unsafe_allow_html=True)
-            st.session_state.sel_i = st.multiselect("Serviços", list(servicos_db.keys()), default=[s for s in st.session_state.sel_i if s in servicos_db])
+            st.session_state.sel_i = st.multiselect("Selecione os Serviços:", list(servicos_db.keys()), default=[s for s in st.session_state.sel_i if s in servicos_db])
             for i in st.session_state.sel_i:
-                st.number_input(f"{i} (R$ {servicos_db[i]['Valor']:,.2f}/h)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_i_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_i_{i}"))
+                st.number_input(f"{i} (h)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_i_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_i_{i}"))
         with col_m:
             st.markdown('<div class="section-header"><span class="section-title">MENSALIDADES</span></div>', unsafe_allow_html=True)
-            st.session_state.sel_m = st.multiselect("Sistemas", list(sistemas_db.keys()), default=[s for s in st.session_state.sel_m if s in sistemas_db])
+            st.session_state.sel_m = st.multiselect("Selecione os Sistemas:", list(sistemas_db.keys()), default=[s for s in st.session_state.sel_m if s in sistemas_db])
             for i in st.session_state.sel_m:
-                st.number_input(f"{i} (R$ {sistemas_db[i]['Valor']:,.2f}/un)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_m_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_m_{i}"))
+                st.number_input(f"{i} (un)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_m_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_m_{i}"))
         if col_d:
             with col_d:
-                st.markdown('<div class="section-header"><span class="section-title">DESPESAS</span></div>', unsafe_allow_html=True)
+                st.markdown('<div class="section-header"><span class="section-title">LOGÍSTICA</span></div>', unsafe_allow_html=True)
                 for i in despesas_db.keys():
-                    st.number_input(f"{i} (R$ {despesas_db[i]['Valor']:,.2f}/un)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_d_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_d_{i}"))
+                    st.number_input(f"{i} (un)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_d_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_d_{i}"))
 
     # CÁLCULOS
     t_imp = sum(st.session_state[f"perm_val_{i}"] * servicos_db[i]["Valor"] for i in st.session_state.sel_i if i in servicos_db)
@@ -185,6 +178,7 @@ if tela == "Gerador de Proposta":
     t_desp = sum(st.session_state[f"perm_val_{i}"] * despesas_db[i]["Valor"] for i in despesas_db.keys())
     t_men_liq = t_men_bruto * (1 - (desc/100))
 
+    # RESUMO DO INVESTIMENTO
     st.markdown("<h2 style='text-align:center; font-weight:800; margin-top:30px;'>RESUMO DO INVESTIMENTO</h2>", unsafe_allow_html=True)
     res_cols = st.columns(3) if perfil_venda == "Executivo (Rua)" else st.columns([1, 2, 2, 1])[1:3]
 
