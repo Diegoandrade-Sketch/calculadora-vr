@@ -21,15 +21,16 @@ def limpar_valor(valor):
 def sync_state(key_permanente, key_widget):
     st.session_state[key_permanente] = st.session_state[key_widget]
 
-# --- CARREGAMENTO DE DADOS (AGRESSIVO/NORMALIZADO) ---
+# --- CARREGAMENTO DE DADOS (AJUSTADO PARA PANDAS NOVO) ---
 @st.cache_data(ttl=60)
 def carregar_dados_vendas():
     try:
         df = pd.read_csv(SHEET_URL)
         df.columns = [str(c).strip() for c in df.columns]
-        df = df.applymap(lambda x: x.strip() if isinstance(x, str) else x)
         
-        # Localiza a coluna 'Tipo' indepedente de maiúsculas/minúsculas
+        # --- CORREÇÃO AQUI: map em vez de applymap ---
+        df = df.map(lambda x: x.strip() if isinstance(x, str) else x)
+        
         col_tipo = next((c for c in df.columns if c.lower() == 'tipo'), 'Tipo')
         df['Tipo_Busca'] = df[col_tipo].astype(str).str.lower()
         df['Valor'] = df['Valor'].apply(limpar_valor)
@@ -45,7 +46,7 @@ def carregar_dados_vendas():
 
 sistemas_db, servicos_db, despesas_db, full_db = carregar_dados_vendas()
 
-# 2. Estilização CSS (Restaurada e Refinada)
+# 2. Estilização CSS
 st.markdown("""
     <style>
     .stApp { background: linear-gradient(135deg, #ffffff 0%, #fff5ed 100%); }
@@ -66,7 +67,6 @@ st.markdown("""
     .lista-itens { list-style-type: none; padding-left: 0; margin-top: 10px; flex-grow: 1; }
     .lista-itens li { padding: 10px 0; border-bottom: 1px dashed #e0e0e0; display: flex; justify-content: space-between; align-items: center; }
     
-    /* Tooltip */
     .tooltip { position: relative; display: inline-block; cursor: help; border-bottom: 1px dotted #ff6600; color: #222; font-weight: 600; }
     .tooltip .tooltiptext {
         visibility: hidden; width: 250px; background-color: #262730; color: #fff; text-align: left;
@@ -96,7 +96,6 @@ with st.sidebar:
         perfil_venda = st.selectbox("Perfil", ["Executivo (Rua)", "CS (Base)"])
         modo_apresentacao = st.toggle("Modo Apresentação")
         desc = st.number_input("Desconto Mensal (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.1)
-        # --- BOTÃO RESTAURADO ---
         exibir_detalhe_desc = st.toggle("Exibir Desconto na Proposta", value=True)
         faturamento = st.selectbox("Faturamento", ["Imediato", "30 dias", "60 dias", "Após a implantação"])
         parcelas = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 5, 6], index=3)
@@ -169,11 +168,10 @@ if tela == "Gerador de Proposta":
 
     t_men_liq = t_men_bruto * (1 - (desc/100))
 
-    # --- EXIBIÇÃO DOS CARDS (VISUAL ORIGINAL) ---
+    # --- EXIBIÇÃO DOS CARDS ---
     st.markdown("<h2 style='text-align:center; font-weight:800; margin-top:30px;'>DETALHAMENTO DA PROPOSTA</h2>", unsafe_allow_html=True)
     res_cols = st.columns(3) if perfil_venda == "Executivo (Rua)" else st.columns([1, 2, 2, 1])[1:3]
 
-    # Card 1: Setup
     with res_cols[0]:
         html_i = "".join([f"<li><span><span class='tooltip'>{i}<span class='tooltiptext'>{d}</span></span></span><span class='item-detalhe'>{q}h x R$ {v:,.2f}</span></li>" for i, q, v, d in lista_i])
         st.markdown(f"""
@@ -186,10 +184,8 @@ if tela == "Gerador de Proposta":
             </div>
         """, unsafe_allow_html=True)
 
-    # Card 2: Mensalidade
     with res_cols[1]:
         html_m = "".join([f"<li><span><span class='tooltip'>{i}<span class='tooltiptext'>{d}</span></span></span><span class='item-detalhe'>{q} un x R$ {v:,.2f}</span></li>" for i, q, v, d in lista_m])
-        # Lógica de Desconto Restaurada
         desc_info = f'<div style="color: #2e7d32; font-weight: bold;">Desconto: {desc:,.2f}%</div>' if exibir_detalhe_desc and desc > 0 else '<div style="height:21px"></div>'
         
         st.markdown(f"""
@@ -203,11 +199,9 @@ if tela == "Gerador de Proposta":
             </div>
         """, unsafe_allow_html=True)
 
-    # Card 3: Despesas (Apenas Executivo)
     if perfil_venda == "Executivo (Rua)":
         with res_cols[2]:
             html_d = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} x R$ {v:,.2f}</span></li>" for i, q, v, d in lista_d])
-            # MENSAGEM RESTAURADA
             st.markdown(f"""
                 <div class="resumo-card" style="border-top-color: #1976d2;">
                     <span class="resumo-label">Despesas</span>
