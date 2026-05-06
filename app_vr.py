@@ -13,6 +13,7 @@ def limpar_valor(valor):
     if pd.isna(valor) or str(valor).strip() == "":
         return 0.0
     try:
+        # Limpeza para aceitar R$, pontos e vírgulas brasileiros
         v = str(valor).replace('R$', '').replace(' ', '').replace('.', '').replace(',', '.')
         return float(v)
     except:
@@ -21,30 +22,35 @@ def limpar_valor(valor):
 def sync_state(key_permanente, key_widget):
     st.session_state[key_permanente] = st.session_state[key_widget]
 
-# --- CARREGAMENTO DE DADOS ---
+# --- CARREGAMENTO E NORMALIZAÇÃO DE DADOS ---
 @st.cache_data(ttl=60)
 def carregar_dados_vendas():
     try:
         df = pd.read_csv(SHEET_URL)
         df.columns = [str(c).strip() for c in df.columns]
+        
+        # Compatível com Pandas novo (map em vez de applymap)
         df = df.map(lambda x: x.strip() if isinstance(x, str) else x)
         
+        # Localiza a coluna 'Tipo' ignorando caixa
         col_tipo = next((c for c in df.columns if c.lower() == 'tipo'), 'Tipo')
         df['Tipo_Busca'] = df[col_tipo].astype(str).str.lower()
         df['Valor'] = df['Valor'].apply(limpar_valor)
         
+        # Filtros flexíveis para os dicionários
         sistemas = df[df['Tipo_Busca'].str.startswith('sist')].set_index('Produto').to_dict('index')
         servicos = df[df['Tipo_Busca'].str.startswith('serv')].set_index('Produto').to_dict('index')
         despesas = df[df['Tipo_Busca'].str.startswith('desp')].set_index('Produto').to_dict('index')
+        full_db = df.set_index('Produto').to_dict('index')
         
-        return sistemas, servicos, despesas, df.set_index('Produto').to_dict('index')
+        return sistemas, servicos, despesas, full_db
     except Exception as e:
         st.error(f"Erro ao carregar dados: {e}")
         return {}, {}, {}, {}
 
 sistemas_db, servicos_db, despesas_db, full_db = carregar_dados_vendas()
 
-# 2. Estilização CSS
+# 2. Estilização CSS (Branding VR)
 st.markdown("""
     <style>
     .stApp { background: linear-gradient(135deg, #ffffff 0%, #fff5ed 100%); }
@@ -65,6 +71,7 @@ st.markdown("""
     .lista-itens { list-style-type: none; padding-left: 0; margin-top: 10px; flex-grow: 1; }
     .lista-itens li { padding: 10px 0; border-bottom: 1px dashed #e0e0e0; display: flex; justify-content: space-between; align-items: center; }
     
+    /* Tooltip */
     .tooltip { position: relative; display: inline-block; cursor: help; border-bottom: 1px dotted #ff6600; color: #222; font-weight: 600; }
     .tooltip .tooltiptext {
         visibility: hidden; width: 250px; background-color: #262730; color: #fff; text-align: left;
@@ -75,10 +82,11 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. INICIALIZAÇÃO DO ESTADO ---
+# --- 3. INICIALIZAÇÃO DO ESTADO PERMANENTE ---
 if 'sel_i' not in st.session_state: st.session_state.sel_i = []
 if 'sel_m' not in st.session_state: st.session_state.sel_m = []
 
+# Garante que todo produto da planilha tenha uma chave de valor no estado
 for nome in full_db.keys():
     if f"perm_val_{nome}" not in st.session_state:
         st.session_state[f"perm_val_{nome}"] = 120 if "Treinamento" in str(nome) else 1
@@ -100,17 +108,47 @@ with st.sidebar:
         faturamento_sistema = st.selectbox("Faturamento Sistema", ["Imediato", "30 dias", "60 dias", "Após a implantação"])
         parcelas_setup = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 5, 6], index=3)
         
-        # --- NOMENCLATURAS MELHORADAS PARA O VENDEDOR ---
-        regra_logistica = st.selectbox("Cobrança da Logística", [
+        regra_logistica = st.selectbox("Faturamento Logística", [
             "Faturamento na assinatura (Antecipado)",
             "Faturamento após entrega técnica (No término)"
         ])
 
-# --- 5. TELA GERADOR DE PROPOSTA ---
-if tela == "Gerador de Proposta":
+# --- 5. TELA DE CONSULTA DE PREÇO (RESTAURADA) ---
+if tela == "Consulta de Preço":
+    st.markdown('<h1 class="hero-title">ANÁLISE TÉCNICA</h1>', unsafe_allow_html=True)
+    st.markdown("---")
+    
+    if full_db:
+        col_busca, col_vazio = st.columns([2, 1])
+        with col_busca:
+            prod_sel = st.selectbox("Selecione o Produto para consultar detalhes:", list(full_db.keys()))
+        
+        d = full_db[prod_sel]
+        c1, c2 = st.columns(2)
+        
+        with c1:
+            st.markdown(f"""
+                <div class="resumo-card">
+                    <span class="resumo-label">Preço de Tabela</span>
+                    <div class="resumo-valor">R$ {d['Valor']:,.2f}</div>
+                    <div class="resumo-subtitulo">INFORMAÇÕES GERAIS</div>
+                    <p style="font-size:1.1rem; color:#444;"><b>Categoria:</b> {d['Tipo']}</p>
+                    <div class="section-header"><span class="section-title">DESCRIÇÃO TÉCNICA</span></div>
+                    <p style="font-size:1rem; color:#555; line-height:1.6;">{d['Descricao']}</p>
+                </div>
+            """, unsafe_allow_html=True)
+        
+        with c2:
+            st.info("💡 **Dica de Venda:** Use a descrição técnica ao lado para embasar o valor do investimento durante a apresentação.")
+    else:
+        st.warning("Carregando base de dados do Google Sheets...")
+
+# --- 6. TELA GERADOR DE PROPOSTA ---
+else:
     if not modo_apresentacao:
         st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
         st.markdown("---")
+        
         col_i, col_m, col_d = st.columns(3) if perfil_venda == "Executivo (Rua)" else (*st.columns(2), None)
         
         with col_i:
@@ -147,7 +185,7 @@ if tela == "Gerador de Proposta":
                                     key=f"tmp_val_{i}", 
                                     on_change=sync_state, args=(f"perm_val_{i}", f"tmp_val_{i}"))
 
-    # --- CÁLCULOS ---
+    # --- CÁLCULOS FINAIS ---
     t_imp, t_men_bruto, t_desp = 0.0, 0.0, 0.0
     lista_i, lista_m, lista_d = [], [], []
 
@@ -156,14 +194,14 @@ if tela == "Gerador de Proposta":
             q = st.session_state[f"perm_val_{i}"]
             v = servicos_db[i]["Valor"]
             t_imp += q * v
-            lista_i.append((i, q, v, servicos_db[i].get("Descricao", "")))
+            lista_i.append((i, q, v, servicos_db[i].get("Descricao", "Sem descrição")))
 
     for i in st.session_state.sel_m:
         if i in sistemas_db:
             q = st.session_state[f"perm_val_{i}"]
             v = sistemas_db[i]["Valor"]
             t_men_bruto += q * v
-            lista_m.append((i, q, v, sistemas_db[i].get("Descricao", "")))
+            lista_m.append((i, q, v, sistemas_db[i].get("Descricao", "Sem descrição")))
 
     for i in despesas_db.keys():
         q = st.session_state[f"perm_val_{i}"]
@@ -178,7 +216,6 @@ if tela == "Gerador de Proposta":
     st.markdown("<h2 style='text-align:center; font-weight:800; margin-top:30px;'>DETALHAMENTO DA PROPOSTA</h2>", unsafe_allow_html=True)
     res_cols = st.columns(3) if perfil_venda == "Executivo (Rua)" else st.columns([1, 2, 2, 1])[1:3]
 
-    # Card 1: Setup
     with res_cols[0]:
         html_i = "".join([f"<li><span><span class='tooltip'>{i}<span class='tooltiptext'>{d}</span></span></span><span class='item-detalhe'>{q}h x R$ {v:,.2f}</span></li>" for i, q, v, d in lista_i])
         st.markdown(f"""
@@ -191,11 +228,9 @@ if tela == "Gerador de Proposta":
             </div>
         """, unsafe_allow_html=True)
 
-    # Card 2: Mensalidade
     with res_cols[1]:
         html_m = "".join([f"<li><span><span class='tooltip'>{i}<span class='tooltiptext'>{d}</span></span></span><span class='item-detalhe'>{q} un x R$ {v:,.2f}</span></li>" for i, q, v, d in lista_m])
         desc_info = f'<div style="color: #2e7d32; font-weight: bold;">Desconto: {desc:,.2f}%</div>' if exibir_detalhe_desc and desc > 0 else '<div style="height:21px"></div>'
-        
         st.markdown(f"""
             <div class="resumo-card" style="border-top-color: #2e7d32;">
                 <span class="resumo-label">Mensalidade</span>
@@ -207,14 +242,10 @@ if tela == "Gerador de Proposta":
             </div>
         """, unsafe_allow_html=True)
 
-    # Card 3: Despesas (O ÚNICO COM LINGUAGEM REFINADA PARA O CLIENTE)
     if perfil_venda == "Executivo (Rua)":
         with res_cols[2]:
             html_d = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} x R$ {v:,.2f}</span></li>" for i, q, v, d in lista_d])
-            
-            # --- TRADUÇÃO PARA LÍNGUA DO CLIENTE ---
             msg_cliente = "Faturamento na assinatura do contrato" if "assinatura" in regra_logistica else "Faturamento após a entrega técnica"
-            
             st.markdown(f"""
                 <div class="resumo-card" style="border-top-color: #1976d2;">
                     <span class="resumo-label">Despesas de Viagem e Logística</span>
@@ -224,7 +255,3 @@ if tela == "Gerador de Proposta":
                     <ul class="lista-itens">{html_d if html_d else "<li>Sem despesas previstas</li>"}</ul>
                 </div>
             """, unsafe_allow_html=True)
-
-else:
-    st.markdown('<h1 class="hero-title">ANÁLISE TÉCNICA</h1>', unsafe_allow_html=True)
-    st.info("Utilize o menu lateral para voltar ao Gerador de Proposta.")
