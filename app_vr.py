@@ -83,12 +83,30 @@ for nome in full_db.keys():
         st.session_state[f"perm_val_{nome}"] = 0
 
 def limpar_tudo():
+    # 1. Reseta a memória lógica
     for k, v in init_state.items():
         st.session_state[k] = v
-    # Resetar o gatilho visual do combo box
-    if 'tmp_combo' in st.session_state:
-        st.session_state.tmp_combo = "Montar Manualmente"
         
+    # 2. Reseta a memória visual dos componentes
+    if 'tmp_combo' in st.session_state: st.session_state.tmp_combo = "Montar Manualmente"
+    if 'tmp_pdv_conv' in st.session_state: st.session_state.tmp_pdv_conv = 0
+    if 'tmp_pdv_touch' in st.session_state: st.session_state.tmp_pdv_touch = 0
+    if 'tmp_pdv_self' in st.session_state: st.session_state.tmp_pdv_self = 0
+    if 'tmp_tef' in st.session_state: st.session_state.tmp_tef = "Não utiliza"
+    if 'tmp_semanas' in st.session_state: st.session_state.tmp_semanas = 0
+    if 'tmp_migracao' in st.session_state: st.session_state.tmp_migracao = False
+    if 'tmp_escopo' in st.session_state: st.session_state.tmp_escopo = False
+    if 'tmp_mobile' in st.session_state: st.session_state.tmp_mobile = 0
+    
+    toggles = [
+        'tmp_erp_pro', 'tmp_xml', 'tmp_connect', 'tmp_backup', 'tmp_cartaz', 
+        'tmp_ecommerce', 'tmp_controller', 'tmp_masterfisco', 'tmp_app'
+    ]
+    for t in toggles:
+        if t in st.session_state:
+            st.session_state[t] = False
+            
+    # 3. Limpa as seleções de produtos na Tela de Venda
     st.session_state.sel_i = []
     st.session_state.sel_m = []
     st.session_state.sel_d = []
@@ -206,7 +224,6 @@ if tela == "Gerador de Proposta":
         
         # VISUAL DO MAPEAMENTO
         if mapeamento_ativo:
-            # Correção visual: A caixa fecha logo após o título
             st.markdown('<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">🛒 Mapeamento da Operação</h3></div>', unsafe_allow_html=True)
             
             st.selectbox(
@@ -232,7 +249,6 @@ if tela == "Gerador de Proposta":
                 st.markdown("**Sistemas Extras**")
                 st.number_input("Licenças VR Mobile", min_value=0, key="tmp_mobile", value=st.session_state.m_mobile, on_change=sync_state, args=("m_mobile", "tmp_mobile"))
                 
-                # Divisão em subcolunas para ficar compacto
                 sc1, sc2, sc3 = st.columns(3)
                 with sc1:
                     st.toggle("VR ERP PRO", key="tmp_erp_pro", value=st.session_state.m_erp_pro, on_change=sync_state, args=("m_erp_pro", "tmp_erp_pro"))
