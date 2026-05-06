@@ -135,4 +135,52 @@ if tela == "Gerador de Proposta":
                 st.number_input("PDV Convencional", min_value=0, key="tmp_pdv_conv", value=st.session_state.m_pdv_conv, on_change=sync_state, args=("m_pdv_conv", "tmp_pdv_conv"))
                 st.number_input("PDV Touchscreen", min_value=0, key="tmp_pdv_touch", value=st.session_state.m_pdv_touch, on_change=sync_state, args=("m_pdv_touch", "tmp_pdv_touch"))
             with c2:
-                st.number_input("PDV Selfcheckout", min_value=0, key
+                st.number_input("PDV Selfcheckout", min_value=0, key="tmp_pdv_self", value=st.session_state.m_pdv_self, on_change=sync_state, args=("m_pdv_self", "tmp_pdv_self"))
+                st.selectbox("Solução de TEF", ["Não utiliza", "SiTef Express", "VR TEF"], key="tmp_tef", index=["Não utiliza", "SiTef Express", "VR TEF"].index(st.session_state.m_tef), on_change=sync_state, args=("m_tef", "tmp_tef"))
+            with c3:
+                st.number_input("Semanas de Implantação", min_value=0, key="tmp_semanas", value=st.session_state.m_semanas, on_change=sync_state, args=("m_semanas", "tmp_semanas"))
+                # MUDANÇA 3: Botões Aplicar e Limpar juntos
+                bc1, bc2 = st.columns(2)
+                with bc1: st.button("✨ Aplicar", on_click=aplicar_mapeamento, use_container_width=True)
+                with bc2: st.button("🗑️ Limpar", on_click=limpar_tudo, use_container_width=True)
+            st.markdown("---")
+
+        col_i, col_m, col_d = st.columns(3) if perfil_venda == "Executivo (Rua)" else (*st.columns(2), None)
+        with col_i:
+            st.markdown('<div class="section-header"><span class="section-title">IMPLANTAÇÃO</span></div>', unsafe_allow_html=True)
+            st.session_state.sel_i = st.multiselect("Serviços", list(servicos_db.keys()), default=[s for s in st.session_state.sel_i if s in servicos_db])
+            for i in st.session_state.sel_i:
+                st.number_input(f"{i} (h)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_i_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_i_{i}"))
+        with col_m:
+            st.markdown('<div class="section-header"><span class="section-title">MENSALIDADE</span></div>', unsafe_allow_html=True)
+            st.session_state.sel_m = st.multiselect("Sistemas", list(sistemas_db.keys()), default=[s for s in st.session_state.sel_m if s in sistemas_db])
+            for i in st.session_state.sel_m:
+                st.number_input(f"{i} (un)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_m_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_m_{i}"))
+        if col_d:
+            with col_d:
+                st.markdown('<div class="section-header"><span class="section-title">LOGÍSTICA</span></div>', unsafe_allow_html=True)
+                for i in despesas_db.keys():
+                    st.number_input(f"{i} (un)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_d_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_d_{i}"))
+
+    # CÁLCULOS
+    t_imp = sum(st.session_state[f"perm_val_{i}"] * servicos_db.get(i, {"Valor": 0})["Valor"] for i in st.session_state.sel_i)
+    t_men_bruto = sum(st.session_state[f"perm_val_{i}"] * sistemas_db.get(i, {"Valor": 0})["Valor"] for i in st.session_state.sel_m)
+    t_desp = sum(st.session_state[f"perm_val_{i}"] * despesas_db.get(i, {"Valor": 0})["Valor"] for i in despesas_db.keys())
+    t_men_liq = t_men_bruto * (1 - (desc/100))
+
+    st.markdown("<h2 style='text-align:center; font-weight:800; margin-top:30px;'>RESUMO DO INVESTIMENTO</h2>", unsafe_allow_html=True)
+    res_cols = st.columns(3) if perfil_venda == "Executivo (Rua)" else st.columns([1, 2, 2, 1])[1:3]
+
+    with res_cols[0]:
+        html_i = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{st.session_state[f'perm_val_{i}']}h x R$ {servicos_db.get(i, {'Valor':0})['Valor']:,.2f}</span></li>" for i in st.session_state.sel_i if i in servicos_db])
+        st.markdown(f'<div class="resumo-card"><span class="resumo-label">Implantação</span><div class="resumo-valor">R$ {t_imp:,.2f}</div><div style="font-weight:bold;">{parcelas_setup}x de R$ {t_imp/parcelas_setup:,.2f}</div><div class="resumo-subtitulo">DETALHAMENTO</div><ul class="lista-itens">{html_i if html_i else "<li>Nenhum item</li>"}</ul></div>', unsafe_allow_html=True)
+
+    with res_cols[1]:
+        html_m = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{st.session_state[f'perm_val_{i}']} un x R$ {sistemas_db.get(i, {'Valor':0})['Valor']:,.2f}</span></li>" for i in st.session_state.sel_m if i in sistemas_db])
+        desc_txt = f'<div style="color: #2e7d32; font-weight: bold;">Desconto: {desc:,.2f}%</div>' if exibir_detalhe_desc and desc > 0 else '<div style="height:21px"></div>'
+        st.markdown(f'<div class="resumo-card" style="border-top-color: #2e7d32;"><span class="resumo-label">Mensalidade</span><div class="resumo-valor" style="color: #2e7d32;">R$ {t_men_liq:,.2f}</div>{desc_txt}<div style="font-weight:bold; font-size: 0.9rem; margin-top:5px;">Início: {faturamento_sistema}</div><div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{html_m if html_m else "<li>Nenhum item</li>"}</ul></div>', unsafe_allow_html=True)
+
+    if perfil_venda == "Executivo (Rua)":
+        with res_cols[2]:
+            html_d = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{st.session_state[f'perm_val_{i}']} un x R$ {despesas_db.get(i, {'Valor':0})['Valor']:,.2f}</span></li>" for i in despesas_db.keys() if st.session_state[f"perm_val_{i}"] > 0])
+            st.markdown(f'<div class="resumo-card" style="border-top-color: #1976d2;"><span class="resumo-label">Logística</span><div class="resumo-valor" style="color: #1976d2;">R$ {t_desp:,.2f}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">{regra_logistica}</div><div class="resumo-subtitulo">DETALHAMENTO</div><ul class="lista-itens">{html_d if html_d else "<li>Sem despesas</li>"}</ul></div>', unsafe_allow_html=True)
