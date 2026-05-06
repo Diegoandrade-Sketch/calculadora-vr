@@ -262,4 +262,56 @@ if tela == "Gerador de Proposta":
         # PARTE 2: TELA DE VENDA
         col_i, col_m, col_d = st.columns(3) if perfil_venda == "Executivo (Rua)" else (*st.columns(2), None)
         with col_i:
-            st.markdown('<div class="section-header"><span class="section-title">IMPLANTAÇÃO E
+            st.markdown('<div class="section-header"><span class="section-title">IMPLANTAÇÃO E SERVIÇOS</span></div>', unsafe_allow_html=True)
+            st.session_state.sel_i = st.multiselect("Serviços", list(servicos_db.keys()), default=[s for s in st.session_state.sel_i if s in servicos_db])
+            for i in st.session_state.sel_i:
+                st.number_input(f"{i} (R$ {servicos_db[i]['Valor']:,.2f}/h)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_i_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_i_{i}"))
+        with col_m:
+            st.markdown('<div class="section-header"><span class="section-title">MENSALIDADES SISTEMAS</span></div>', unsafe_allow_html=True)
+            st.session_state.sel_m = st.multiselect("Sistemas", list(sistemas_db.keys()), default=[s for s in st.session_state.sel_m if s in sistemas_db])
+            for i in st.session_state.sel_m:
+                st.number_input(f"{i} (R$ {sistemas_db[i]['Valor']:,.2f}/un)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_m_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_m_{i}"))
+        if col_d:
+            with col_d:
+                st.markdown('<div class="section-header"><span class="section-title">DESPESAS LOGÍSTICAS</span></div>', unsafe_allow_html=True)
+                st.session_state.sel_d = st.multiselect("Despesas", list(despesas_db.keys()), default=[s for s in st.session_state.sel_d if s in despesas_db])
+                for i in st.session_state.sel_d:
+                    st.number_input(f"{i} (R$ {despesas_db[i]['Valor']:,.2f}/un)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_d_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_d_{i}"))
+
+    # PARTE 3: CARDS DE RESUMO
+    t_imp = sum(st.session_state[f"perm_val_{i}"] * servicos_db[i]["Valor"] for i in st.session_state.sel_i if i in servicos_db)
+    t_men_bruto = sum(st.session_state[f"perm_val_{i}"] * sistemas_db[i]["Valor"] for i in st.session_state.sel_m if i in sistemas_db)
+    t_desp = sum(st.session_state[f"perm_val_{i}"] * despesas_db[i]["Valor"] for i in st.session_state.sel_d if i in despesas_db)
+    t_men_liq = t_men_bruto * (1 - (desc/100))
+
+    st.markdown("<h2 style='text-align:center; font-weight:800; margin-top:30px;'>RESUMO DO INVESTIMENTO</h2>", unsafe_allow_html=True)
+    res_cols = st.columns(3) if perfil_venda == "Executivo (Rua)" else st.columns([1, 2, 2, 1])[1:3]
+
+    with res_cols[0]:
+        html_i = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{st.session_state[f'perm_val_{i}']}h x R$ {servicos_db[i]['Valor']:,.2f}</span></li>" for i in st.session_state.sel_i if i in servicos_db and st.session_state[f"perm_val_{i}"] > 0])
+        st.markdown(f'<div class="resumo-card"><span class="resumo-label">Investimento Implantação</span><div class="resumo-valor">R$ {t_imp:,.2f}</div><div style="font-weight:bold;">{parcelas_setup}x de R$ {t_imp/parcelas_setup:,.2f}</div><div class="resumo-subtitulo">DETALHAMENTO SETUP</div><ul class="lista-itens">{html_i if html_i else "<li>Nenhum item com valor adicionado</li>"}</ul></div>', unsafe_allow_html=True)
+
+    with res_cols[1]:
+        html_m = ""
+        for i in st.session_state.sel_m:
+            if i in sistemas_db and st.session_state[f"perm_val_{i}"] > 0:
+                html_m += f"<li><span>{i}</span><span class='item-detalhe'>{st.session_state[f'perm_val_{i}']} un x R$ {sistemas_db[i]['Valor']:,.2f}</span></li>"
+                # REGRA DO BUNDLE VR ERP PRO (ILUSTRATIVO)
+                if i == "VR ERP PRO":
+                    for extra in ["VR Promo", "VR Carteira Digital", "VR Analytics"]:
+                        html_m += f"<li class='item-incluso'><span>└ {extra}</span><span>Incluso</span></li>"
+        
+        desc_txt = f'<div style="color: #2e7d32; font-weight: bold;">Desconto: {desc:,.2f}%</div>' if exibir_detalhe_desc and desc > 0 else '<div style="height:21px"></div>'
+        st.markdown(f'<div class="resumo-card" style="border-top-color: #2e7d32;"><span class="resumo-label">Manutenção Mensal</span><div class="resumo-valor" style="color: #2e7d32;">R$ {t_men_liq:,.2f}</div>{desc_txt}<div style="font-weight:bold; font-size: 0.9rem; margin-top:5px;">Início: {faturamento_sistema}</div><div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{html_m if html_m else "<li>Nenhum item com valor adicionado</li>"}</ul></div>', unsafe_allow_html=True)
+
+    if perfil_venda == "Executivo (Rua)":
+        with res_cols[2]:
+            html_d = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{st.session_state[f'perm_val_{i}']} un x R$ {despesas_db[i]['Valor']:,.2f}</span></li>" for i in st.session_state.sel_d if i in despesas_db and st.session_state[f"perm_val_{i}"] > 0])
+            st.markdown(f'<div class="resumo-card" style="border-top-color: #1976d2;"><span class="resumo-label">Despesas de Viagem e Logística</span><div class="resumo-valor" style="color: #1976d2;">R$ {t_desp:,.2f}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">{regra_logistica}</div><div class="resumo-subtitulo">DETALHAMENTO DE LOGÍSTICA</div><ul class="lista-itens">{html_d if html_d else "<li>Sem despesas previstas</li>"}</ul></div>', unsafe_allow_html=True)
+
+elif tela == "Consulta de Preço":
+    st.markdown('<h1 class="hero-title">ANÁLISE TÉCNICA</h1>', unsafe_allow_html=True)
+    if full_db:
+        prod_sel = st.selectbox("Selecione o Produto:", list(full_db.keys()))
+        d = full_db[prod_sel]
+        st.markdown(f'<div class="resumo-card" style="min-height:auto;"><span class="resumo-label">Valor</span><div class="resumo-valor">R$ {d["Valor"]:,.2f}</div><p><b>Tipo:</b> {d["Tipo"]}</p><hr><p>{d["Descricao"]}</p></div>', unsafe_allow_html=True)
