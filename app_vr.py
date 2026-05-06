@@ -75,9 +75,11 @@ st.markdown("""
 # --- 3. ESTADO ---
 if 'sel_i' not in st.session_state: st.session_state.sel_i = []
 if 'sel_m' not in st.session_state: st.session_state.sel_m = []
+if 'semanas_mapped' not in st.session_state: st.session_state.semanas_mapped = 0
+
 for nome in full_db.keys():
     if f"perm_val_{nome}" not in st.session_state:
-        st.session_state[f"perm_val_{nome}"] = 120 if "Treinamento" in str(nome) else 1
+        st.session_state[f"perm_val_{nome}"] = 0 # Iniciamos zerado para o mapeamento dominar
 
 # --- 4. MENU LATERAL ---
 with st.sidebar:
@@ -98,25 +100,14 @@ with st.sidebar:
         parcelas_setup = st.selectbox("Parcelamento do Setup", [1, 2, 3, 4, 5, 6], index=3)
         regra_logistica = st.selectbox("Faturamento Logística", ["Faturamento na assinatura do contrato", "Faturamento ao término da Implantação"])
 
-# --- 5. TELA DE CONSULTA DE PREÇO (ANÁLISE TÉCNICA) ---
-if tela == "Consulta de Preço":
-    st.markdown('<h1 class="hero-title">ANÁLISE TÉCNICA</h1>', unsafe_allow_html=True)
-    if full_db:
-        prod_sel = st.selectbox("Selecione o Produto para consultar detalhes:", list(full_db.keys()))
-        d = full_db[prod_sel]
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown(f'<div class="resumo-card"><span class="resumo-label">Valor Unitário</span><div class="resumo-valor">R$ {d["Valor"]:,.2f}</div><div class="resumo-subtitulo">FICHA DO PRODUTO</div><p><b>Tipo:</b> {d["Tipo"]}</p><div class="section-header"><span class="section-title">DESCRIÇÃO TÉCNICA</span></div><p style="color:#555; line-height:1.6;">{d["Descricao"]}</p></div>', unsafe_allow_html=True)
-        with c2: st.info("💡 Utilize as informações técnicas para embasar o valor da solução.")
-
-# --- 6. TELA GERADOR DE PROPOSTA ---
-else:
+# --- 5. TELA GERADOR DE PROPOSTA ---
+if tela == "Gerador de Proposta":
     if not modo_apresentacao:
         st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
         st.markdown("---")
 
         if mapeamento_ativo:
-            st.markdown('<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">🛒 Mapeamento da Operação</h3><p style="font-size:0.9rem; color:#666;">Responda as perguntas abaixo para sugestões automáticas.</p></div>', unsafe_allow_html=True)
+            st.markdown('<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">🛒 Mapeamento da Operação</h3></div>', unsafe_allow_html=True)
             c1, c2, c3 = st.columns(3)
             with c1:
                 qtd_pdvs = st.number_input("Quantos PDVs (Caixas)?", min_value=0, step=1)
@@ -125,7 +116,19 @@ else:
                 usa_balanca = st.toggle("Balanças no Checkout?")
                 usa_etiqueta = st.toggle("Etiquetas Eletrônicas?")
             with c3:
-                nivel_treinamento = st.select_slider("Intensidade do Treinamento", options=["Básico", "Padrão", "Avançado"])
+                # NOVA LÓGICA DE SEMANAS
+                semanas = st.number_input("Semanas de Implantação?", min_value=0, step=1, key="input_semanas")
+                
+                # Aplicação da regra: 1 semana = 44h
+                # Busca o item de treinamento na planilha
+                item_treinamento = next((k for k in servicos_db.keys() if "Treinamento" in k or "Implantação" in k), None)
+                
+                if semanas > 0 and item_treinamento:
+                    horas_calculadas = semanas * 44
+                    st.session_state[f"perm_val_{item_treinamento}"] = horas_calculadas
+                    if item_treinamento not in st.session_state.sel_i:
+                        st.session_state.sel_i.append(item_treinamento)
+                
                 migracao_dados = st.checkbox("Precisa de Migração?")
             st.markdown("---")
 
@@ -134,7 +137,8 @@ else:
         with col_i:
             st.markdown('<div class="section-header"><span class="section-title">IMPLANTAÇÃO</span></div>', unsafe_allow_html=True)
             opcoes_i = list(servicos_db.keys())
-            st.session_state.sel_i = st.multiselect("Serviços", opcoes_i, default=[s for s in st.session_state.sel_i if s in opcoes_i])
+            # Garantimos que a seleção manual reflete o que o mapeamento fez
+            st.session_state.sel_i = st.multiselect("Serviços", opcoes_i, key="ms_i", default=[s for s in st.session_state.sel_i if s in opcoes_i])
             for i in st.session_state.sel_i:
                 vu = servicos_db[i]["Valor"]
                 st.number_input(f"Horas: {i} (R$ {vu:,.2f}/h)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_val_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_val_{i}"))
@@ -142,7 +146,7 @@ else:
         with col_m:
             st.markdown('<div class="section-header"><span class="section-title">MENSALIDADES</span></div>', unsafe_allow_html=True)
             opcoes_m = list(sistemas_db.keys())
-            st.session_state.sel_m = st.multiselect("Sistemas", opcoes_m, default=[s for s in st.session_state.sel_m if s in opcoes_m])
+            st.session_state.sel_m = st.multiselect("Sistemas", opcoes_m, key="ms_m", default=[s for s in st.session_state.sel_m if s in opcoes_m])
             for i in st.session_state.sel_m:
                 vu = sistemas_db[i]["Valor"]
                 st.number_input(f"Qtd: {i} (R$ {vu:,.2f}/un)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_val_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_val_{i}"))
@@ -154,7 +158,7 @@ else:
                     vu = despesas_db[i]["Valor"]
                     st.number_input(f"{i} (R$ {vu:,.2f}/un)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_val_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_val_{i}"))
 
-    # --- CÁLCULOS ---
+    # --- CÁLCULOS E EXIBIÇÃO (MANTIDOS) ---
     t_imp, t_men_bruto, t_desp = 0.0, 0.0, 0.0
     lista_i, lista_m, lista_d = [], [], []
 
@@ -177,7 +181,6 @@ else:
 
     t_men_liq = t_men_bruto * (1 - (desc/100))
 
-    # --- EXIBIÇÃO DOS CARDS ---
     st.markdown("<h2 style='text-align:center; font-weight:800; margin-top:30px;'>RESUMO DO INVESTIMENTO</h2>", unsafe_allow_html=True)
     res_cols = st.columns(3) if perfil_venda == "Executivo (Rua)" else st.columns([1, 2, 2, 1])[1:3]
 
@@ -194,3 +197,14 @@ else:
         with res_cols[2]:
             html_d = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} un x R$ {v:,.2f}</span></li>" for i, q, v, d in lista_d])
             st.markdown(f'<div class="resumo-card" style="border-top-color: #1976d2;"><span class="resumo-label">Despesas de Viagem e Logística</span><div class="resumo-valor" style="color: #1976d2;">R$ {t_desp:,.2f}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">{regra_logistica}</div><div class="resumo-subtitulo">DETALHAMENTO DE LOGÍSTICA</div><ul class="lista-itens">{html_d if html_d else "<li>Sem despesas previstas</li>"}</ul></div>', unsafe_allow_html=True)
+
+elif tela == "Consulta de Preço":
+    # (Tela de Consulta de Preço mantida igual...)
+    st.markdown('<h1 class="hero-title">ANÁLISE TÉCNICA</h1>', unsafe_allow_html=True)
+    if full_db:
+        prod_sel = st.selectbox("Selecione o Produto:", list(full_db.keys()))
+        d = full_db[prod_sel]
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown(f'<div class="resumo-card"><span class="resumo-label">Valor Unitário</span><div class="resumo-valor">R$ {d["Valor"]:,.2f}</div><div class="resumo-subtitulo">FICHA DO PRODUTO</div><p><b>Tipo:</b> {d["Tipo"]}</p><div class="section-header"><span class="section-title">DESCRIÇÃO TÉCNICA</span></div><p style="color:#555; line-height:1.6;">{d["Descricao"]}</p></div>', unsafe_allow_html=True)
+        with c2: st.info("💡 Utilize as informações técnicas para embasar o valor da solução.")
