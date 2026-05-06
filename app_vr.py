@@ -23,12 +23,19 @@ def sync_state(key_permanente, key_widget):
 @st.cache_data(ttl=60)
 def carregar_dados_vendas():
     try:
-        df = pd.read_csv(SHEET_URL)
+        # Priorizamos o arquivo Excel enviado para garantir os nomes exatos
+        if os.path.exists('tabela_preco_chat.xlsx'):
+            df = pd.read_excel('tabela_preco_chat.xlsx')
+        else:
+            df = pd.read_csv(SHEET_URL)
+            
         df.columns = [str(c).strip() for c in df.columns]
         df = df.map(lambda x: x.strip() if isinstance(x, str) else x)
+        
         col_tipo = next((c for c in df.columns if c.lower() == 'tipo'), 'Tipo')
         df['Tipo_Busca'] = df[col_tipo].astype(str).str.lower()
         df['Valor'] = df['Valor'].apply(limpar_valor)
+        
         sist = df[df['Tipo_Busca'].str.startswith('sist')].set_index('Produto').to_dict('index')
         serv = df[df['Tipo_Busca'].str.startswith('serv')].set_index('Produto').to_dict('index')
         desp = df[df['Tipo_Busca'].str.startswith('desp')].set_index('Produto').to_dict('index')
@@ -54,16 +61,11 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. INICIALIZAÇÃO DO ESTADO PERSISTENTE ---
+# --- 3. ESTADO PERSISTENTE ---
 if 'sel_i' not in st.session_state: st.session_state.sel_i = []
 if 'sel_m' not in st.session_state: st.session_state.sel_m = []
-
-# Memória para o Mapeamento (para não sumir ao desmarcar o botão)
-if 'map_pdvs' not in st.session_state: st.session_state.map_pdvs = 0
 if 'map_semanas' not in st.session_state: st.session_state.map_semanas = 0
-if 'map_tef' not in st.session_state: st.session_state.map_tef = "Não utiliza"
 
-# Inicializa valores dos produtos
 for nome in full_db.keys():
     if f"perm_val_{nome}" not in st.session_state:
         st.session_state[f"perm_val_{nome}"] = 0
@@ -76,7 +78,7 @@ with st.sidebar:
 
     if tela == "Gerador de Proposta":
         st.markdown('**Ferramentas**')
-        mapeamento_ativo = st.toggle("Mapeamento da Loja", value=False)
+        mapeamento_ativo = st.toggle("Mapeamento da Loja")
         modo_apresentacao = st.toggle("Modo Apresentação")
         
         st.markdown('**Configurações**')
@@ -87,33 +89,42 @@ with st.sidebar:
         parcelas_setup = st.selectbox("Parcelamento do Setup", [1, 2, 3, 4, 5, 6], index=3)
         regra_logistica = st.selectbox("Faturamento Logística", ["Faturamento na assinatura do contrato", "Faturamento ao término da Implantação"])
 
-# --- 5. TELA PRINCIPAL ---
+# --- 5. TELA GERADOR DE PROPOSTA ---
 if tela == "Gerador de Proposta":
     if not modo_apresentacao:
         st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
         
-        # --- BLOCO DE MAPEAMENTO ---
         if mapeamento_ativo:
             st.markdown('<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">🛒 Mapeamento da Operação</h3></div>', unsafe_allow_html=True)
             c1, c2, c3 = st.columns(3)
             with c1:
-                st.number_input("Quantos PDVs?", min_value=0, step=1, key="tmp_map_pdvs", value=st.session_state.map_pdvs, on_change=sync_state, args=("map_pdvs", "tmp_map_pdvs"))
-                st.selectbox("Solução de TEF?", ["Não utiliza", "SiTef Express", "SiTef Dedicado"], key="tmp_map_tef", index=["Não utiliza", "SiTef Express", "SiTef Dedicado"].index(st.session_state.map_tef), on_change=sync_state, args=("map_tef", "tmp_map_tef"))
+                st.number_input("Quantos PDVs?", min_value=0, step=1, key="map_pdvs")
             with c2:
                 st.toggle("Balanças no Checkout?", key="map_balanca")
-                st.toggle("Etiquetas Eletrônicas?", key="map_etiqueta")
             with c3:
-                # Semanas de Implantação com Memória
-                st.number_input("Semanas de Implantação?", min_value=0, step=1, key="tmp_map_semanas", value=st.session_state.map_semanas, on_change=sync_state, args=("map_semanas", "tmp_map_semanas"))
+                # PERGUNTA CHAVE: SEMANAS
+                semanas = st.number_input("Semanas de Implantação?", min_value=0, step=1, key="tmp_map_semanas", 
+                                          value=st.session_state.map_semanas, 
+                                          on_change=sync_state, args=("map_semanas", "tmp_map_semanas"))
                 
-                # Lógica de aplicação automática
-                item_treinamento = next((k for k in servicos_db.keys() if "treinamento" in k.lower() or "implantação" in k.lower()), None)
-                if st.session_state.map_semanas > 0 and item_treinamento:
-                    st.session_state[f"perm_val_{item_treinamento}"] = st.session_state.map_semanas * 44
-                    if item_treinamento not in st.session_state.sel_i:
-                        st.session_state.sel_i.append(item_treinamento)
+                # --- APLICAÇÃO DAS REGRAS AUTOMÁTICAS ---
+                if semanas > 0:
+                    # 1. Implantação (44h/semana)
+                    it = "Implantação e Treinamento"
+                    if it in servicos_db:
+                        st.session_state[f"perm_val_{it}"] = semanas * 44
+                        if it not in st.session_state.sel_i: st.session_state.sel_i.append(it)
+                    
+                    # 2. Alimentação (10 un/semana)
+                    ali = "Alimentacao"
+                    if ali in despesas_db:
+                        st.session_state[f"perm_val_{ali}"] = semanas * 10
+                    
+                    # 3. Hospedagem (4 un/semana)
+                    hos = "Hospedagem"
+                    if hos in despesas_db:
+                        st.session_state[f"perm_val_{hos}"] = semanas * 4
                 
-                st.checkbox("Precisa de Migração?", key="map_migracao")
             st.markdown("---")
 
         # --- SELEÇÃO MANUAL ---
@@ -146,7 +157,7 @@ if tela == "Gerador de Proposta":
     t_desp = sum(st.session_state[f"perm_val_{i}"] * despesas_db[i]["Valor"] for i in despesas_db.keys())
     t_men_liq = t_men_bruto * (1 - (desc/100))
 
-    # --- EXIBIÇÃO ---
+    # --- RESUMO FINAL ---
     st.markdown("<h2 style='text-align:center; font-weight:800; margin-top:30px;'>RESUMO DO INVESTIMENTO</h2>", unsafe_allow_html=True)
     res_cols = st.columns(3) if perfil_venda == "Executivo (Rua)" else st.columns([1, 2, 2, 1])[1:3]
 
@@ -163,10 +174,3 @@ if tela == "Gerador de Proposta":
         with res_cols[2]:
             html_d = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{st.session_state[f'perm_val_{i}']} un x R$ {despesas_db[i]['Valor']:,.2f}</span></li>" for i in despesas_db.keys() if st.session_state[f"perm_val_{i}"] > 0])
             st.markdown(f'<div class="resumo-card" style="border-top-color: #1976d2;"><span class="resumo-label">Despesas de Viagem e Logística</span><div class="resumo-valor" style="color: #1976d2;">R$ {t_desp:,.2f}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">{regra_logistica}</div><div class="resumo-subtitulo">DETALHAMENTO DE LOGÍSTICA</div><ul class="lista-itens">{html_d if html_d else "<li>Sem despesas previstas</li>"}</ul></div>', unsafe_allow_html=True)
-
-elif tela == "Consulta de Preço":
-    st.markdown('<h1 class="hero-title">ANÁLISE TÉCNICA</h1>', unsafe_allow_html=True)
-    if full_db:
-        prod_sel = st.selectbox("Produto:", list(full_db.keys()))
-        d = full_db[prod_sel]
-        st.markdown(f'<div class="resumo-card" style="min-height:auto;"><span class="resumo-label">Valor</span><div class="resumo-valor">R$ {d["Valor"]:,.2f}</div><p><b>Tipo:</b> {d["Tipo"]}</p><hr><p>{d["Descricao"]}</p></div>', unsafe_allow_html=True)
