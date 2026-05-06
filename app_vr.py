@@ -24,20 +24,22 @@ def carregar_dados_vendas():
     try:
         if os.path.exists(EXCEL_FILE):
             df = pd.read_excel(EXCEL_FILE)
+            # Limpeza de espaços em branco nos nomes das colunas e dados
             df.columns = [str(c).strip() for c in df.columns]
-            df = df.map(lambda x: x.strip() if isinstance(x, str) else x)
+            df = df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
             
-            col_tipo = next((c for c in df.columns if c.lower() == 'tipo'), 'Tipo')
-            df['Tipo_Busca'] = df[col_tipo].astype(str).str.lower()
             df['Valor'] = df['Valor'].apply(limpar_valor)
             
-            sist = df[df['Tipo_Busca'].str.contains('sist', na=False)].set_index('Produto').to_dict('index')
-            serv = df[df['Tipo_Busca'].str.contains('serv', na=False)].set_index('Produto').to_dict('index')
-            desp = df[df['Tipo_Busca'].str.contains('desp', na=False)].set_index('Produto').to_dict('index')
+            # Filtros robustos para categorias
+            sist = df[df['Tipo'].str.contains('Sist', case=False, na=False)].set_index('Produto').to_dict('index')
+            serv = df[df['Tipo'].str.contains('Serv', case=False, na=False)].set_index('Produto').to_dict('index')
+            desp = df[df['Tipo'].str.contains('Desp', case=False, na=False)].set_index('Produto').to_dict('index')
             full = df.set_index('Produto').to_dict('index')
             return sist, serv, desp, full
         return {}, {}, {}, {}
-    except: return {}, {}, {}, {}
+    except Exception as e:
+        st.error(f"Erro ao carregar banco de dados: {e}")
+        return {}, {}, {}, {}
 
 sistemas_db, servicos_db, despesas_db, full_db = carregar_dados_vendas()
 
@@ -57,7 +59,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. ESTADO ---
+# --- 3. ESTADO GLOBAL ---
 if 'sel_i' not in st.session_state: st.session_state.sel_i = []
 if 'sel_m' not in st.session_state: st.session_state.sel_m = []
 
@@ -77,8 +79,9 @@ def limpar_tudo():
     for nome in full_db.keys():
         st.session_state[f"perm_val_{nome}"] = 0
 
-# --- 4. LÓGICA DE AUTOMATIZAÇÃO ---
+# --- 4. LÓGICA DE INTELIGÊNCIA ---
 def aplicar_mapeamento():
+    # 1. PDVs
     pdv_map = {"VR PDV Convencional": st.session_state.m_pdv_conv, "PDV Touchscreen": st.session_state.m_pdv_touch, "PDV Selfcheckout": st.session_state.m_pdv_self}
     for p, qtd in pdv_map.items():
         if p in sistemas_db:
@@ -86,45 +89,52 @@ def aplicar_mapeamento():
             if qtd > 0 and p not in st.session_state.sel_m: st.session_state.sel_m.append(p)
             elif qtd == 0 and p in st.session_state.sel_m: st.session_state.sel_m.remove(p)
 
-    total_pdvs = sum(pdv_map.values())
-    st.session_state.sel_m = [item for item in st.session_state.sel_m if "SiTef" not in item]
+    # 2. TEF Inteligente
+    total = sum(pdv_map.values())
+    st.session_state.sel_m = [i for i in st.session_state.sel_m if "SiTef" not in i]
     if st.session_state.m_tef == "SiTef Express":
-        tef_opcoes = ["SiTef Express até 3 PDVs", "SiTef Express até 6 PDVs", "SiTef Express até 8 PDVs", "SiTef Express acima de 8 PDVs"]
-        escolhido = tef_opcoes[0] if total_pdvs <= 3 else tef_opcoes[1] if total_pdvs <= 6 else tef_opcoes[2] if total_pdvs <= 8 else tef_opcoes[3]
-        if escolhido in sistemas_db:
-            st.session_state[f"perm_val_{escolhido}"] = 1
-            st.session_state.sel_m.append(escolhido)
+        tef_key = "SiTef Express até 3 PDVs" if total <= 3 else "SiTef Express até 6 PDVs" if total <= 6 else "SiTef Express até 8 PDVs" if total <= 8 else "SiTef Express a partir de 9 PDVs"
+        if tef_key in sistemas_db:
+            st.session_state[f"perm_val_{tef_key}"] = 1
+            st.session_state.sel_m.append(tef_key)
 
+    # 3. Semanas (Serviços + Logística)
     sem = st.session_state.m_semanas
     it = "Implantação e Treinamento"
     if it in servicos_db:
         st.session_state[f"perm_val_{it}"] = sem * 44
         if sem > 0 and it not in st.session_state.sel_i: st.session_state.sel_i.append(it)
         elif sem == 0 and it in st.session_state.sel_i: st.session_state.sel_i.remove(it)
-    
-    if "Alimentacao" in despesas_db: st.session_state[f"perm_val_Alimentacao"] = sem * 10
-    if "Hospedagem" in despesas_db: st.session_state[f"perm_val_Hospedagem"] = sem * 4
+
+    ali, hos = "Alimentacao", "Hospedagem"
+    if ali in despesas_db: st.session_state[f"perm_val_{ali}"] = sem * 10
+    if hos in despesas_db: st.session_state[f"perm_val_{hos}"] = sem * 4
+
+    # 4. Toggles Expansão
+    exp = {"E-Commerce": st.session_state.m_ecommerce, "M-Commerce": st.session_state.m_app, "VR Connect (Android/IOS)": st.session_state.m_connect}
+    for item, ativo in exp.items():
+        if item in sistemas_db:
+            st.session_state[f"perm_val_{item}"] = 1 if ativo else 0
+            if ativo and item not in st.session_state.sel_m: st.session_state.sel_m.append(item)
+            elif not ativo and item in st.session_state.sel_m: st.session_state.sel_m.remove(item)
 
 # --- 5. MENU LATERAL ---
 with st.sidebar:
     if os.path.exists("logo_vr.png"): st.image("logo_vr.png", width=180)
     tela = st.radio("Navegação:", ["Gerador de Proposta", "Consulta de Preço"])
     st.write("---")
-
     if tela == "Gerador de Proposta":
-        st.markdown('**Configurações de Venda**')
-        # MUDANÇA 1: Começa desativado
-        mapeamento_ativo = st.toggle("Mapeamento Inteligente", value=False)
+        st.markdown('**Configurações**')
+        mapeamento_ativo = st.toggle("Mapeamento Inteligente", value=True)
         modo_apresentacao = st.toggle("Modo Apresentação")
-        perfil_venda = st.selectbox("Perfil do Cliente", ["Executivo (Rua)", "CS (Base)"])
-        # MUDANÇA 2: Nome corrigido para Desconto
+        perfil_venda = st.selectbox("Perfil Cliente", ["Executivo (Rua)", "CS (Base)"])
         desc = st.number_input("Desconto (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.5)
         exibir_detalhe_desc = st.toggle("Exibir Desconto na Tela", value=True)
         faturamento_sistema = st.selectbox("Início Mensalidade", ["Na assinatura", "30 dias", "60 dias", "Após implantação"])
         parcelas_setup = st.selectbox("Parcelas Setup", [1, 2, 3, 4, 5, 6], index=3)
         regra_logistica = st.selectbox("Faturamento Logística", ["Faturamento na assinatura do contrato", "Faturamento ao término da Implantação"])
 
-# --- 6. TELA GERADOR ---
+# --- 6. TELA PRINCIPAL ---
 if tela == "Gerador de Proposta":
     if not modo_apresentacao:
         st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
@@ -138,8 +148,7 @@ if tela == "Gerador de Proposta":
                 st.number_input("PDV Selfcheckout", min_value=0, key="tmp_pdv_self", value=st.session_state.m_pdv_self, on_change=sync_state, args=("m_pdv_self", "tmp_pdv_self"))
                 st.selectbox("Solução de TEF", ["Não utiliza", "SiTef Express", "VR TEF"], key="tmp_tef", index=["Não utiliza", "SiTef Express", "VR TEF"].index(st.session_state.m_tef), on_change=sync_state, args=("m_tef", "tmp_tef"))
             with c3:
-                st.number_input("Semanas de Implantação", min_value=0, key="tmp_semanas", value=st.session_state.m_semanas, on_change=sync_state, args=("m_semanas", "tmp_semanas"))
-                # MUDANÇA 3: Botões Aplicar e Limpar juntos
+                st.number_input("Semanas Implantação", min_value=0, key="tmp_semanas", value=st.session_state.m_semanas, on_change=sync_state, args=("m_semanas", "tmp_semanas"))
                 bc1, bc2 = st.columns(2)
                 with bc1: st.button("✨ Aplicar", on_click=aplicar_mapeamento, use_container_width=True)
                 with bc2: st.button("🗑️ Limpar", on_click=limpar_tudo, use_container_width=True)
@@ -162,7 +171,7 @@ if tela == "Gerador de Proposta":
                 for i in despesas_db.keys():
                     st.number_input(f"{i} (un)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_d_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_d_{i}"))
 
-    # CÁLCULOS
+    # CÁLCULOS SEGUROS
     t_imp = sum(st.session_state[f"perm_val_{i}"] * servicos_db.get(i, {"Valor": 0})["Valor"] for i in st.session_state.sel_i)
     t_men_bruto = sum(st.session_state[f"perm_val_{i}"] * sistemas_db.get(i, {"Valor": 0})["Valor"] for i in st.session_state.sel_m)
     t_desp = sum(st.session_state[f"perm_val_{i}"] * despesas_db.get(i, {"Valor": 0})["Valor"] for i in despesas_db.keys())
