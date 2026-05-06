@@ -63,7 +63,7 @@ st.markdown("""
 # ESTADO GLOBAL DAS VARIÁVEIS
 if 'sel_i' not in st.session_state: st.session_state.sel_i = []
 if 'sel_m' not in st.session_state: st.session_state.sel_m = []
-if 'sel_d' not in st.session_state: st.session_state.sel_d = [] # Falha 3: Multiselect de Logística
+if 'sel_d' not in st.session_state: st.session_state.sel_d = []
 
 map_keys = ['m_pdv_conv', 'm_pdv_touch', 'm_pdv_self', 'm_tef', 'm_semanas', 'm_migracao', 'm_ecommerce', 'm_app', 'm_connect']
 for k in map_keys:
@@ -104,7 +104,6 @@ with st.sidebar:
 # PARTE 1: MAPEAMENTO DA OPERAÇÃO (O Assistente)
 # ==========================================
 def aplicar_mapeamento():
-    # Falha 1 Corrigida: Remover item se qtd for 0 ou desmarcado
     pdv_map = {"VR PDV Convencional": st.session_state.m_pdv_conv, "PDV Touchscreen": st.session_state.m_pdv_touch, "PDV Selfcheckout": st.session_state.m_pdv_self}
     for p, qtd in pdv_map.items():
         if p in sistemas_db:
@@ -162,6 +161,79 @@ if tela == "Gerador de Proposta":
             st.markdown('<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">🛒 Mapeamento da Operação</h3></div>', unsafe_allow_html=True)
             c1, c2, c3 = st.columns(3)
             with c1:
-                st.number_input("PDV Convencional", min_value=0, key="tmp_pdv_conv", value=st.session_state.m_pdv_conv, on_change=sync_state, args=("m_pdv_conv", "tmp_pdv_conv"))
-                st.number_input("PDV Touchscreen", min_value=0, key="tmp_pdv_touch", value=st.session_state.m_pdv_touch, on_change=sync_state, args=("m_pdv_touch", "tmp_pdv_touch"))
-                st.number_input("PDV Selfcheckout", min_value=0, key="tmp_pdv_self", value=st.
+                st.number_input(
+                    "PDV Convencional", min_value=0, key="tmp_pdv_conv", 
+                    value=st.session_state.m_pdv_conv, on_change=sync_state, args=("m_pdv_conv", "tmp_pdv_conv")
+                )
+                st.number_input(
+                    "PDV Touchscreen", min_value=0, key="tmp_pdv_touch", 
+                    value=st.session_state.m_pdv_touch, on_change=sync_state, args=("m_pdv_touch", "tmp_pdv_touch")
+                )
+                st.number_input(
+                    "PDV Selfcheckout", min_value=0, key="tmp_pdv_self", 
+                    value=st.session_state.m_pdv_self, on_change=sync_state, args=("m_pdv_self", "tmp_pdv_self")
+                )
+            with c2:
+                st.selectbox(
+                    "Solução de TEF", ["Não utiliza", "SiTef Express", "VR TEF"], 
+                    key="tmp_tef", index=["Não utiliza", "SiTef Express", "VR TEF"].index(st.session_state.m_tef), 
+                    on_change=sync_state, args=("m_tef", "tmp_tef")
+                )
+                st.number_input(
+                    "Semanas de Implantação", min_value=0, key="tmp_semanas", 
+                    value=st.session_state.m_semanas, on_change=sync_state, args=("m_semanas", "tmp_semanas")
+                )
+                st.checkbox(
+                    "Migração de Banco?", key="tmp_migracao", 
+                    value=st.session_state.m_migracao, on_change=sync_state, args=("m_migracao", "tmp_migracao")
+                )
+            with c3:
+                st.toggle(
+                    "E-Commerce", key="tmp_ecommerce", 
+                    value=st.session_state.m_ecommerce, on_change=sync_state, args=("m_ecommerce", "tmp_ecommerce")
+                )
+                st.toggle(
+                    "M-Commerce (App)", key="tmp_app", 
+                    value=st.session_state.m_app, on_change=sync_state, args=("m_app", "tmp_app")
+                )
+                st.toggle(
+                    "VR Connect", key="tmp_connect", 
+                    value=st.session_state.m_connect, on_change=sync_state, args=("m_connect", "tmp_connect")
+                )
+                
+                b_col1, b_col2 = st.columns(2)
+                with b_col1: st.button("✨ Aplicar Inteligência", on_click=aplicar_mapeamento, use_container_width=True)
+                with b_col2: st.button("🗑️ Limpar Tudo", on_click=limpar_tudo, use_container_width=True)
+            st.markdown("---")
+
+        # ==========================================
+        # PARTE 2: TELA DE VENDA (A Inclusão Manual)
+        # ==========================================
+        col_i, col_m, col_d = st.columns(3) if perfil_venda == "Executivo (Rua)" else (*st.columns(2), None)
+        
+        with col_i:
+            st.markdown('<div class="section-header"><span class="section-title">IMPLANTAÇÃO</span></div>', unsafe_allow_html=True)
+            st.session_state.sel_i = st.multiselect("Serviços", list(servicos_db.keys()), default=[s for s in st.session_state.sel_i if s in servicos_db])
+            for i in st.session_state.sel_i:
+                st.number_input(
+                    f"{i} (R$ {servicos_db[i]['Valor']:,.2f}/h)", min_value=0, 
+                    value=st.session_state[f"perm_val_{i}"], key=f"tmp_i_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_i_{i}")
+                )
+        
+        with col_m:
+            st.markdown('<div class="section-header"><span class="section-title">MENSALIDADES</span></div>', unsafe_allow_html=True)
+            st.session_state.sel_m = st.multiselect("Sistemas", list(sistemas_db.keys()), default=[s for s in st.session_state.sel_m if s in sistemas_db])
+            for i in st.session_state.sel_m:
+                st.number_input(
+                    f"{i} (R$ {sistemas_db[i]['Valor']:,.2f}/un)", min_value=0, 
+                    value=st.session_state[f"perm_val_{i}"], key=f"tmp_m_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_m_{i}")
+                )
+        
+        if col_d:
+            with col_d:
+                st.markdown('<div class="section-header"><span class="section-title">DESPESAS LOGÍSTICAS</span></div>', unsafe_allow_html=True)
+                st.session_state.sel_d = st.multiselect("Despesas", list(despesas_db.keys()), default=[s for s in st.session_state.sel_d if s in despesas_db])
+                for i in st.session_state.sel_d:
+                    st.number_input(
+                        f"{i} (R$ {despesas_db[i]['Valor']:,.2f}/un)", min_value=0, 
+                        value=st.session_state[f"perm_val_{i}"], key=f"tmp_d_{i}", on_change=sync_state, args=(f"perm_val_{
