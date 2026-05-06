@@ -27,14 +27,11 @@ def carregar_dados_vendas():
             df = pd.read_excel(EXCEL_FILE)
         else:
             df = pd.read_csv(SHEET_URL)
-        
         df.columns = [str(c).strip() for c in df.columns]
         df = df.map(lambda x: x.strip() if isinstance(x, str) else x)
-        
         col_tipo = next((c for c in df.columns if c.lower() == 'tipo'), 'Tipo')
         df['Tipo_Busca'] = df[col_tipo].astype(str).str.lower()
         df['Valor'] = df['Valor'].apply(limpar_valor)
-        
         sist = df[df['Tipo_Busca'].str.contains('sist', na=False)].set_index('Produto').to_dict('index')
         serv = df[df['Tipo_Busca'].str.contains('serv', na=False)].set_index('Produto').to_dict('index')
         desp = df[df['Tipo_Busca'].str.contains('desp', na=False)].set_index('Produto').to_dict('index')
@@ -60,18 +57,32 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. ESTADO ---
+# --- 3. ESTADO E LOGICA DE LIMPEZA ---
 if 'sel_i' not in st.session_state: st.session_state.sel_i = []
 if 'sel_m' not in st.session_state: st.session_state.sel_m = []
 
-# Persistência do Mapeamento
-map_keys = ['m_pdv_conv', 'm_pdv_touch', 'm_pdv_self', 'm_tef', 'm_semanas', 'm_migracao', 'm_ecommerce']
+map_keys = ['m_pdv_conv', 'm_pdv_touch', 'm_pdv_self', 'm_tef', 'm_semanas', 'm_migracao']
 for k in map_keys:
     if k not in st.session_state:
         st.session_state[k] = 0 if 'm_pdv' in k or 'semanas' in k else "Não utiliza" if 'tef' in k else False
 
 for nome in full_db.keys():
     if f"perm_val_{nome}" not in st.session_state:
+        st.session_state[f"perm_val_{nome}"] = 0
+
+def limpar_tudo():
+    # Reseta Inputs do Mapeamento
+    st.session_state.m_pdv_conv = 0
+    st.session_state.m_pdv_touch = 0
+    st.session_state.m_pdv_self = 0
+    st.session_state.m_tef = "Não utiliza"
+    st.session_state.m_semanas = 0
+    st.session_state.m_migracao = False
+    # Limpa Seleções
+    st.session_state.sel_i = []
+    st.session_state.sel_m = []
+    # Zera todos os valores
+    for nome in full_db.keys():
         st.session_state[f"perm_val_{nome}"] = 0
 
 # --- 4. MENU LATERAL ---
@@ -85,11 +96,8 @@ with st.sidebar:
         mapeamento_ativo = st.toggle("Mapeamento Inteligente", value=True)
         modo_apresentacao = st.toggle("Modo Apresentação")
         perfil_venda = st.selectbox("Perfil do Cliente", ["Executivo (Rua)", "CS (Base)"])
-        desc = st.number_input("Bonificação Mensal (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.5)
-        
-        # O BOTÃO VOLTOU:
+        desc = st.number_input("Desconto (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.5)
         exibir_detalhe_desc = st.toggle("Exibir Desconto na Tela", value=True)
-        
         faturamento_sistema = st.selectbox("Início Mensalidade", ["Na assinatura", "30 dias", "60 dias", "Após implantação"])
         parcelas_setup = st.selectbox("Parcelas Setup", [1, 2, 3, 4, 5, 6], index=3)
         regra_logistica = st.selectbox("Faturamento Logística", ["Faturamento na assinatura do contrato", "Faturamento ao término da Implantação"])
@@ -135,7 +143,9 @@ if tela == "Gerador de Proposta":
                 st.checkbox("Migração de Banco?", key="tmp_migracao", value=st.session_state.m_migracao, on_change=sync_state, args=("m_migracao", "tmp_migracao"))
             with c3:
                 st.number_input("Semanas de Implantação", min_value=0, key="tmp_semanas", value=st.session_state.m_semanas, on_change=sync_state, args=("m_semanas", "tmp_semanas"))
-                st.button("✨ Aplicar Inteligência", on_click=aplicar_mapeamento, use_container_width=True)
+                bc1, bc2 = st.columns(2)
+                with bc1: st.button("✨ Aplicar Inteligência", on_click=aplicar_mapeamento, use_container_width=True)
+                with bc2: st.button("🗑️ Limpar Tudo", on_click=limpar_tudo, use_container_width=True)
             st.markdown("---")
 
         col_i, col_m, col_d = st.columns(3) if perfil_venda == "Executivo (Rua)" else (*st.columns(2), None)
@@ -170,10 +180,7 @@ if tela == "Gerador de Proposta":
 
     with res_cols[1]:
         html_m = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{st.session_state[f'perm_val_{i}']} un x R$ {sistemas_db[i]['Valor']:,.2f}</span></li>" for i in st.session_state.sel_m if i in sistemas_db])
-        
-        # LÓGICA DO BOTÃO DESCONTO AQUI:
-        desc_txt = f'<div style="color: #2e7d32; font-weight: bold;">Bonificação: {desc:,.2f}%</div>' if exibir_detalhe_desc and desc > 0 else '<div style="height:21px"></div>'
-        
+        desc_txt = f'<div style="color: #2e7d32; font-weight: bold;">Desconto: {desc:,.2f}%</div>' if exibir_detalhe_desc and desc > 0 else '<div style="height:21px"></div>'
         st.markdown(f'<div class="resumo-card" style="border-top-color: #2e7d32;"><span class="resumo-label">Manutenção Mensal</span><div class="resumo-valor" style="color: #2e7d32;">R$ {t_men_liq:,.2f}</div>{desc_txt}<div style="font-weight:bold; font-size: 0.9rem; margin-top:5px;">Início: {faturamento_sistema}</div><div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{html_m if html_m else "<li>Nenhum selecionado</li>"}</ul></div>', unsafe_allow_html=True)
 
     if perfil_venda == "Executivo (Rua)":
