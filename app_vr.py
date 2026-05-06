@@ -49,7 +49,7 @@ st.markdown("""
     <style>
     .stApp { background: linear-gradient(135deg, #ffffff 0%, #fff5ed 100%); }
     .hero-title { color: #262730; font-size: 4.5rem; font-weight: 900; margin: 0; line-height: 1; text-transform: uppercase; letter-spacing: -3px; }
-    .mapeamento-container { background-color: #ffffff; border-left: 10px solid #ff6600; padding: 20px; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+    .mapeamento-container { background-color: #ffffff; border-left: 10px solid #ff6600; padding: 20px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
     .resumo-card { background-color: #ffffff; border: 1px solid #f0f0f0; border-top: 8px solid #ff6600; padding: 25px; border-radius: 8px; min-height: 450px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
     .resumo-valor { color: #ff6600; font-size: 2.3rem; font-weight: 900; margin-bottom: 5px; }
     .item-detalhe { color: #333; font-size: 0.95rem; font-weight: 700; background-color: #fcfcfc; padding: 2px 8px; border-radius: 4px; border: 1px solid #eee; }
@@ -60,13 +60,14 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# ESTADO GLOBAL DAS VARIÁVEIS (Incluindo os novos campos do Combo)
+# ESTADO GLOBAL DAS VARIÁVEIS
 init_state = {
     'm_combo': "Montar Manualmente",
     'm_pdv_conv': 0, 'm_pdv_touch': 0, 'm_pdv_self': 0, 'm_semanas': 0, 'm_mobile': 0,
     'm_tef': "Não utiliza",
     'm_migracao': False, 'm_ecommerce': False, 'm_app': False, 'm_connect': False,
-    'm_erp_pro': False, 'm_xml': False, 'm_escopo': False
+    'm_erp_pro': False, 'm_xml': False, 'm_escopo': False,
+    'm_controller': False, 'm_cartaz': False, 'm_masterfisco': False, 'm_backup': False
 }
 
 if 'sel_i' not in st.session_state: st.session_state.sel_i = []
@@ -84,6 +85,10 @@ for nome in full_db.keys():
 def limpar_tudo():
     for k, v in init_state.items():
         st.session_state[k] = v
+    # Resetar o gatilho visual do combo box
+    if 'tmp_combo' in st.session_state:
+        st.session_state.tmp_combo = "Montar Manualmente"
+        
     st.session_state.sel_i = []
     st.session_state.sel_m = []
     st.session_state.sel_d = []
@@ -132,7 +137,7 @@ def aplicar_mapeamento():
             if qtd > 0 and p not in st.session_state.sel_m: st.session_state.sel_m.append(p)
             elif qtd == 0 and p in st.session_state.sel_m: st.session_state.sel_m.remove(p)
     
-    # TEF Inteligente
+    # TEF
     total_pdvs = sum(pdv_map.values())
     st.session_state.sel_m = [item for item in st.session_state.sel_m if "SiTef" not in item]
     if st.session_state.m_tef == "SiTef Express":
@@ -148,7 +153,11 @@ def aplicar_mapeamento():
         "M-Commerce": st.session_state.m_app, 
         "VR Connect (Android/IOS)": st.session_state.m_connect,
         "VR ERP PRO": st.session_state.m_erp_pro,
-        "Gerenciador XML": st.session_state.m_xml
+        "Gerenciador XML": st.session_state.m_xml,
+        "VR Controller 360": st.session_state.m_controller,
+        "VR Cartaz": st.session_state.m_cartaz,
+        "VR MasterFisco Brasil": st.session_state.m_masterfisco,
+        "VR Backup": st.session_state.m_backup
     }
     for item, ativo in exp_map.items():
         if item in sistemas_db:
@@ -156,14 +165,18 @@ def aplicar_mapeamento():
             if ativo and item not in st.session_state.sel_m: st.session_state.sel_m.append(item)
             elif not ativo and item in st.session_state.sel_m: st.session_state.sel_m.remove(item)
 
-    # VR Mobile (Numérico)
+    # VR Mobile (Lógica de Adição)
     m_mobile_item = "VR Mobile"
-    if m_mobile_item in sistemas_db:
-        st.session_state[f"perm_val_{m_mobile_item}"] = st.session_state.m_mobile
-        if st.session_state.m_mobile > 0 and m_mobile_item not in st.session_state.sel_m: st.session_state.sel_m.append(m_mobile_item)
-        elif st.session_state.m_mobile == 0 and m_mobile_item in st.session_state.sel_m: st.session_state.sel_m.remove(m_mobile_item)
+    if m_mobile_item in sistemas_db and st.session_state.m_mobile > 0:
+        if m_mobile_item not in st.session_state.sel_m:
+            st.session_state.sel_m.append(m_mobile_item)
+        # Acumula o valor e zera no assistente para evitar duplicação ao clicar novamente
+        st.session_state[f"perm_val_{m_mobile_item}"] += st.session_state.m_mobile
+        st.session_state.m_mobile = 0
+        if 'tmp_mobile' in st.session_state:
+            st.session_state.tmp_mobile = 0
 
-    # Serviços (Horas Fixas e Semanas)
+    # Serviços 
     sem = st.session_state.m_semanas
     serv_map = {
         "Implantação e Treinamento": sem * 44,
@@ -176,7 +189,7 @@ def aplicar_mapeamento():
             if s_horas > 0 and s_item not in st.session_state.sel_i: st.session_state.sel_i.append(s_item)
             elif s_horas == 0 and s_item in st.session_state.sel_i: st.session_state.sel_i.remove(s_item)
 
-    # Despesas (Logística)
+    # Despesas 
     ali, hos = "Alimentacao", "Hospedagem"
     if ali in despesas_db: 
         st.session_state[f"perm_val_{ali}"] = sem * 10
@@ -193,10 +206,9 @@ if tela == "Gerador de Proposta":
         
         # VISUAL DO MAPEAMENTO
         if mapeamento_ativo:
-            st.markdown('<div class="mapeamento-container">', unsafe_allow_html=True)
-            st.markdown('<h3 style="margin:0 0 15px 0; color:#ff6600;">🛒 Mapeamento da Operação</h3>', unsafe_allow_html=True)
+            # Correção visual: A caixa fecha logo após o título
+            st.markdown('<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">🛒 Mapeamento da Operação</h3></div>', unsafe_allow_html=True)
             
-            # Combos Rápidos
             st.selectbox(
                 "Carregar Combo Rápido", ["Montar Manualmente", "Padrão Pequeno Porte"], 
                 key="tmp_combo", index=["Montar Manualmente", "Padrão Pequeno Porte"].index(st.session_state.m_combo), 
@@ -219,19 +231,25 @@ if tela == "Gerador de Proposta":
             with c3:
                 st.markdown("**Sistemas Extras**")
                 st.number_input("Licenças VR Mobile", min_value=0, key="tmp_mobile", value=st.session_state.m_mobile, on_change=sync_state, args=("m_mobile", "tmp_mobile"))
-                sc1, sc2 = st.columns(2)
+                
+                # Divisão em subcolunas para ficar compacto
+                sc1, sc2, sc3 = st.columns(3)
                 with sc1:
                     st.toggle("VR ERP PRO", key="tmp_erp_pro", value=st.session_state.m_erp_pro, on_change=sync_state, args=("m_erp_pro", "tmp_erp_pro"))
-                    st.toggle("Gerenciador XML", key="tmp_xml", value=st.session_state.m_xml, on_change=sync_state, args=("m_xml", "tmp_xml"))
+                    st.toggle("G. XML", key="tmp_xml", value=st.session_state.m_xml, on_change=sync_state, args=("m_xml", "tmp_xml"))
                     st.toggle("VR Connect", key="tmp_connect", value=st.session_state.m_connect, on_change=sync_state, args=("m_connect", "tmp_connect"))
                 with sc2:
+                    st.toggle("VR Backup", key="tmp_backup", value=st.session_state.m_backup, on_change=sync_state, args=("m_backup", "tmp_backup"))
+                    st.toggle("VR Cartaz", key="tmp_cartaz", value=st.session_state.m_cartaz, on_change=sync_state, args=("m_cartaz", "tmp_cartaz"))
                     st.toggle("E-Commerce", key="tmp_ecommerce", value=st.session_state.m_ecommerce, on_change=sync_state, args=("m_ecommerce", "tmp_ecommerce"))
+                with sc3:
+                    st.toggle("C. 360", key="tmp_controller", value=st.session_state.m_controller, on_change=sync_state, args=("m_controller", "tmp_controller"))
+                    st.toggle("MasterFisco", key="tmp_masterfisco", value=st.session_state.m_masterfisco, on_change=sync_state, args=("m_masterfisco", "tmp_masterfisco"))
                     st.toggle("M-Commerce", key="tmp_app", value=st.session_state.m_app, on_change=sync_state, args=("m_app", "tmp_app"))
                 
                 b_col1, b_col2 = st.columns(2)
                 with b_col1: st.button("✨ Aplicar Inteligência", on_click=aplicar_mapeamento, use_container_width=True)
                 with b_col2: st.button("🗑️ Limpar Tudo", on_click=limpar_tudo, use_container_width=True)
-            st.markdown('</div>', unsafe_allow_html=True)
             st.markdown("---")
 
         # ==========================================
@@ -243,20 +261,29 @@ if tela == "Gerador de Proposta":
             st.markdown('<div class="section-header"><span class="section-title">IMPLANTAÇÃO E SERVIÇOS</span></div>', unsafe_allow_html=True)
             st.session_state.sel_i = st.multiselect("Serviços", list(servicos_db.keys()), default=[s for s in st.session_state.sel_i if s in servicos_db])
             for i in st.session_state.sel_i:
-                st.number_input(f"{i} (R$ {servicos_db[i]['Valor']:,.2f}/h)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_i_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_i_{i}"))
+                st.number_input(
+                    f"{i} (R$ {servicos_db[i]['Valor']:,.2f}/h)", min_value=0, 
+                    value=st.session_state[f"perm_val_{i}"], key=f"tmp_i_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_i_{i}")
+                )
         
         with col_m:
             st.markdown('<div class="section-header"><span class="section-title">MENSALIDADES SISTEMAS</span></div>', unsafe_allow_html=True)
             st.session_state.sel_m = st.multiselect("Sistemas", list(sistemas_db.keys()), default=[s for s in st.session_state.sel_m if s in sistemas_db])
             for i in st.session_state.sel_m:
-                st.number_input(f"{i} (R$ {sistemas_db[i]['Valor']:,.2f}/un)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_m_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_m_{i}"))
+                st.number_input(
+                    f"{i} (R$ {sistemas_db[i]['Valor']:,.2f}/un)", min_value=0, 
+                    value=st.session_state[f"perm_val_{i}"], key=f"tmp_m_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_m_{i}")
+                )
         
         if col_d:
             with col_d:
                 st.markdown('<div class="section-header"><span class="section-title">DESPESAS LOGÍSTICAS</span></div>', unsafe_allow_html=True)
                 st.session_state.sel_d = st.multiselect("Despesas", list(despesas_db.keys()), default=[s for s in st.session_state.sel_d if s in despesas_db])
                 for i in st.session_state.sel_d:
-                    st.number_input(f"{i} (R$ {despesas_db[i]['Valor']:,.2f}/un)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_d_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_d_{i}"))
+                    st.number_input(
+                        f"{i} (R$ {despesas_db[i]['Valor']:,.2f}/un)", min_value=0, 
+                        value=st.session_state[f"perm_val_{i}"], key=f"tmp_d_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_d_{i}")
+                    )
 
     # ==========================================
     # PARTE 3: CARDS DE RESUMO (O Resultado)
