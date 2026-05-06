@@ -6,7 +6,7 @@ import textwrap
 # 1. Configuracao da Pagina
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-# --- FUNÇÃO DE SINCRONIZAÇÃO (BLINDAGEM) ---
+# --- FUNÇÃO DE SINCRONIZAÇÃO (BLINDAGEM CONTRA RESET) ---
 def sync_state(key_permanente, key_widget):
     st.session_state[key_permanente] = st.session_state[key_widget]
 
@@ -86,11 +86,12 @@ with st.sidebar:
         faturamento = st.selectbox("Faturamento", ["Imediato", "30 dias", "60 dias", "Após a implantação"])
         parcelas = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 5, 6], index=3)
 
-# --- 5. TELAS ---
+# --- 5. TELA DE CONSULTA (RESTAURADA E MELHORADA) ---
 if tela == "Consulta de Preço":
     st.markdown('<h1 class="hero-title">ANÁLISE TÉCNICA</h1>', unsafe_allow_html=True)
     prod_sel = st.selectbox("Selecione o Produto:", list(precos_tabela.keys()))
     d = precos_tabela[prod_sel]
+    
     ltv_24 = (d["mensal"] * 24) + d["setup"]
     payback = ((d["cac"] - d["setup"]) / d["mensal"]) if d["mensal"] > 0 else 0
     
@@ -100,22 +101,30 @@ if tela == "Consulta de Preço":
             <div class="resumo-card">
                 <span class="resumo-label">Preço de Venda</span>
                 <div class="resumo-valor">R$ {d['mensal']:,.2f}<small style="font-size:1rem; color:#888;">/mês</small></div>
-                <div style="font-weight:bold; color:#555; margin-bottom:10px;">Setup: R$ {d['setup']:,.2f}</div>
+                <div style="font-weight:bold; color:#555; margin-bottom:10px;">Setup Sugerido: R$ {d['setup']:,.2f}</div>
                 <div class="section-header"><span class="section-title">ROI ESTRATÉGICO VR</span></div>
                 <div class="roi-interno-box">
                     <div class="roi-metrica"><span class="roi-label-int">LTV (24 Meses)</span><span class="roi-num-int">R$ {ltv_24:,.2f}</span></div>
                     <div class="roi-metrica"><span class="roi-label-int">Breakeven</span><span class="roi-num-int">{round(payback, 1) if d['mensal'] > 0 else 'N/A'} meses</span></div>
-                    <div class="roi-metrica"><span class="roi-label-int">Margem</span><span class="roi-num-int">{d['margem']}</span></div>
+                    <div class="roi-metrica"><span class="roi-label-int">Margem Geral</span><span class="roi-num-int">{d['margem']}</span></div>
                     <div class="roi-metrica"><span class="roi-label-int">Complexidade</span><span class="roi-num-int">{d['comp']}</span></div>
                 </div>
                 <div class="resumo-subtitulo">ROI PARA O CLIENTE</div>
-                <p style="font-size:0.9rem; color:#444; line-height:1.4;">{d['roi']}</p>
+                <p style="font-size:0.95rem; color:#444; line-height:1.4;">{d['roi']}</p>
             </div>
         """)
         st.markdown(html_markup, unsafe_allow_html=True)
+    
     with c2:
         st.markdown('<div class="section-header"><span class="section-title">ENGENHARIA DE VALOR</span></div>', unsafe_allow_html=True)
-        st.write(f"**Descrição Técnica:** \n{d['desc']}")
+        # Blocos de informação estratégica restaurados
+        if d["mensal"] > 500: st.info("**Foco em Retenção:** Produto estratégico para a recorrência da unidade.")
+        if d["comp"] == "Alta": st.warning("**Senioridade Necessária:** Requer técnico experiente para a implantação.")
+        if d["margem"] == "Altíssima": st.success("**Alta Escalabilidade:** Produto com baixíssimo custo de manutenção.")
+        
+        st.write("---")
+        st.markdown(f"**Posicionamento:** \n{d['desc']}")
+        st.markdown(f"**Projeção de Ciclo de Vida:** \nExpectativa de receita bruta em 2 anos: **R$ {ltv_24:,.2f}**.")
 
 else: # TELA DE PROPOSTA
     if not modo_apresentacao:
@@ -152,7 +161,7 @@ else: # TELA DE PROPOSTA
                                     key=f"tmp_d_{i}", 
                                     on_change=sync_state, args=(f"perm_d_{i}", f"tmp_d_{i}"))
 
-    # Cálculos Finais
+    # Cálculos Finais (Lendo do State Permanente)
     t_imp, t_men_bruto, t_desp = 0, 0, 0
     lista_i, lista_m, lista_d = [], [], []
 
