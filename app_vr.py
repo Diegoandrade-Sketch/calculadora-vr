@@ -57,6 +57,7 @@ st.markdown("""
     .section-title { color: #ffffff; font-size: 1.1rem; font-weight: bold; margin: 0; }
     .lista-itens { list-style-type: none; padding-left: 0; margin-top: 10px; flex-grow: 1; }
     .lista-itens li { padding: 8px 0; border-bottom: 1px dashed #e0e0e0; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .item-incluso { padding-left: 20px !important; color: #777; font-size: 0.85rem; font-style: italic; border-bottom: none !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -83,11 +84,8 @@ for nome in full_db.keys():
         st.session_state[f"perm_val_{nome}"] = 0
 
 def limpar_tudo():
-    # 1. Reseta a memória lógica
     for k, v in init_state.items():
         st.session_state[k] = v
-        
-    # 2. Reseta a memória visual dos componentes
     if 'tmp_combo' in st.session_state: st.session_state.tmp_combo = "Montar Manualmente"
     if 'tmp_pdv_conv' in st.session_state: st.session_state.tmp_pdv_conv = 0
     if 'tmp_pdv_touch' in st.session_state: st.session_state.tmp_pdv_touch = 0
@@ -106,7 +104,6 @@ def limpar_tudo():
         if t in st.session_state:
             st.session_state[t] = False
             
-    # 3. Limpa as seleções de produtos na Tela de Venda
     st.session_state.sel_i = []
     st.session_state.sel_m = []
     st.session_state.sel_d = []
@@ -152,7 +149,7 @@ def aplicar_mapeamento():
     for p, qtd in pdv_map.items():
         if p in sistemas_db:
             st.session_state[f"perm_val_{p}"] = qtd
-            st.session_state[f"tmp_m_{p}"] = qtd  # Sincroniza visual Parte 2
+            st.session_state[f"tmp_m_{p}"] = qtd
             if qtd > 0 and p not in st.session_state.sel_m: st.session_state.sel_m.append(p)
             elif qtd == 0 and p in st.session_state.sel_m: st.session_state.sel_m.remove(p)
     
@@ -164,7 +161,7 @@ def aplicar_mapeamento():
         escolhido = tef_opcoes[0] if total_pdvs <= 3 else tef_opcoes[1] if total_pdvs <= 6 else tef_opcoes[2] if total_pdvs <= 8 else tef_opcoes[3]
         if escolhido in sistemas_db:
             st.session_state[f"perm_val_{escolhido}"] = 1
-            st.session_state[f"tmp_m_{escolhido}"] = 1  # Sincroniza visual Parte 2
+            st.session_state[f"tmp_m_{escolhido}"] = 1
             st.session_state.sel_m.append(escolhido)
 
     # Sistemas Extras (Toggles)
@@ -182,25 +179,18 @@ def aplicar_mapeamento():
     for item, ativo in exp_map.items():
         if item in sistemas_db:
             st.session_state[f"perm_val_{item}"] = 1 if ativo else 0
-            st.session_state[f"tmp_m_{item}"] = 1 if ativo else 0  # Sincroniza visual Parte 2
+            st.session_state[f"tmp_m_{item}"] = 1 if ativo else 0
             if ativo and item not in st.session_state.sel_m: st.session_state.sel_m.append(item)
             elif not ativo and item in st.session_state.sel_m: st.session_state.sel_m.remove(item)
 
-    # VR Mobile (Lógica de Adição e Sincronização)
+    # VR Mobile
     m_mobile_item = "VR Mobile"
     if m_mobile_item in sistemas_db and st.session_state.m_mobile > 0:
-        if m_mobile_item not in st.session_state.sel_m:
-            st.session_state.sel_m.append(m_mobile_item)
-        
-        # Soma o valor
+        if m_mobile_item not in st.session_state.sel_m: st.session_state.sel_m.append(m_mobile_item)
         st.session_state[f"perm_val_{m_mobile_item}"] += st.session_state.m_mobile
-        # Força o campo visual da Parte 2 a mostrar a soma correta
         st.session_state[f"tmp_m_{m_mobile_item}"] = st.session_state[f"perm_val_{m_mobile_item}"]
-        
-        # Zera os campos lógico e visual da Parte 1
         st.session_state.m_mobile = 0
-        if 'tmp_mobile' in st.session_state:
-            st.session_state.tmp_mobile = 0
+        if 'tmp_mobile' in st.session_state: st.session_state.tmp_mobile = 0
 
     # Serviços 
     sem = st.session_state.m_semanas
@@ -212,7 +202,7 @@ def aplicar_mapeamento():
     for s_item, s_horas in serv_map.items():
         if s_item in servicos_db:
             st.session_state[f"perm_val_{s_item}"] = s_horas
-            st.session_state[f"tmp_i_{s_item}"] = s_horas  # Sincroniza visual Parte 2
+            st.session_state[f"tmp_i_{s_item}"] = s_horas
             if s_horas > 0 and s_item not in st.session_state.sel_i: st.session_state.sel_i.append(s_item)
             elif s_horas == 0 and s_item in st.session_state.sel_i: st.session_state.sel_i.remove(s_item)
 
@@ -220,30 +210,22 @@ def aplicar_mapeamento():
     ali, hos = "Alimentacao", "Hospedagem"
     if ali in despesas_db: 
         st.session_state[f"perm_val_{ali}"] = sem * 10
-        st.session_state[f"tmp_d_{ali}"] = sem * 10  # Sincroniza visual Parte 2
+        st.session_state[f"tmp_d_{ali}"] = sem * 10
         if sem > 0 and ali not in st.session_state.sel_d: st.session_state.sel_d.append(ali)
         elif sem == 0 and ali in st.session_state.sel_d: st.session_state.sel_d.remove(ali)
     if hos in despesas_db: 
         st.session_state[f"perm_val_{hos}"] = sem * 4
-        st.session_state[f"tmp_d_{hos}"] = sem * 4  # Sincroniza visual Parte 2
+        st.session_state[f"tmp_d_{hos}"] = sem * 4
         if sem > 0 and hos not in st.session_state.sel_d: st.session_state.sel_d.append(hos)
         elif sem == 0 and hos in st.session_state.sel_d: st.session_state.sel_d.remove(hos)
 
 if tela == "Gerador de Proposta":
     if not modo_apresentacao:
         st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
-        
-        # VISUAL DO MAPEAMENTO
         if mapeamento_ativo:
             st.markdown('<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">🛒 Mapeamento da Operação</h3></div>', unsafe_allow_html=True)
-            
-            st.selectbox(
-                "Carregar Combo Rápido", ["Montar Manualmente", "Padrão Pequeno Porte"], 
-                key="tmp_combo", index=["Montar Manualmente", "Padrão Pequeno Porte"].index(st.session_state.m_combo), 
-                on_change=sync_combo
-            )
+            st.selectbox("Carregar Combo Rápido", ["Montar Manualmente", "Padrão Pequeno Porte"], key="tmp_combo", index=["Montar Manualmente", "Padrão Pequeno Porte"].index(st.session_state.m_combo), on_change=sync_combo)
             st.markdown("<br>", unsafe_allow_html=True)
-
             c1, c2, c3 = st.columns(3)
             with c1:
                 st.markdown("**PDVs e Ponto de Venda**")
@@ -259,7 +241,6 @@ if tela == "Gerador de Proposta":
             with c3:
                 st.markdown("**Sistemas Extras**")
                 st.number_input("Licenças VR Mobile", min_value=0, key="tmp_mobile", value=st.session_state.m_mobile, on_change=sync_state, args=("m_mobile", "tmp_mobile"))
-                
                 sc1, sc2, sc3 = st.columns(3)
                 with sc1:
                     st.toggle("VR ERP PRO", key="tmp_erp_pro", value=st.session_state.m_erp_pro, on_change=sync_state, args=("m_erp_pro", "tmp_erp_pro"))
@@ -273,74 +254,12 @@ if tela == "Gerador de Proposta":
                     st.toggle("C. 360", key="tmp_controller", value=st.session_state.m_controller, on_change=sync_state, args=("m_controller", "tmp_controller"))
                     st.toggle("MasterFisco", key="tmp_masterfisco", value=st.session_state.m_masterfisco, on_change=sync_state, args=("m_masterfisco", "tmp_masterfisco"))
                     st.toggle("M-Commerce", key="tmp_app", value=st.session_state.m_app, on_change=sync_state, args=("m_app", "tmp_app"))
-                
                 b_col1, b_col2 = st.columns(2)
                 with b_col1: st.button("✨ Aplicar Inteligência", on_click=aplicar_mapeamento, use_container_width=True)
                 with b_col2: st.button("🗑️ Limpar Tudo", on_click=limpar_tudo, use_container_width=True)
             st.markdown("---")
 
-        # ==========================================
-        # PARTE 2: TELA DE VENDA (A Inclusão Manual)
-        # ==========================================
+        # PARTE 2: TELA DE VENDA
         col_i, col_m, col_d = st.columns(3) if perfil_venda == "Executivo (Rua)" else (*st.columns(2), None)
-        
         with col_i:
-            st.markdown('<div class="section-header"><span class="section-title">IMPLANTAÇÃO E SERVIÇOS</span></div>', unsafe_allow_html=True)
-            st.session_state.sel_i = st.multiselect("Serviços", list(servicos_db.keys()), default=[s for s in st.session_state.sel_i if s in servicos_db])
-            for i in st.session_state.sel_i:
-                st.number_input(
-                    f"{i} (R$ {servicos_db[i]['Valor']:,.2f}/h)", min_value=0, 
-                    value=st.session_state[f"perm_val_{i}"], key=f"tmp_i_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_i_{i}")
-                )
-        
-        with col_m:
-            st.markdown('<div class="section-header"><span class="section-title">MENSALIDADES SISTEMAS</span></div>', unsafe_allow_html=True)
-            st.session_state.sel_m = st.multiselect("Sistemas", list(sistemas_db.keys()), default=[s for s in st.session_state.sel_m if s in sistemas_db])
-            for i in st.session_state.sel_m:
-                st.number_input(
-                    f"{i} (R$ {sistemas_db[i]['Valor']:,.2f}/un)", min_value=0, 
-                    value=st.session_state[f"perm_val_{i}"], key=f"tmp_m_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_m_{i}")
-                )
-        
-        if col_d:
-            with col_d:
-                st.markdown('<div class="section-header"><span class="section-title">DESPESAS LOGÍSTICAS</span></div>', unsafe_allow_html=True)
-                st.session_state.sel_d = st.multiselect("Despesas", list(despesas_db.keys()), default=[s for s in st.session_state.sel_d if s in despesas_db])
-                for i in st.session_state.sel_d:
-                    st.number_input(
-                        f"{i} (R$ {despesas_db[i]['Valor']:,.2f}/un)", min_value=0, 
-                        value=st.session_state[f"perm_val_{i}"], key=f"tmp_d_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_d_{i}")
-                    )
-
-    # ==========================================
-    # PARTE 3: CARDS DE RESUMO (O Resultado)
-    # ==========================================
-    t_imp = sum(st.session_state[f"perm_val_{i}"] * servicos_db[i]["Valor"] for i in st.session_state.sel_i if i in servicos_db)
-    t_men_bruto = sum(st.session_state[f"perm_val_{i}"] * sistemas_db[i]["Valor"] for i in st.session_state.sel_m if i in sistemas_db)
-    t_desp = sum(st.session_state[f"perm_val_{i}"] * despesas_db[i]["Valor"] for i in st.session_state.sel_d if i in despesas_db)
-    t_men_liq = t_men_bruto * (1 - (desc/100))
-
-    st.markdown("<h2 style='text-align:center; font-weight:800; margin-top:30px;'>RESUMO DO INVESTIMENTO</h2>", unsafe_allow_html=True)
-    res_cols = st.columns(3) if perfil_venda == "Executivo (Rua)" else st.columns([1, 2, 2, 1])[1:3]
-
-    with res_cols[0]:
-        html_i = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{st.session_state[f'perm_val_{i}']}h x R$ {servicos_db[i]['Valor']:,.2f}</span></li>" for i in st.session_state.sel_i if i in servicos_db and st.session_state[f"perm_val_{i}"] > 0])
-        st.markdown(f'<div class="resumo-card"><span class="resumo-label">Investimento Implantação</span><div class="resumo-valor">R$ {t_imp:,.2f}</div><div style="font-weight:bold;">{parcelas_setup}x de R$ {t_imp/parcelas_setup:,.2f}</div><div class="resumo-subtitulo">DETALHAMENTO SETUP</div><ul class="lista-itens">{html_i if html_i else "<li>Nenhum item com valor adicionado</li>"}</ul></div>', unsafe_allow_html=True)
-
-    with res_cols[1]:
-        html_m = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{st.session_state[f'perm_val_{i}']} un x R$ {sistemas_db[i]['Valor']:,.2f}</span></li>" for i in st.session_state.sel_m if i in sistemas_db and st.session_state[f"perm_val_{i}"] > 0])
-        desc_txt = f'<div style="color: #2e7d32; font-weight: bold;">Desconto: {desc:,.2f}%</div>' if exibir_detalhe_desc and desc > 0 else '<div style="height:21px"></div>'
-        st.markdown(f'<div class="resumo-card" style="border-top-color: #2e7d32;"><span class="resumo-label">Manutenção Mensal</span><div class="resumo-valor" style="color: #2e7d32;">R$ {t_men_liq:,.2f}</div>{desc_txt}<div style="font-weight:bold; font-size: 0.9rem; margin-top:5px;">Início: {faturamento_sistema}</div><div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{html_m if html_m else "<li>Nenhum item com valor adicionado</li>"}</ul></div>', unsafe_allow_html=True)
-
-    if perfil_venda == "Executivo (Rua)":
-        with res_cols[2]:
-            html_d = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{st.session_state[f'perm_val_{i}']} un x R$ {despesas_db[i]['Valor']:,.2f}</span></li>" for i in st.session_state.sel_d if i in despesas_db and st.session_state[f"perm_val_{i}"] > 0])
-            st.markdown(f'<div class="resumo-card" style="border-top-color: #1976d2;"><span class="resumo-label">Despesas de Viagem e Logística</span><div class="resumo-valor" style="color: #1976d2;">R$ {t_desp:,.2f}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">{regra_logistica}</div><div class="resumo-subtitulo">DETALHAMENTO DE LOGÍSTICA</div><ul class="lista-itens">{html_d if html_d else "<li>Sem despesas previstas</li>"}</ul></div>', unsafe_allow_html=True)
-
-# TELA 2 DE NAVEGAÇÃO
-elif tela == "Consulta de Preço":
-    st.markdown('<h1 class="hero-title">ANÁLISE TÉCNICA</h1>', unsafe_allow_html=True)
-    if full_db:
-        prod_sel = st.selectbox("Selecione o Produto:", list(full_db.keys()))
-        d = full_db[prod_sel]
-        st.markdown(f'<div class="resumo-card" style="min-height:auto;"><span class="resumo-label">Valor</span><div class="resumo-valor">R$ {d["Valor"]:,.2f}</div><p><b>Tipo:</b> {d["Tipo"]}</p><hr><p>{d["Descricao"]}</p></div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-header"><span class="section-title">IMPLANTAÇÃO E
