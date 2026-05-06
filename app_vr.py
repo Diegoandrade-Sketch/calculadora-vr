@@ -3,14 +3,37 @@ import pandas as pd
 import os
 import textwrap
 
-# 1. Configuracao da Pagina
+# 1. Configuração da Página
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-# --- FUNÇÃO DE SINCRONIZAÇÃO (BLINDAGEM CONTRA RESET) ---
+# --- LINK DO GOOGLE SHEETS (VERSÃO CSV) ---
+SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTgmdf_FgFd91dkm5zoD0l6l2ailLhCsEV-3pyFsQxRzoyNw2E96eQQoCYkfxHitA9oCIvfaI30-k-2/pub?output=csv"
+
+# --- FUNÇÃO DE SINCRONIZAÇÃO (BLINDAGEM) ---
 def sync_state(key_permanente, key_widget):
     st.session_state[key_permanente] = st.session_state[key_widget]
 
-# 2. Estilizacao CSS
+# --- CARREGAMENTO DE DADOS (APENAS 4 COLUNAS) ---
+@st.cache_data(ttl=600)
+def carregar_dados_vendas():
+    try:
+        df = pd.read_csv(SHEET_URL)
+        df.columns = [c.strip() for c in df.columns] # Limpa espaços nos títulos
+        
+        # Filtra os dados apenas pelas colunas que você criou
+        # e separa pelos tipos para os cards
+        sistemas = df[df['Tipo'] == 'Sistema'].set_index('Produto').to_dict('index')
+        servicos = df[df['Tipo'] == 'Servico'].set_index('Produto').to_dict('index')
+        despesas = df[df['Tipo'] == 'Despesa'].set_index('Produto').to_dict('index')
+        
+        return sistemas, servicos, despesas
+    except Exception as e:
+        st.error(f"Erro ao ler a planilha: {e}")
+        return {}, {}, {}
+
+sistemas_db, servicos_db, despesas_db = carregar_dados_vendas()
+
+# 2. Estilização CSS
 st.markdown("""
     <style>
     .stApp { background: linear-gradient(135deg, #ffffff 0%, #fff5ed 100%); }
@@ -25,177 +48,116 @@ st.markdown("""
     .resumo-valor { color: #ff6600; font-size: 2.5rem; font-weight: 900; margin-bottom: 5px; }
     .resumo-label { color: #888; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; display: block; }
     .resumo-subtitulo { font-size: 1.1rem; color: #333; font-weight: bold; margin-top: 20px; margin-bottom: 10px; border-bottom: 2px solid #ffefe5; padding-bottom: 5px; }
-    .lista-itens { list-style-type: none; padding-left: 0; margin-top: 10px; }
-    .lista-itens li { padding: 10px 0; border-bottom: 1px dashed #e0e0e0; display: flex; justify-content: space-between; align-items: center; }
     .item-detalhe { color: #333; font-size: 1.05rem; font-weight: 700; background-color: #fcfcfc; padding: 2px 8px; border-radius: 4px; }
     .section-header { background: linear-gradient(90deg, #ff6600 0%, #ff944d 100%); padding: 8px 15px; border-radius: 5px; margin-bottom: 15px; margin-top: 20px; }
     .section-title { color: #ffffff; font-size: 1.1rem; font-weight: bold; margin: 0; }
-    .tooltip { position: relative; display: inline-block; cursor: help; border-bottom: 1px dotted #ff6600; color: #222; font-weight: 600; }
+    .lista-itens { list-style-type: none; padding-left: 0; margin-top: 10px; }
+    .lista-itens li { padding: 10px 0; border-bottom: 1px dashed #e0e0e0; display: flex; justify-content: space-between; align-items: center; }
+    .tooltip { position: relative; display: inline-block; cursor: help; border-bottom: 1px dotted #ff6600; }
     .tooltip .tooltiptext {
-        visibility: hidden; width: 280px; background-color: #262730; color: #fff; text-align: left;
-        border-radius: 8px; padding: 12px; position: absolute; z-index: 10; bottom: 135%; left: 50%;
-        margin-left: -140px; opacity: 0; transition: opacity 0.3s; font-size: 0.85rem; line-height: 1.4;
+        visibility: hidden; width: 200px; background-color: #262730; color: #fff; text-align: center;
+        border-radius: 6px; padding: 5px; position: absolute; z-index: 1; bottom: 125%; left: 50%;
+        margin-left: -100px; opacity: 0; transition: opacity 0.3s; font-size: 0.8rem;
     }
     .tooltip:hover .tooltiptext { visibility: visible; opacity: 1; }
-    .roi-interno-box { background-color: #f8f9fa; border-left: 5px solid #262730; padding: 15px; margin-top: 10px; border-radius: 4px; }
-    .roi-metrica { display: flex; justify-content: space-between; margin-bottom: 8px; border-bottom: 1px solid #eee; padding-bottom: 4px; }
-    .roi-label-int { font-weight: bold; color: #555; font-size: 0.85rem; }
-    .roi-num-int { font-weight: 800; color: #262730; font-size: 0.85rem; }
     </style>
     """, unsafe_allow_html=True)
 
-# 3. Base de Dados
-precos_tabela = {
-    "VR ERP PRO": {"setup": 2415.60, "mensal": 1285.71, "cac": 3000.00, "margem": "Alta", "comp": "Alta", "desc": "Sistema de gestão completo para supermercados.", "roi": "Redução média de 15% em perdas de estoque."},
-    "VR PDV Convencional": {"setup": 201.30, "mensal": 185.71, "cac": 400.00, "margem": "Média", "comp": "Média", "desc": "Frente de caixa estável e rápido.", "roi": "Aumento de 20% na velocidade de passagem no caixa."},
-    "PDV Touchscreen": {"setup": 201.30, "mensal": 185.71, "cac": 400.00, "margem": "Média", "comp": "Média", "desc": "Interface moderna para telas de toque.", "roi": "Facilidade no treinamento de novos operadores."},
-    "PDV Selfcheckout": {"setup": 500.00, "mensal": 290.44, "cac": 800.00, "margem": "Alta", "comp": "Alta", "desc": "Autoatendimento para clientes.", "roi": "Redução de custos operacionais."},
-    "SiTef Express": {"setup": 0.00, "mensal": 357.14, "cac": 100.00, "margem": "Altíssima", "comp": "Baixa", "desc": "Integração de pagamentos em nuvem.", "roi": "Segurança total contra fraudes."},
-    "VR TEF": {"setup": 0.00, "mensal": 417.04, "cac": 150.00, "margem": "Altíssima", "comp": "Baixa", "desc": "Transferência Eletrônica de Fundos VR.", "roi": "Conciliação bancária automatizada."},
-    "Gerenciador XML": {"setup": 0.00, "mensal": 163.84, "cac": 50.00, "margem": "Alta", "comp": "Baixa", "desc": "Gestão automática de notas fiscais.", "roi": "Economia de tempo no setor fiscal."},
-    "VR Mobile": {"setup": 201.30, "mensal": 193.63, "cac": 300.00, "margem": "Média", "comp": "Média", "desc": "Gestão na palma da mão.", "roi": "Decisões baseadas em dados reais."},
-    "Migração Banco de Dados": {"setup": 201.30, "mensal": 0.00, "cac": 200.00, "margem": "Baixa", "comp": "Alta", "desc": "Cópia do cadastro anterior.", "roi": "Segurança na transição."},
-    "Definição de Escopo": {"setup": 201.30, "mensal": 0.00, "cac": 100.00, "margem": "Média", "comp": "Média", "desc": "Mapeamento de processos.", "roi": "Evita surpresas no projeto."},
-    "Configuração Servidor / PDV Linux": {"setup": 201.30, "mensal": 0.00, "cac": 150.00, "margem": "Média", "comp": "Média", "desc": "Ambiente Linux estável.", "roi": "Imunidade a vírus."},
-    "Implantação e Treinamento": {"setup": 201.30, "mensal": 0.00, "cac": 1000.00, "margem": "Baixa", "comp": "Alta", "desc": "Capacitação da equipe.", "roi": "Equipe 100% produtiva."}
-}
-itens_desp = {"Alimentação": 49.00, "Hospedagem": 195.00, "Deslocamento (KM)": 2.12}
+# --- 3. INICIALIZAÇÃO DO ESTADO PERMANENTE ---
+if 'sel_i' not in st.session_state: st.session_state.sel_i = list(servicos_db.keys())
+if 'sel_m' not in st.session_state: st.session_state.sel_m = [list(sistemas_db.keys())[0]] if sistemas_db else []
 
-# --- INICIALIZAÇÃO DO ESTADO PERMANENTE ---
-if 'sel_i' not in st.session_state: st.session_state.sel_i = ["Migração Banco de Dados", "Definição de Escopo", "Configuração Servidor / PDV Linux", "Implantação e Treinamento"]
-if 'sel_m' not in st.session_state: st.session_state.sel_m = ["VR ERP PRO"]
-
-for i in list(precos_tabela.keys()):
-    if f"perm_h_{i}" not in st.session_state: st.session_state[f"perm_h_{i}"] = 12 if "Treinamento" not in i else 120
-    if f"perm_q_{i}" not in st.session_state: st.session_state[f"perm_q_{i}"] = 1
-for d in itens_desp.keys():
-    if f"perm_d_{d}" not in st.session_state: st.session_state[f"perm_d_{d}"] = 0
+# Cria as chaves de blindagem para cada produto da planilha
+for nome in {**sistemas_db, **servicos_db, **despesas_db}.keys():
+    if f"perm_val_{nome}" not in st.session_state:
+        st.session_state[f"perm_val_{nome}"] = 120 if "Treinamento" in nome else 1
 
 # --- 4. MENU LATERAL ---
 with st.sidebar:
     if os.path.exists("logo_vr.png"): st.image("logo_vr.png", width=200)
-    tela = st.radio("Navegação:", ["Gerador de Proposta", "Consulta de Preço"])
-    st.write("---")
+    st.markdown('<span class="sidebar-label">Configurações</span>', unsafe_allow_html=True)
+    perfil_venda = st.selectbox("Perfil", ["Executivo (Rua)", "CS (Base)"])
+    modo_apresentacao = st.toggle("Modo Apresentação")
+    desc = st.number_input("Desconto Mensal (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.1)
+    exibir_detalhe_desc = st.toggle("Exibir Desconto", value=True)
+    faturamento = st.selectbox("Faturamento", ["Imediato", "30 dias", "60 dias", "Após a implantação"])
+    parcelas = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 5, 6], index=3)
 
-    if tela == "Gerador de Proposta":
-        st.markdown('<span class="sidebar-label">Configurações</span>', unsafe_allow_html=True)
-        perfil_venda = st.selectbox("Perfil", ["Executivo (Rua)", "CS (Base)"])
-        modo_apresentacao = st.toggle("Modo Apresentação")
-        desc = st.number_input("Desconto Mensal (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.1)
-        exibir_detalhe_desc = st.toggle("Exibir Desconto", value=True)
-        faturamento = st.selectbox("Faturamento", ["Imediato", "30 dias", "60 dias", "Após a implantação"])
-        parcelas = st.selectbox("Parcelamento Setup", [1, 2, 3, 4, 5, 6], index=3)
-
-# --- 5. TELA DE CONSULTA (RESTAURADA E MELHORADA) ---
-if tela == "Consulta de Preço":
-    st.markdown('<h1 class="hero-title">ANÁLISE TÉCNICA</h1>', unsafe_allow_html=True)
-    prod_sel = st.selectbox("Selecione o Produto:", list(precos_tabela.keys()))
-    d = precos_tabela[prod_sel]
+# --- 5. TELA GERADOR DE PROPOSTA ---
+if not modo_apresentacao:
+    st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
+    st.markdown("---")
+    col_i, col_m, col_d = st.columns(3) if perfil_venda == "Executivo (Rua)" else (*st.columns(2), None)
     
-    ltv_24 = (d["mensal"] * 24) + d["setup"]
-    payback = ((d["cac"] - d["setup"]) / d["mensal"]) if d["mensal"] > 0 else 0
-    
-    c1, c2 = st.columns(2)
-    with c1:
-        html_markup = textwrap.dedent(f"""
-            <div class="resumo-card">
-                <span class="resumo-label">Preço de Venda</span>
-                <div class="resumo-valor">R$ {d['mensal']:,.2f}<small style="font-size:1rem; color:#888;">/mês</small></div>
-                <div style="font-weight:bold; color:#555; margin-bottom:10px;">Setup Sugerido: R$ {d['setup']:,.2f}</div>
-                <div class="section-header"><span class="section-title">ROI ESTRATÉGICO VR</span></div>
-                <div class="roi-interno-box">
-                    <div class="roi-metrica"><span class="roi-label-int">LTV (24 Meses)</span><span class="roi-num-int">R$ {ltv_24:,.2f}</span></div>
-                    <div class="roi-metrica"><span class="roi-label-int">Breakeven</span><span class="roi-num-int">{round(payback, 1) if d['mensal'] > 0 else 'N/A'} meses</span></div>
-                    <div class="roi-metrica"><span class="roi-label-int">Margem Geral</span><span class="roi-num-int">{d['margem']}</span></div>
-                    <div class="roi-metrica"><span class="roi-label-int">Complexidade</span><span class="roi-num-int">{d['comp']}</span></div>
-                </div>
-                <div class="resumo-subtitulo">ROI PARA O CLIENTE</div>
-                <p style="font-size:0.95rem; color:#444; line-height:1.4;">{d['roi']}</p>
-            </div>
-        """)
-        st.markdown(html_markup, unsafe_allow_html=True)
-    
-    with c2:
-        st.markdown('<div class="section-header"><span class="section-title">ENGENHARIA DE VALOR</span></div>', unsafe_allow_html=True)
-        # Blocos de informação estratégica restaurados
-        if d["mensal"] > 500: st.info("**Foco em Retenção:** Produto estratégico para a recorrência da unidade.")
-        if d["comp"] == "Alta": st.warning("**Senioridade Necessária:** Requer técnico experiente para a implantação.")
-        if d["margem"] == "Altíssima": st.success("**Alta Escalabilidade:** Produto com baixíssimo custo de manutenção.")
-        
-        st.write("---")
-        st.markdown(f"**Posicionamento:** \n{d['desc']}")
-        st.markdown(f"**Projeção de Ciclo de Vida:** \nExpectativa de receita bruta em 2 anos: **R$ {ltv_24:,.2f}**.")
+    with col_i:
+        st.markdown('<div class="section-header"><span class="section-title">IMPLANTAÇÃO</span></div>', unsafe_allow_html=True)
+        st.session_state.sel_i = st.multiselect("Serviços", list(servicos_db.keys()), default=st.session_state.sel_i)
+        for i in st.session_state.sel_i:
+            vu = float(servicos_db[i]["Valor"])
+            st.number_input(f"Horas: {i} (R$ {vu:,.2f}/h)", min_value=0, 
+                            value=st.session_state[f"perm_val_{i}"], 
+                            key=f"tmp_val_{i}", 
+                            on_change=sync_state, args=(f"perm_val_{i}", f"tmp_val_{i}"))
 
-else: # TELA DE PROPOSTA
-    if not modo_apresentacao:
-        st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
-        st.markdown("---")
-        col_i, col_m, col_d = st.columns(3) if perfil_venda == "Executivo (Rua)" else (*st.columns(2), None)
-        
-        with col_i:
-            st.markdown('<div class="section-header"><span class="section-title">IMPLANTAÇÃO</span></div>', unsafe_allow_html=True)
-            st.session_state.sel_i = st.multiselect("Serviços", list(precos_tabela.keys())[8:12], default=st.session_state.sel_i)
-            for i in st.session_state.sel_i:
-                vu = precos_tabela[i]["setup"]
-                st.number_input(f"Horas: {i} (R$ {vu:,.2f}/h)", min_value=0, 
-                                value=st.session_state[f"perm_h_{i}"], 
-                                key=f"tmp_h_{i}", 
-                                on_change=sync_state, args=(f"perm_h_{i}", f"tmp_h_{i}"))
+    with col_m:
+        st.markdown('<div class="section-header"><span class="section-title">MENSALIDADES</span></div>', unsafe_allow_html=True)
+        st.session_state.sel_m = st.multiselect("Produtos", list(sistemas_db.keys()), default=st.session_state.sel_m)
+        for i in st.session_state.sel_m:
+            vu = float(sistemas_db[i]["Valor"])
+            st.number_input(f"Qtd: {i} (R$ {vu:,.2f}/un)", min_value=0, 
+                            value=st.session_state[f"perm_val_{i}"], 
+                            key=f"tmp_val_{i}", 
+                            on_change=sync_state, args=(f"perm_val_{i}", f"tmp_val_{i}"))
 
-        with col_m:
-            st.markdown('<div class="section-header"><span class="section-title">MENSALIDADES</span></div>', unsafe_allow_html=True)
-            st.session_state.sel_m = st.multiselect("Produtos", list(precos_tabela.keys())[0:8], default=st.session_state.sel_m)
-            for i in st.session_state.sel_m:
-                vu = precos_tabela[i]["mensal"]
-                st.number_input(f"Qtd: {i} (R$ {vu:,.2f}/un)", min_value=0, 
-                                value=st.session_state[f"perm_q_{i}"], 
-                                key=f"tmp_q_{i}", 
-                                on_change=sync_state, args=(f"perm_q_{i}", f"tmp_q_{i}"))
+    if col_d:
+        with col_d:
+            st.markdown('<div class="section-header"><span class="section-title">DESPESAS</span></div>', unsafe_allow_html=True)
+            for i in despesas_db.keys():
+                vu = float(despesas_db[i]["Valor"])
+                st.number_input(f"{i} (R$ {vu:,.2f}/un)", min_value=0, 
+                                value=st.session_state[f"perm_val_{i}"], 
+                                key=f"tmp_val_{i}", 
+                                on_change=sync_state, args=(f"perm_val_{i}", f"tmp_val_{i}"))
 
-        if col_d:
-            with col_d:
-                st.markdown('<div class="section-header"><span class="section-title">DESPESAS</span></div>', unsafe_allow_html=True)
-                for i, p in itens_desp.items():
-                    st.number_input(f"{i} (R$ {p:,.2f}/un)", min_value=0, 
-                                    value=st.session_state[f"perm_d_{i}"], 
-                                    key=f"tmp_d_{i}", 
-                                    on_change=sync_state, args=(f"perm_d_{i}", f"tmp_d_{i}"))
+# --- CÁLCULOS FINAIS ---
+t_imp, t_men_bruto, t_desp = 0, 0, 0
+lista_i, lista_m, lista_d = [], [], []
 
-    # Cálculos Finais (Lendo do State Permanente)
-    t_imp, t_men_bruto, t_desp = 0, 0, 0
-    lista_i, lista_m, lista_d = [], [], []
+for i in st.session_state.sel_i:
+    qtd = st.session_state[f"perm_val_{i}"]
+    val = float(servicos_db[i]["Valor"])
+    t_imp += qtd * val
+    lista_i.append((i, qtd, val, servicos_db[i]["Descricao"]))
 
-    for i in st.session_state.sel_i:
-        h = st.session_state[f"perm_h_{i}"]
-        t_imp += h * precos_tabela[i]["setup"]
-        lista_i.append((i, h, precos_tabela[i]["setup"]))
+for i in st.session_state.sel_m:
+    qtd = st.session_state[f"perm_val_{i}"]
+    val = float(sistemas_db[i]["Valor"])
+    t_men_bruto += qtd * val
+    lista_m.append((i, qtd, val, sistemas_db[i]["Descricao"]))
 
-    for i in st.session_state.sel_m:
-        q = st.session_state[f"perm_q_{i}"]
-        t_men_bruto += q * precos_tabela[i]["mensal"]
-        lista_m.append((i, q, precos_tabela[i]["mensal"]))
+for i in despesas_db.keys():
+    qtd = st.session_state[f"perm_val_{i}"]
+    if qtd > 0:
+        val = float(despesas_db[i]["Valor"])
+        t_desp += qtd * val
+        lista_d.append((i, qtd, val, despesas_db[i]["Descricao"]))
 
-    for i, p in itens_desp.items():
-        qd = st.session_state[f"perm_d_{i}"]
-        if qd > 0:
-            t_desp += qd * p
-            lista_d.append((i, qd, p))
+t_men_liq = t_men_bruto * (1 - (desc/100))
 
-    t_men_liq = t_men_bruto * (1 - (desc/100))
+# --- EXIBIÇÃO DO DETALHAMENTO ---
+st.markdown("<h2 style='text-align:center; font-weight:800; margin-top:30px;'>DETALHAMENTO DA PROPOSTA</h2>", unsafe_allow_html=True)
+res_cols = st.columns(3) if perfil_venda == "Executivo (Rua)" else st.columns([1, 2, 2, 1])[1:3]
 
-    st.markdown("<h2 style='text-align:center; font-weight:800; margin-top:30px;'>DETALHAMENTO DA PROPOSTA</h2>", unsafe_allow_html=True)
-    res_cols = st.columns(3) if perfil_venda == "Executivo (Rua)" else st.columns([1, 2, 2, 1])[1:3]
+with res_cols[0]:
+    html_i = "".join([f"<li><span><span class='tooltip'>{i}<span class='tooltiptext'>{d}</span></span></span><span class='item-detalhe'>{q}h x R$ {v:,.2f}</span></li>" for i, q, v, d in lista_i])
+    st.markdown(f'<div class="resumo-card"><span class="resumo-label">Setup</span><div class="resumo-valor">R$ {t_imp:,.2f}</div><div style="font-weight:bold;">{parcelas}x R$ {t_imp/parcelas:,.2f}</div><div class="resumo-subtitulo">SERVIÇOS</div><ul class="lista-itens">{html_i}</ul></div>', unsafe_allow_html=True)
 
-    with res_cols[0]:
-        html_i = "".join([f"<li><span><span class='tooltip'>{i}<span class='tooltiptext'>{precos_tabela[i]['desc']}</span></span></span><span class='item-detalhe'>{h}h x R$ {v:,.2f}</span></li>" for i, h, v in lista_i])
-        st.markdown(f'<div class="resumo-card"><span class="resumo-label">Setup</span><div class="resumo-valor">R$ {t_imp:,.2f}</div><div style="font-weight:bold;">{parcelas}x R$ {t_imp/parcelas:,.2f}</div><div class="resumo-subtitulo">SERVIÇOS</div><ul class="lista-itens">{html_i}</ul></div>', unsafe_allow_html=True)
+with res_cols[1]:
+    html_m = "".join([f"<li><span><span class='tooltip'>{i}<span class='tooltiptext'>{d}</span></span></span><span class='item-detalhe'>{q} Un x R$ {v:,.2f}</span></li>" for i, q, v, d in lista_m])
+    desc_info = f'<div style="color: #2e7d32; font-weight: bold;">Desconto: {desc:,.2f}%</div>' if exibir_detalhe_desc and desc > 0 else '<div style="height:21px"></div>'
+    st.markdown(f'<div class="resumo-card" style="border-top-color: #2e7d32;"><span class="resumo-label">Mensalidade</span><div class="resumo-valor" style="color: #2e7d32;">R$ {t_men_liq:,.2f}</div>{desc_info}<div style="font-weight:bold; font-size: 0.9rem; margin-top:5px;">Faturamento: {faturamento}</div><div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{html_m}</ul></div>', unsafe_allow_html=True)
 
-    with res_cols[1]:
-        html_m = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} Un x R$ {v:,.2f}</span></li>" for i, q, v in lista_m])
-        desc_info = f'<div style="color: #2e7d32; font-weight: bold;">Desconto: {desc:,.2f}%</div>' if exibir_detalhe_desc and desc > 0 else '<div style="height:21px"></div>'
-        st.markdown(f'<div class="resumo-card" style="border-top-color: #2e7d32;"><span class="resumo-label">Mensalidade</span><div class="resumo-valor" style="color: #2e7d32;">R$ {t_men_liq:,.2f}</div>{desc_info}<div style="font-weight:bold; font-size: 0.9rem; margin-top:5px;">Faturamento: {faturamento}</div><div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{html_m}</ul></div>', unsafe_allow_html=True)
-
-    if perfil_venda == "Executivo (Rua)":
-        with res_cols[2]:
-            html_d = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} x R$ {v:,.2f}</span></li>" for i, q, v in lista_d])
-            st.markdown(f'<div class="resumo-card" style="border-top-color: #1976d2;"><span class="resumo-label">Despesas</span><div class="resumo-valor" style="color: #1976d2;">R$ {t_desp:,.2f}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">Faturadas no término</div><div class="resumo-subtitulo">LOGÍSTICA</div><ul class="lista-itens">{html_d}</ul></div>', unsafe_allow_html=True)
+if perfil_venda == "Executivo (Rua)":
+    with res_cols[2]:
+        html_d = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{q} x R$ {v:,.2f}</span></li>" for i, q, v, d in lista_d])
+        st.markdown(f'<div class="resumo-card" style="border-top-color: #1976d2;"><span class="resumo-label">Despesas</span><div class="resumo-valor" style="color: #1976d2;">R$ {t_desp:,.2f}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">Faturadas no término</div><div class="resumo-subtitulo">LOGÍSTICA</div><ul class="lista-itens">{html_d}</ul></div>', unsafe_allow_html=True)
