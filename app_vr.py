@@ -1,15 +1,3 @@
-Pisei na bola novamente e entendo perfeitamente o que aconteceu. O erro de "bloqueio" na inclusão manual ocorre porque eu tentei sincronizar o **Mapeamento** e a **Tela de Venda** usando uma lógica que o Streamlit interpreta como um conflito de estados. Quando o Mapeamento está desligado, o sistema "se perdia" tentando validar de onde vinha a informação, impedindo você de selecionar os itens.
-
-Vou resolver isso agora com a estrutura que combinamos (as 3 partes), mas usando a técnica de **Chaves de Widget (`keys`)**. Essa é a única forma 100% segura de permitir que um botão sugira valores, mas que o vendedor tenha a palavra final manualmente.
-
-### 🛠️ O que foi corrigido (Foco em Inclusão Manual):
-1.  **Independência Total:** Agora as listas de **Implantação** e **Mensalidade** usam uma chave interna. Você pode selecionar qualquer item manualmente a qualquer momento, com o mapeamento ligado ou desligado.
-2.  **Mapeamento como "Sugestão":** O botão de inteligência agora apenas "empurra" os itens para a Tela de Venda. Ele não trava mais os campos.
-3.  **Correção do Reset:** Removi o uso de `default=` nos multiselects, que era o que causava o travamento. Agora o estado é mantido diretamente pela chave do componente.
-
-Aqui está o código revisado, estruturado e com a **Tela de Venda** totalmente liberada:
-
-```python
 import streamlit as st
 import pandas as pd
 import os
