@@ -9,18 +9,31 @@ st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 # --- LINK DO GOOGLE SHEETS (VERSÃO CSV) ---
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTgmdf_FgFd91dkm5zoD0l6l2ailLhCsEV-3pyFsQxRzoyNw2E96eQQoCYkfxHitA9oCIvfaI30-k-2/pub?output=csv"
 
+# --- FUNÇÃO DE LIMPEZA DE NÚMEROS (BLINDAGEM CONTRA TEXTO NO VALOR) ---
+def limpar_valor(valor):
+    if pd.isna(valor) or str(valor).strip() == "":
+        return 0.0
+    try:
+        # Remove R$, espaços e troca vírgula por ponto
+        v = str(valor).replace('R$', '').replace(' ', '').replace('.', '').replace(',', '.')
+        return float(v)
+    except:
+        return 0.0
+
 # --- FUNÇÃO DE SINCRONIZAÇÃO (BLINDAGEM DE ESTADO) ---
 def sync_state(key_permanente, key_widget):
     st.session_state[key_permanente] = st.session_state[key_widget]
 
-# --- CARREGAMENTO DE DADOS COM TRATAMENTO DE ERRO ---
-@st.cache_data(ttl=300) # Atualiza a cada 5 minutos
+# --- CARREGAMENTO DE DADOS ---
+@st.cache_data(ttl=300)
 def carregar_dados_vendas():
     try:
         df = pd.read_csv(SHEET_URL)
-        df.columns = [c.strip() for c in df.columns] # Remove espaços extras nos títulos
+        df.columns = [c.strip() for c in df.columns]
         
-        # Filtros por categoria para alimentar os campos
+        # Aplicamos a limpeza em toda a coluna de Valor antes de converter
+        df['Valor'] = df['Valor'].apply(limpar_valor)
+        
         sistemas = df[df['Tipo'] == 'Sistema'].set_index('Produto').to_dict('index')
         servicos = df[df['Tipo'] == 'Servico'].set_index('Produto').to_dict('index')
         despesas = df[df['Tipo'] == 'Despesa'].set_index('Produto').to_dict('index')
@@ -32,7 +45,7 @@ def carregar_dados_vendas():
 
 sistemas_db, servicos_db, despesas_db, full_db = carregar_dados_vendas()
 
-# 2. Estilização CSS (Identidade Visual VR)
+# 2. Estilização CSS
 st.markdown("""
     <style>
     .stApp { background: linear-gradient(135deg, #ffffff 0%, #fff5ed 100%); }
@@ -66,10 +79,9 @@ st.markdown("""
 if 'sel_i' not in st.session_state: st.session_state.sel_i = []
 if 'sel_m' not in st.session_state: st.session_state.sel_m = []
 
-# Criar memória para todos os itens da planilha
 for nome in full_db.keys():
     if f"perm_val_{nome}" not in st.session_state:
-        st.session_state[f"perm_val_{nome}"] = 120 if "Treinamento" in nome else 1
+        st.session_state[f"perm_val_{nome}"] = 120 if "Treinamento" in str(nome) else 1
 
 # --- 4. MENU LATERAL ---
 with st.sidebar:
@@ -98,7 +110,7 @@ if tela == "Consulta de Preço":
             st.markdown(f"""
                 <div class="resumo-card">
                     <span class="resumo-label">Valor Unitário Referência</span>
-                    <div class="resumo-valor">R$ {float(d['Valor']):,.2f}</div>
+                    <div class="resumo-valor">R$ {d['Valor']:,.2f}</div>
                     <div class="resumo-subtitulo">DETALHES DO ITEM</div>
                     <p style="font-size:1rem; color:#444;"><b>Tipo:</b> {d['Tipo']}</p>
                     <p style="font-size:1rem; color:#444;"><b>Descrição Técnica:</b><br>{d['Descricao']}</p>
@@ -119,12 +131,11 @@ else:
         with col_i:
             st.markdown('<div class="section-header"><span class="section-title">IMPLANTAÇÃO</span></div>', unsafe_allow_html=True)
             opcoes_i = list(servicos_db.keys())
-            # BLINDAGEM: Filtra o default para garantir que o item ainda existe na planilha
             default_i = [s for s in st.session_state.sel_i if s in opcoes_i]
             st.session_state.sel_i = st.multiselect("Serviços", opcoes_i, default=default_i)
             
             for i in st.session_state.sel_i:
-                vu = float(servicos_db[i]["Valor"])
+                vu = servicos_db[i]["Valor"]
                 st.number_input(f"Horas: {i} (R$ {vu:,.2f}/h)", min_value=0, 
                                 value=st.session_state[f"perm_val_{i}"], 
                                 key=f"tmp_val_{i}", 
@@ -133,12 +144,11 @@ else:
         with col_m:
             st.markdown('<div class="section-header"><span class="section-title">MENSALIDADES</span></div>', unsafe_allow_html=True)
             opcoes_m = list(sistemas_db.keys())
-            # BLINDAGEM: Filtra o default para garantir que o item ainda existe na planilha
             default_m = [s for s in st.session_state.sel_m if s in opcoes_m]
             st.session_state.sel_m = st.multiselect("Produtos", opcoes_m, default=default_m)
             
             for i in st.session_state.sel_m:
-                vu = float(sistemas_db[i]["Valor"])
+                vu = sistemas_db[i]["Valor"]
                 st.number_input(f"Qtd: {i} (R$ {vu:,.2f}/un)", min_value=0, 
                                 value=st.session_state[f"perm_val_{i}"], 
                                 key=f"tmp_val_{i}", 
@@ -148,43 +158,40 @@ else:
             with col_d:
                 st.markdown('<div class="section-header"><span class="section-title">DESPESAS</span></div>', unsafe_allow_html=True)
                 for i in despesas_db.keys():
-                    vu = float(despesas_db[i]["Valor"])
+                    vu = despesas_db[i]["Valor"]
                     st.number_input(f"{i} (R$ {vu:,.2f}/un)", min_value=0, 
                                     value=st.session_state[f"perm_val_{i}"], 
                                     key=f"tmp_val_{i}", 
                                     on_change=sync_state, args=(f"perm_val_{i}", f"tmp_val_{i}"))
 
     # --- CÁLCULOS FINAIS ---
-    t_imp, t_men_bruto, t_desp = 0, 0, 0
+    t_imp, t_men_bruto, t_desp = 0.0, 0.0, 0.0
     lista_i, lista_m, lista_d = [], [], []
 
-    # Processa Implantação selecionada
     for i in st.session_state.sel_i:
         if i in servicos_db:
             qtd = st.session_state[f"perm_val_{i}"]
-            val = float(servicos_db[i]["Valor"])
-            t_imp += qtd * val
+            val = servicos_db[i]["Valor"]
+            t_imp += float(qtd) * float(val)
             lista_i.append((i, qtd, val, servicos_db[i].get("Descricao", "")))
 
-    # Processa Mensalidade selecionada
     for i in st.session_state.sel_m:
         if i in sistemas_db:
             qtd = st.session_state[f"perm_val_{i}"]
-            val = float(sistemas_db[i]["Valor"])
-            t_men_bruto += qtd * val
+            val = sistemas_db[i]["Valor"]
+            t_men_bruto += float(qtd) * float(val)
             lista_m.append((i, qtd, val, sistemas_db[i].get("Descricao", "")))
 
-    # Processa Despesas (todas que tiverem valor > 0)
     for i in despesas_db.keys():
         qtd = st.session_state[f"perm_val_{i}"]
         if qtd > 0:
-            val = float(despesas_db[i]["Valor"])
-            t_desp += qtd * val
+            val = despesas_db[i]["Valor"]
+            t_desp += float(qtd) * float(val)
             lista_d.append((i, qtd, val, ""))
 
     t_men_liq = t_men_bruto * (1 - (desc/100))
 
-    # --- EXIBIÇÃO DO RESUMO FINAL ---
+    # --- EXIBIÇÃO DO RESUMO ---
     st.markdown("<h2 style='text-align:center; font-weight:800; margin-top:30px;'>RESUMO DA PROPOSTA</h2>", unsafe_allow_html=True)
     res_cols = st.columns(3) if perfil_venda == "Executivo (Rua)" else st.columns([1, 2, 2, 1])[1:3]
 
