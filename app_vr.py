@@ -278,7 +278,9 @@ if tela == "Gerador de Proposta":
                 for i in st.session_state.sel_d:
                     st.number_input(f"{i} (R$ {despesas_db[i]['Valor']:,.2f}/un)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_d_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_d_{i}"))
 
-    # PARTE 3: CARDS DE RESUMO
+    # ==========================================
+    # PARTE 3: CARDS DE RESUMO (O Resultado)
+    # ==========================================
     t_imp = sum(st.session_state[f"perm_val_{i}"] * servicos_db[i]["Valor"] for i in st.session_state.sel_i if i in servicos_db)
     t_men_bruto = sum(st.session_state[f"perm_val_{i}"] * sistemas_db[i]["Valor"] for i in st.session_state.sel_m if i in sistemas_db)
     t_desp = sum(st.session_state[f"perm_val_{i}"] * despesas_db[i]["Valor"] for i in st.session_state.sel_d if i in despesas_db)
@@ -292,8 +294,20 @@ if tela == "Gerador de Proposta":
         st.markdown(f'<div class="resumo-card"><span class="resumo-label">Investimento Implantação</span><div class="resumo-valor">R$ {t_imp:,.2f}</div><div style="font-weight:bold;">{parcelas_setup}x de R$ {t_imp/parcelas_setup:,.2f}</div><div class="resumo-subtitulo">DETALHAMENTO SETUP</div><ul class="lista-itens">{html_i if html_i else "<li>Nenhum item com valor adicionado</li>"}</ul></div>', unsafe_allow_html=True)
 
     with res_cols[1]:
+        # ORDENAÇÃO VIP (Fila de Prioridade Visual)
+        def get_peso(item):
+            if item == "VR ERP PRO": return 1
+            if item == "VR PDV Convencional": return 2
+            if "SiTef" in item: return 3
+            if item == "Gerenciador XML": return 4
+            if item == "VR Mobile": return 5
+            return 99 # O resto vai para o final
+
+        # Criando a cópia organizada baseada nos pesos sem alterar a Parte 2
+        lista_ordenada_m = sorted(st.session_state.sel_m, key=get_peso)
+
         html_m = ""
-        for i in st.session_state.sel_m:
+        for i in lista_ordenada_m:
             if i in sistemas_db and st.session_state[f"perm_val_{i}"] > 0:
                 html_m += f"<li><span>{i}</span><span class='item-detalhe'>{st.session_state[f'perm_val_{i}']} un x R$ {sistemas_db[i]['Valor']:,.2f}</span></li>"
                 # REGRA DO BUNDLE VR ERP PRO (ILUSTRATIVO)
