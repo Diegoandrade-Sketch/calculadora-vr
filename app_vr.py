@@ -10,6 +10,7 @@ st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTgmdf_FgFd91dkm5zoD0l6l2ailLhCsEV-3pyFsQxRzoyNw2E96eQQoCYkfxHitA9oCIvfaI30-k-2/pub?output=csv"
 EXCEL_FILE = "tabela_preco_chat.xlsx"
 
+# FUNÇÃO DE LIMPEZA (EXCEL -> PYTHON)
 def limpar_valor(valor):
     if pd.isna(valor) or str(valor).strip() == "": return 0.0
     v = str(valor).replace('R$', '').replace(' ', '').strip()
@@ -18,6 +19,11 @@ def limpar_valor(valor):
     try:
         return float(v)
     except: return 0.0
+
+# FUNÇÃO DE FORMATAÇÃO BRASILEIRA (PYTHON -> TELA)
+def f_br(valor):
+    # Formata com vírgula para decimal e ponto para milhar
+    return f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 def sync_state(key_permanente, key_widget):
     st.session_state[key_permanente] = st.session_state[key_widget]
@@ -52,7 +58,7 @@ def carregar_dados_vendas():
 
 sistemas_db, servicos_db, despesas_db, full_db = carregar_dados_vendas()
 
-# ESTILIZAÇÃO CSS (FOCO EM LINHA RETA E LEITURA FLUIDA)
+# ESTILIZAÇÃO CSS
 st.markdown("""
     <style>
     .stApp { background: linear-gradient(135deg, #ffffff 0%, #fff5ed 100%); }
@@ -123,7 +129,7 @@ with st.sidebar:
 # ==========================================
 if tela == "Gerador de Proposta":
     
-    # --- PARTE 1: MAPEAMENTO DA OPERAÇÃO ---
+    # --- PARTE 1: MAPEAMENTO ---
     def aplicar_mapeamento():
         pdv_map = {"VR PDV Convencional": st.session_state.m_pdv_conv, "PDV Touchscreen": st.session_state.m_pdv_touch, "PDV Selfcheckout": st.session_state.m_pdv_self}
         for p, qtd in pdv_map.items():
@@ -206,24 +212,24 @@ if tela == "Gerador de Proposta":
                 with b2: st.button("🗑️ Limpar Tudo", on_click=limpar_tudo, use_container_width=True)
             st.markdown("---")
 
-        # --- PARTE 2: TELA DE VENDA (INCLUSÃO MANUAL) ---
+        # --- PARTE 2: INCLUSÃO MANUAL ---
         col_i, col_m, col_d = st.columns(3) if perfil_venda == "Executivo (Rua)" else (*st.columns(2), None)
         with col_i:
             st.markdown('<div class="section-header"><span class="section-title">IMPLANTAÇÃO E SERVIÇOS</span></div>', unsafe_allow_html=True)
             st.session_state.sel_i = st.multiselect("Serviços", list(servicos_db.keys()), default=[s for s in st.session_state.sel_i if s in servicos_db])
             for i in st.session_state.sel_i:
-                st.number_input(f"{i} (R$ {servicos_db[i]['valor']:,.2f}/h)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_i_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_i_{i}"))
+                st.number_input(f"{i} (R$ {f_br(servicos_db[i]['valor'])}/h)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_i_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_i_{i}"))
         with col_m:
             st.markdown('<div class="section-header"><span class="section-title">MENSALIDADES SISTEMAS</span></div>', unsafe_allow_html=True)
             st.session_state.sel_m = st.multiselect("Sistemas", list(sistemas_db.keys()), default=[s for s in st.session_state.sel_m if s in sistemas_db])
             for i in st.session_state.sel_m:
-                st.number_input(f"{i} (R$ {sistemas_db[i]['valor']:,.2f}/un)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_m_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_m_{i}"))
+                st.number_input(f"{i} (R$ {f_br(sistemas_db[i]['valor'])}/un)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_m_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_m_{i}"))
         if col_d:
             with col_d:
                 st.markdown('<div class="section-header"><span class="section-title">DESPESAS LOGÍSTICAS</span></div>', unsafe_allow_html=True)
                 st.session_state.sel_d = st.multiselect("Despesas", list(despesas_db.keys()), default=[s for s in st.session_state.sel_d if s in despesas_db])
                 for i in st.session_state.sel_d:
-                    st.number_input(f"{i} (R$ {despesas_db[i]['valor']:,.2f}/un)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_d_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_d_{i}"))
+                    st.number_input(f"{i} (R$ {f_br(despesas_db[i]['valor'])}/un)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_d_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_d_{i}"))
 
     # --- PARTE 3: CARD DE RESUMO ---
     st.markdown("<h2 style='text-align:center; font-weight:800; margin-top:30px;'>RESUMO DO INVESTIMENTO</h2>", unsafe_allow_html=True)
@@ -239,7 +245,7 @@ if tela == "Gerador de Proposta":
             v_hora = servicos_db[s_nome]['valor']
             v_item = horas * v_hora
             total_setup += v_item
-            html_setup += f"<li><span>{s_nome}</span><span class='item-detalhe'>{horas}h x R$ {v_hora:,.2f} | Total: R$ {v_item:,.2f}</span></li>"
+            html_setup += f"<li><span>{s_nome}</span><span class='item-detalhe'>{horas}h x R$ {f_br(v_hora)} | Total: R$ {f_br(v_item)}</span></li>"
 
     for m_nome in st.session_state.sel_m:
         d = full_db.get(m_nome, {})
@@ -251,18 +257,18 @@ if tela == "Gerador de Proposta":
             rate = v_h_esp if v_h_esp > 0 else v_hora_base
             v_impl = h_pad * rate
             total_setup += v_impl
-            html_setup += f"<li><span>Implantação {m_nome}</span><span class='item-detalhe'>{h_pad}h x R$ {rate:,.2f} | Total: R$ {v_impl:,.2f}</span></li>"
+            html_setup += f"<li><span>Implantação {m_nome}</span><span class='item-detalhe'>{h_pad}h x R$ {f_br(rate)} | Total: R$ {f_br(v_impl)}</span></li>"
         
         if val_ads > 0:
             total_setup += val_ads
-            html_setup += f"<li><span>Taxa de Adesão {m_nome}</span><span class='item-detalhe'>1 un x R$ {val_ads:,.2f} | Total: R$ {val_ads:,.2f}</span></li>"
+            html_setup += f"<li><span>Taxa de Adesão {m_nome}</span><span class='item-detalhe'>1 un x R$ {f_br(val_ads)} | Total: R$ {f_br(val_ads)}</span></li>"
 
     with res_cols[0]:
         st.markdown(f'''
             <div class="resumo-card">
                 <span class="resumo-label">Investimento Implantação (Setup)</span>
-                <div class="resumo-valor">R$ {total_setup:,.2f}</div>
-                <div style="font-weight:bold;">{parcelas_setup}x de R$ {total_setup/parcelas_setup:,.2f}</div>
+                <div class="resumo-valor">R$ {f_br(total_setup)}</div>
+                <div style="font-weight:bold;">{parcelas_setup}x de R$ {f_br(total_setup/parcelas_setup)}</div>
                 <div class="resumo-subtitulo">DETALHAMENTO SETUP</div>
                 <ul class="lista-itens">{html_setup if html_setup else "<li>Nenhum item</li>"}</ul>
             </div>
@@ -283,12 +289,12 @@ if tela == "Gerador de Proposta":
             v_unit = sistemas_db[i]['valor']
             qtd = st.session_state[f'perm_val_{i}']
             v_total_m = qtd * v_unit
-            html_m += f"<li><span>{i}</span><span class='item-detalhe'>{qtd} un x R$ {v_unit:,.2f} | Total: R$ {v_total_m:,.2f}</span></li>"
+            html_m += f"<li><span>{i}</span><span class='item-detalhe'>{qtd} un x R$ {f_br(v_unit)} | Total: R$ {f_br(v_total_m)}</span></li>"
             if i == "VR ERP PRO":
                 for ex in ["VR Promo", "VR Carteira Digital", "VR Analytics"]: 
                     html_m += f"<li class='item-incluso'><span>└ {ex}</span><span>Incluso</span></li>"
         desc_html = f'<div style="color:#2e7d32; font-weight:bold;">Desconto: {desc}%</div>' if (exibir_detalhe_desc and desc > 0) else '<div style="height:21px"></div>'
-        st.markdown(f'<div class="resumo-card" style="border-top-color:#2e7d32;"><span class="resumo-label">Manutenção Mensal</span><div class="resumo-valor" style="color:#2e7d32;">R$ {t_liq:,.2f}</div>{desc_html}<div style="font-weight:bold; font-size: 0.9rem; margin-top:5px;">Início: {faturamento_sistema}</div><div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{html_m if html_m else "<li>Nenhum</li>"}</ul></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="resumo-card" style="border-top-color:#2e7d32;"><span class="resumo-label">Manutenção Mensal</span><div class="resumo-valor" style="color:#2e7d32;">R$ {f_br(t_liq)}</div>{desc_html}<div style="font-weight:bold; font-size: 0.9rem; margin-top:5px;">Início: {faturamento_sistema}</div><div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{html_m if html_m else "<li>Nenhum</li>"}</ul></div>', unsafe_allow_html=True)
 
     # LOGÍSTICA
     if perfil_venda == "Executivo (Rua)":
@@ -300,10 +306,10 @@ if tela == "Gerador de Proposta":
                     v_unit_d = despesas_db[i]['valor']
                     qtd_d = st.session_state[f"perm_val_{i}"]
                     v_total_d = qtd_d * v_unit_d
-                    html_d += f"<li><span>{i}</span><span class='item-detalhe'>{qtd_d} un x R$ {v_unit_d:,.2f} | Total: R$ {v_total_d:,.2f}</span></li>"
-            st.markdown(f'<div class="resumo-card" style="border-top-color:#1976d2;"><span class="resumo-label">Logística</span><div class="resumo-valor" style="color:#1976d2;">R$ {t_desp:,.2f}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">{regra_logistica}</div><div class="resumo-subtitulo">DETALHAMENTO</div><ul class="lista-itens">{html_d if html_d else "<li>Sem despesas</li>"}</ul></div>', unsafe_allow_html=True)
+                    html_d += f"<li><span>{i}</span><span class='item-detalhe'>{qtd_d} un x R$ {f_br(v_unit_d)} | Total: R$ {f_br(v_total_d)}</span></li>"
+            st.markdown(f'<div class="resumo-card" style="border-top-color:#1976d2;"><span class="resumo-label">Logística</span><div class="resumo-valor" style="color:#1976d2;">R$ {f_br(t_desp)}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">{regra_logistica}</div><div class="resumo-subtitulo">DETALHAMENTO</div><ul class="lista-itens">{html_d if html_d else "<li>Sem despesas</li>"}</ul></div>', unsafe_allow_html=True)
 
-# --- PARTE 4: CONSULTA DE PREÇO (SIMULADOR RÁPIDO) ---
+# --- PARTE 4: CONSULTA DE PREÇO ---
 elif tela == "Consulta de Preço":
     st.markdown('<h1 class="hero-title">ANÁLISE TÉCNICA</h1>', unsafe_allow_html=True)
     st.markdown('<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">🔍 Simulador de Negociação Individual</h3></div>', unsafe_allow_html=True)
@@ -320,11 +326,11 @@ elif tela == "Consulta de Preço":
             d = full_db[p_sel]
             v_hora_base = servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)
             
-            # Mensalidade liq
+            # Mensalidade
             v_mensal_bruto = d.get('valor', 0.0)
             v_mensal_liq = v_mensal_bruto * (1 - (desc_simulacao / 100))
             
-            # Setup calc
+            # Setup
             h_pad = d.get('horas_padrao', 0)
             v_h_esp = d.get('valor_hora_implantacao', 0)
             v_ads = d.get('adesao_vinculada', 0.0)
@@ -339,15 +345,15 @@ elif tela == "Consulta de Preço":
                 # CARD 1: SETUP
                 html_sim_setup = ""
                 if h_pad > 0:
-                    html_sim_setup += f"<li><span>Implantação</span><span class='item-detalhe'>{h_pad}h x R$ {rate:,.2f} | Total: R$ {v_impl_calc:,.2f}</span></li>"
+                    html_sim_setup += f"<li><span>Implantação</span><span class='item-detalhe'>{h_pad}h x R$ {f_br(rate)} | Total: R$ {f_br(v_impl_calc)}</span></li>"
                 if v_ads > 0:
-                    html_sim_setup += f"<li><span>Taxa de Adesão</span><span class='item-detalhe'>1 un x R$ {v_ads:,.2f} | Total: R$ {v_ads:,.2f}</span></li>"
+                    html_sim_setup += f"<li><span>Taxa de Adesão {p_sel}</span><span class='item-detalhe'>1 un x R$ {f_br(v_ads)} | Total: R$ {f_br(v_ads)}</span></li>"
                 
                 st.markdown(f'''
                     <div class="resumo-card">
                         <span class="resumo-label">Investimento de Setup</span>
-                        <div class="resumo-valor">R$ {v_setup_total:,.2f}</div>
-                        <div style="font-weight:bold;">Sugestão: 4x de R$ {v_setup_total/4:,.2f}</div>
+                        <div class="resumo-valor">R$ {f_br(v_setup_total)}</div>
+                        <div style="font-weight:bold;">Sugestão: 4x de R$ {f_br(v_setup_total/4)}</div>
                         <div class="resumo-subtitulo">COMPOSIÇÃO</div>
                         <ul class="lista-itens">
                             {html_sim_setup if html_sim_setup else "<li>Sem setup vinculado</li>"}
@@ -357,30 +363,30 @@ elif tela == "Consulta de Preço":
 
             with c2:
                 # CARD 2: MENSALIDADE
-                html_bruto = f'<span style="text-decoration: line-through; color: #777; font-size: 0.9rem;">R$ {v_mensal_bruto:,.2f}</span>' if desc_simulacao > 0 else ""
+                html_bruto = f'<span style="text-decoration: line-through; color: #777; font-size: 0.9rem;">R$ {f_br(v_mensal_bruto)}</span>' if desc_simulacao > 0 else ""
                 st.markdown(f'''
                     <div class="resumo-card" style="border-top-color:#2e7d32;">
                         <span class="resumo-label">Investimento Mensal</span>
-                        <div class="resumo-valor" style="color:#2e7d32;">R$ {v_mensal_liq:,.2f}</div>
+                        <div class="resumo-valor" style="color:#2e7d32;">R$ {f_br(v_mensal_liq)}</div>
                         {html_bruto}
                         <div class="resumo-subtitulo">DETALHE</div>
                         <ul class="lista-itens">
-                            <li><span>{p_sel}</span><span class="item-detalhe">1 un x R$ {v_mensal_liq:,.2f} | Total: R$ {v_mensal_liq:,.2f}</span></li>
+                            <li><span>{p_sel}</span><span class="item-detalhe">1 un x R$ {f_br(v_mensal_liq)} | Total: R$ {f_br(v_mensal_liq)}</span></li>
                         </ul>
                     </div>
                 ''', unsafe_allow_html=True)
 
             with c3:
-                # CARD 3: RESUMO NEGOCIAÇÃO
+                # CARD 3: ECONOMIA
                 st.markdown(f'''
                     <div class="resumo-card" style="border-top-color:#262730; min-height: auto;">
                         <span class="resumo-label">Resumo da Negociação</span>
                         <div style="margin-top:15px; font-size:0.95rem; color:#444;">
-                            <p><b>Desconto aplicado:</b> {desc_simulacao}%</p>
-                            <p><b>Economia Mensal:</b> R$ {(v_mensal_bruto - v_mensal_liq):,.2f}</p>
-                            <p><b>Economia Anual:</b> R$ {(v_mensal_bruto - v_mensal_liq)*12:,.2f}</p>
+                            <p><b>Desconto:</b> {desc_simulacao}%</p>
+                            <p><b>Economia Mensal:</b> R$ {f_br(v_mensal_bruto - v_mensal_liq)}</p>
+                            <p><b>Economia Anual:</b> R$ {f_br((v_mensal_bruto - v_mensal_liq)*12)}</p>
                             <hr>
-                            <p style="font-size: 0.85rem; color: #666;"><i>Use esta tela para simular condições agressivas de fechamento.</i></p>
+                            <p style="font-size: 0.85rem; color: #666;"><i>Valores atualizados com o padrão monetário brasileiro.</i></p>
                         </div>
                     </div>
                 ''', unsafe_allow_html=True)
