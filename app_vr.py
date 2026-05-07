@@ -13,7 +13,6 @@ EXCEL_FILE = "tabela_preco_chat.xlsx"
 def limpar_valor(valor):
     if pd.isna(valor) or str(valor).strip() == "": return 0.0
     v = str(valor).replace('R$', '').replace(' ', '').strip()
-    # Tratamento para formatos brasileiros (1.234,56 ou 565,89)
     if ',' in v and '.' in v: v = v.replace('.', '').replace(',', '.')
     elif ',' in v: v = v.replace(',', '.')
     try:
@@ -34,7 +33,7 @@ def carregar_dados_vendas():
         df.columns = [str(c).strip().lower() for c in df.columns]
         df = df.map(lambda x: x.strip() if isinstance(x, str) else x)
         
-        # Garante a existência das 7 colunas de inteligência
+        # Garante colunas de inteligência
         for col in ['horas_padrao', 'adesao_vinculada', 'valor_hora_implantacao']:
             if col not in df.columns: df[col] = 0.0
 
@@ -62,11 +61,12 @@ st.markdown("""
     .mapeamento-container { background-color: #ffffff; border-left: 10px solid #ff6600; padding: 20px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
     .resumo-card { background-color: #ffffff; border: 1px solid #f0f0f0; border-top: 8px solid #ff6600; padding: 25px; border-radius: 8px; min-height: 450px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
     .resumo-valor { color: #ff6600; font-size: 2.3rem; font-weight: 900; margin-bottom: 5px; }
-    .item-detalhe { color: #333; font-size: 0.95rem; font-weight: 700; background-color: #fcfcfc; padding: 2px 8px; border-radius: 4px; border: 1px solid #eee; }
+    .item-detalhe { color: #333; font-size: 0.85rem; font-weight: 600; background-color: #fcfcfc; padding: 4px 10px; border-radius: 4px; border: 1px solid #eee; }
     .section-header { background: linear-gradient(90deg, #ff6600 0%, #ff944d 100%); padding: 8px 15px; border-radius: 5px; margin-bottom: 15px; margin-top: 20px; }
     .section-title { color: #ffffff; font-size: 1.1rem; font-weight: bold; margin: 0; }
     .lista-itens { list-style-type: none; padding-left: 0; margin-top: 10px; flex-grow: 1; }
-    .lista-itens li { padding: 8px 0; border-bottom: 1px dashed #e0e0e0; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .lista-itens li { padding: 10px 0; border-bottom: 1px dashed #e0e0e0; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
+    .lista-itens li span:first-child { font-weight: bold; font-size: 0.9rem; }
     .item-incluso { padding-left: 20px !important; color: #777; font-size: 0.85rem; font-style: italic; border-bottom: none !important; }
     </style>
     """, unsafe_allow_html=True)
@@ -106,7 +106,6 @@ def sync_combo():
 
 # SIDEBAR
 with st.sidebar:
-    if os.path.exists("logo_vr.png"): st.image("logo_vr.png", width=180)
     tela = st.radio("Navegação:", ["Gerador de Proposta", "Consulta de Preço"])
     if tela == "Gerador de Proposta":
         st.write("---")
@@ -115,7 +114,6 @@ with st.sidebar:
         perfil_venda = st.selectbox("Perfil do Cliente", ["Executivo (Rua)", "CS (Base)"])
         desc = st.number_input("Desconto (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.5)
         exibir_detalhe_desc = st.toggle("Exibir Desconto na Tela", value=True)
-        faturamento_sistema = st.selectbox("Início Mensalidade", ["Na assinatura", "30 dias", "60 dias", "Após implantação"])
         parcelas_setup = st.selectbox("Parcelas Setup", [1, 2, 3, 4, 5, 6], index=3)
         regra_logistica = st.selectbox("Faturamento Logística", ["Faturamento na assinatura", "Faturamento pós Implantação"])
 
@@ -234,31 +232,40 @@ if tela == "Gerador de Proposta":
     total_setup, html_setup = 0.0, ""
     v_hora_base = servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)
 
-    # Cálculo Setup (Manuais + Inteligência)
     for s_nome in st.session_state.sel_i:
         horas = st.session_state[f"perm_val_{s_nome}"]
         if horas > 0:
-            v_item = horas * servicos_db[s_nome]['valor']
+            v_hora = servicos_db[s_nome]['valor']
+            v_item = horas * v_hora
             total_setup += v_item
-            html_setup += f"<li><span>{s_nome}</span><span class='item-detalhe'>{horas}h x R$ {servicos_db[s_nome]['valor']:,.2f}</span></li>"
+            html_setup += f"<li><span>{s_nome}</span><span class='item-detalhe'>{horas}h x R$ {v_hora:,.2f} | Total: R$ {v_item:,.2f}</span></li>"
 
     for m_nome in st.session_state.sel_m:
         d = full_db.get(m_nome, {})
         h_pad = d.get('horas_padrao', 0)
         v_h_esp = d.get('valor_hora_implantacao', 0)
-        val_ads = d.get('adesao_vinculada', 0.0) # Corrigido o erro de digitação de "adsao" para "adesao"
+        val_ads = d.get('adesao_vinculada', 0.0)
 
         if h_pad > 0:
             rate = v_h_esp if v_h_esp > 0 else v_hora_base
-            total_setup += (h_pad * rate)
-            html_setup += f"<li><span>Implantação {m_nome}</span><span class='item-detalhe'>{h_pad}h x R$ {rate:,.2f}</span></li>"
+            v_impl = h_pad * rate
+            total_setup += v_impl
+            html_setup += f"<li><span>Implantação {m_nome}</span><span class='item-detalhe'>{h_pad}h x R$ {rate:,.2f} | Total: R$ {v_impl:,.2f}</span></li>"
         
         if val_ads > 0:
             total_setup += val_ads
-            html_setup += f"<li><span>Taxa de Adesão {m_nome}</span><span class='item-detalhe'>QTD 1 x R$ {val_ads:,.2f}</span></li>"
+            html_setup += f"<li><span>Taxa de Adesão {m_nome}</span><span class='item-detalhe'>1 un x R$ {val_ads:,.2f} | Total: R$ {val_ads:,.2f}</span></li>"
 
     with res_cols[0]:
-        st.markdown(f'<div class="resumo-card"><span class="resumo-label">Investimento Implantação (Setup)</span><div class="resumo-valor">R$ {total_setup:,.2f}</div><div style="font-weight:bold;">{parcelas_setup}x de R$ {total_setup/parcelas_setup:,.2f}</div><div class="resumo-subtitulo">DETALHAMENTO SETUP</div><ul class="lista-itens">{html_setup if html_setup else "<li>Nenhum item</li>"}</ul></div>', unsafe_allow_html=True)
+        st.markdown(f'''
+            <div class="resumo-card">
+                <span class="resumo-label">Investimento Implantação (Setup)</span>
+                <div class="resumo-valor">R$ {total_setup:,.2f}</div>
+                <div style="font-weight:bold;">{parcelas_setup}x de R$ {total_setup/parcelas_setup:,.2f}</div>
+                <div class="resumo-subtitulo">DETALHAMENTO SETUP</div>
+                <ul class="lista-itens">{html_setup if html_setup else "<li>Nenhum item</li>"}</ul>
+            </div>
+        ''', unsafe_allow_html=True)
 
     with res_cols[1]:
         def get_peso(item):
@@ -271,9 +278,13 @@ if tela == "Gerador de Proposta":
         t_liq = t_bruto * (1 - (desc/100))
         html_m = ""
         for i in l_ord:
-            html_m += f"<li><span>{i}</span><span class='item-detalhe'>{st.session_state[f'perm_val_{i}']} un x R$ {sistemas_db[i]['valor']:,.2f}</span></li>"
+            v_unit = sistemas_db[i]['valor']
+            qtd = st.session_state[f'perm_val_{i}']
+            v_total_m = qtd * v_unit
+            html_m += f"<li><span>{i}</span><span class='item-detalhe'>{qtd} un x R$ {v_unit:,.2f} | Total: R$ {v_total_m:,.2f}</span></li>"
             if i == "VR ERP PRO":
-                for ex in ["VR Promo", "VR Carteira Digital", "VR Analytics"]: html_m += f"<li class='item-incluso'><span>└ {ex}</span><span>Incluso</span></li>"
+                for ex in ["VR Promo", "VR Carteira Digital", "VR Analytics"]: 
+                    html_m += f"<li class='item-incluso'><span>└ {ex}</span><span>Incluso</span></li>"
         desc_html = f'<div style="color:#2e7d32; font-weight:bold;">Desconto: {desc}%</div>' if (exibir_detalhe_desc and desc > 0) else '<div style="height:21px"></div>'
         st.markdown(f'<div class="resumo-card" style="border-top-color:#2e7d32;"><span class="resumo-label">Manutenção Mensal</span><div class="resumo-valor" style="color:#2e7d32;">R$ {t_liq:,.2f}</div>{desc_html}<div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{html_m if html_m else "<li>Nenhum</li>"}</ul></div>', unsafe_allow_html=True)
 
@@ -283,7 +294,7 @@ if tela == "Gerador de Proposta":
             html_d = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{st.session_state[f'perm_val_{i}']} un x R$ {despesas_db[i]['valor']:,.2f}</span></li>" for i in st.session_state.sel_d if i in despesas_db and st.session_state[f"perm_val_{i}"] > 0])
             st.markdown(f'<div class="resumo-card" style="border-top-color:#1976d2;"><span class="resumo-label">Logística</span><div class="resumo-valor" style="color:#1976d2;">R$ {t_desp:,.2f}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">{regra_logistica}</div><div class="resumo-subtitulo">DETALHAMENTO</div><ul class="lista-itens">{html_d if html_d else "<li>Sem despesas</li>"}</ul></div>', unsafe_allow_html=True)
 
-# --- PARTE 4: CONSULTA DE PREÇO (BUSCA TÉCNICA) ---
+# --- PARTE 4: CONSULTA DE PREÇO ---
 elif tela == "Consulta de Preço":
     st.markdown('<h1 class="hero-title">ANÁLISE TÉCNICA</h1>', unsafe_allow_html=True)
     if full_db:
