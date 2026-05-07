@@ -310,59 +310,94 @@ if tela == "Gerador de Proposta":
             st.markdown(f'<div class="resumo-card" style="border-top-color:#1976d2;"><span class="resumo-label">Logística</span><div class="resumo-valor" style="color:#1976d2;">R$ {f_br(t_desp)}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">{regra_logistica}</div><div class="resumo-subtitulo">DETALHAMENTO</div><ul class="lista-itens">{html_d if html_d else "<li>Sem despesas</li>"}</ul></div>', unsafe_allow_html=True)
 
 # ==========================================
-# --- PARTE 4: CONSULTA DE PREÇO ---
+# --- PARTE 4: CONSULTA DE PREÇO (SIMULADOR RÁPIDO) ---
 # ==========================================
 elif tela == "Consulta de Preço":
     st.markdown('<h1 class="hero-title">ANÁLISE TÉCNICA</h1>', unsafe_allow_html=True)
     st.markdown('<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">🔍 Simulador de Negociação Individual</h3></div>', unsafe_allow_html=True)
     
     if full_db:
+        opcoes_busca = sorted(list(full_db.keys()))
         col_busca, col_desc = st.columns([2, 1])
-        with col_busca: p_sel = st.selectbox("Selecione o produto:", sorted(list(full_db.keys())))
-        with col_desc: desc_simulacao = st.number_input("Simular Desconto (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.5, key="desc_sim")
+        with col_busca:
+            p_sel = st.selectbox("Selecione o produto para simulação:", opcoes_busca)
+        with col_desc:
+            desc_simulacao = st.number_input("Simular Desconto (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.5, key="desc_sim")
 
         if p_sel:
             d = full_db[p_sel]
-            v_mensal_bruto, v_hora_base = d.get('valor', 0.0), servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)
+            v_hora_base = servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)
+            
+            # Mensalidade liq
+            v_mensal_bruto = d.get('valor', 0.0)
             v_mensal_liq = v_mensal_bruto * (1 - (desc_simulacao / 100))
-            h_pad, v_h_esp, v_ads = d.get('horas_padrao', 0), d.get('valor_hora_implantacao', 0), d.get('adesao_vinculada', 0.0)
+            
+            # Setup calc
+            h_pad = d.get('horas_padrao', 0)
+            v_h_esp = d.get('valor_hora_implantacao', 0)
+            v_ads = d.get('adesao_vinculada', 0.0)
+            
             rate = v_h_esp if v_h_esp > 0 else v_hora_base
-            v_setup_total = (h_pad * rate) + v_ads
+            v_impl_calc = h_pad * rate
+            v_setup_total = v_impl_calc + v_ads
             
             c1, c2, c3 = st.columns(3)
+            
             with c1:
+                # 1º CARD: SETUP (Só mostra detalhes se houver o que detalhar)
                 html_sim_setup = ""
-                if h_pad > 0: html_sim_setup += f"<li><span>Implantação</span><span class='item-detalhe'>{h_pad}h x R$ {f_br(rate)} | Total: R$ {f_br(h_pad*rate)}</span></li>"
-                if v_ads > 0: html_sim_setup += f"<li><span>Taxa de Adesão</span><span class='item-detalhe'>1 un x R$ {f_br(v_ads)} | Total: R$ {f_br(v_ads)}</span></li>"
-                bloco_setup = f'<div class="resumo-subtitulo">COMPOSIÇÃO</div><ul class="lista-itens">{html_sim_setup}</ul>' if html_sim_setup else ""
-                st.markdown(f'<div class="resumo-card"><span class="resumo-label">Investimento de Setup</span><div class="resumo-valor">R$ {f_br(v_setup_total)}</div><div style="font-weight:bold;">Sugestão: 4x de R$ {f_br(v_setup_total/4)}</div>{bloco_setup}</div>', unsafe_allow_html=True)
+                if h_pad > 0:
+                    html_sim_setup += f"<li><span>Implantação</span><span class='item-detalhe'>{h_pad}h x R$ {f_br(rate)} | Total: R$ {f_br(v_impl_calc)}</span></li>"
+                if v_ads > 0:
+                    html_sim_setup += f"<li><span>Taxa de Adesão {p_sel}</span><span class='item-detalhe'>1 un x R$ {f_br(v_ads)} | Total: R$ {f_br(v_ads)}</span></li>"
+                
+                # Se não tem horas nem adesão, limpa a parte de baixo do card
+                bloco_detalhe_setup = f'<div class="resumo-subtitulo">COMPOSIÇÃO</div><ul class="lista-itens">{html_sim_setup}</ul>' if html_sim_setup else ""
+
+                st.markdown(f'''
+                    <div class="resumo-card">
+                        <span class="resumo-label">Investimento de Setup</span>
+                        <div class="resumo-valor">R$ {f_br(v_setup_total)}</div>
+                        <div style="font-weight:bold;">Sugestão: 4x de R$ {f_br(v_setup_total/4)}</div>
+                        {bloco_detalhe_setup}
+                    </div>
+                ''', unsafe_allow_html=True)
 
             with c2:
+                # 2º CARD: MENSALIDADE (Lógica "Clean")
                 html_bruto = f'<span style="text-decoration: line-through; color: #777; font-size: 0.9rem;">R$ {f_br(v_mensal_bruto)}</span>' if desc_simulacao > 0 else ""
                 
                 # SÓ EXIBE A LISTA DE DETALHE SE HOUVER DESCONTO APLICADO
-                bloco_mensal = ""
+                bloco_detalhe_mensal = ""
                 if desc_simulacao > 0:
-                    # Aplicamos f_pct para garantir a vírgula na porcentagem também
-                    bloco_mensal = f'''
+                    bloco_detalhe_mensal = f'''
                         <div class="resumo-subtitulo">DETALHE</div>
                         <ul class="lista-itens">
-                            <li><span>Desconto Aplicado</span><span class="item-detalhe">{f_pct(desc_simulacao)}% off</span></li>
+                            <li><span>Desconto Aplicado</span><span class="item-detalhe">{desc_simulacao}% off</span></li>
                             <li><span>Valor Original</span><span class="item-detalhe">R$ {f_br(v_mensal_bruto)}</span></li>
                         </ul>
                     '''
-                st.markdown(f'<div class="resumo-card" style="border-top-color:#2e7d32;"><span class="resumo-label">Investimento Mensal</span><div class="resumo-valor" style="color:#2e7d32;">R$ {f_br(v_mensal_liq)}</div>{html_bruto}{bloco_mensal}</div>', unsafe_allow_html=True)
+
+                st.markdown(f'''
+                    <div class="resumo-card" style="border-top-color:#2e7d32;">
+                        <span class="resumo-label">Investimento Mensal</span>
+                        <div class="resumo-valor" style="color:#2e7d32;">R$ {f_br(v_mensal_liq)}</div>
+                        {html_bruto}
+                        {bloco_detalhe_mensal}
+                    </div>
+                ''', unsafe_allow_html=True)
 
             with c3:
+                # 3º CARD: ECONOMIA
                 st.markdown(f'''
                     <div class="resumo-card" style="border-top-color:#262730; min-height: auto;">
                         <span class="resumo-label">Resumo da Negociação</span>
                         <div style="margin-top:15px; font-size:0.95rem; color:#444;">
-                            <p><b>Desconto:</b> {f_pct(desc_simulacao)}%</p>
+                            <p><b>Desconto:</b> {desc_simulacao}%</p>
                             <p><b>Economia Mensal:</b> R$ {f_br(v_mensal_bruto - v_mensal_liq)}</p>
                             <p><b>Economia Anual:</b> R$ {f_br((v_mensal_bruto - v_mensal_liq)*12)}</p>
                             <hr>
-                            <p style="font-size: 0.85rem; color: #666;"><i>Interface limpa: detalhes ocultos quando o desconto é zero.</i></p>
+                            <p style="font-size: 0.85rem; color: #666;"><i>O detalhamento só aparece quando um desconto é simulado.</i></p>
                         </div>
                     </div>
                 ''', unsafe_allow_html=True)
