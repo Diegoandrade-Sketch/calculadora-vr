@@ -33,7 +33,6 @@ def carregar_dados_vendas():
         df.columns = [str(c).strip().lower() for c in df.columns]
         df = df.map(lambda x: x.strip() if isinstance(x, str) else x)
         
-        # Garante colunas de inteligência
         for col in ['horas_padrao', 'adesao_vinculada', 'valor_hora_implantacao']:
             if col not in df.columns: df[col] = 0.0
 
@@ -53,7 +52,7 @@ def carregar_dados_vendas():
 
 sistemas_db, servicos_db, despesas_db, full_db = carregar_dados_vendas()
 
-# ESTILIZAÇÃO CSS
+# ESTILIZAÇÃO CSS (CORRIGIDA PARA LINHA ÚNICA)
 st.markdown("""
     <style>
     .stApp { background: linear-gradient(135deg, #ffffff 0%, #fff5ed 100%); }
@@ -61,12 +60,12 @@ st.markdown("""
     .mapeamento-container { background-color: #ffffff; border-left: 10px solid #ff6600; padding: 20px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
     .resumo-card { background-color: #ffffff; border: 1px solid #f0f0f0; border-top: 8px solid #ff6600; padding: 25px; border-radius: 8px; min-height: 450px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
     .resumo-valor { color: #ff6600; font-size: 2.3rem; font-weight: 900; margin-bottom: 5px; }
-    .item-detalhe { color: #333; font-size: 0.85rem; font-weight: 600; background-color: #fcfcfc; padding: 4px 10px; border-radius: 4px; border: 1px solid #eee; }
+    .item-detalhe { color: #333; font-size: 0.82rem; font-weight: 600; background-color: #fcfcfc; padding: 2px 8px; border-radius: 4px; border: 1px solid #eee; white-space: nowrap; }
     .section-header { background: linear-gradient(90deg, #ff6600 0%, #ff944d 100%); padding: 8px 15px; border-radius: 5px; margin-bottom: 15px; margin-top: 20px; }
     .section-title { color: #ffffff; font-size: 1.1rem; font-weight: bold; margin: 0; }
     .lista-itens { list-style-type: none; padding-left: 0; margin-top: 10px; flex-grow: 1; }
-    .lista-itens li { padding: 10px 0; border-bottom: 1px dashed #e0e0e0; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
-    .lista-itens li span:first-child { font-weight: bold; font-size: 0.9rem; }
+    .lista-itens li { padding: 8px 0; border-bottom: 1px dashed #e0e0e0; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .lista-itens li span:first-child { font-weight: bold; font-size: 0.88rem; color: #444; }
     .item-incluso { padding-left: 20px !important; color: #777; font-size: 0.85rem; font-style: italic; border-bottom: none !important; }
     </style>
     """, unsafe_allow_html=True)
@@ -117,12 +116,9 @@ with st.sidebar:
         parcelas_setup = st.selectbox("Parcelas Setup", [1, 2, 3, 4, 5, 6], index=3)
         regra_logistica = st.selectbox("Faturamento Logística", ["Faturamento na assinatura", "Faturamento pós Implantação"])
 
-# ==========================================
-# LÓGICA DO GERADOR DE PROPOSTA
-# ==========================================
+# GERADOR DE PROPOSTA
 if tela == "Gerador de Proposta":
     
-    # --- PARTE 1: MAPEAMENTO DA OPERAÇÃO ---
     def aplicar_mapeamento():
         pdv_map = {"VR PDV Convencional": st.session_state.m_pdv_conv, "PDV Touchscreen": st.session_state.m_pdv_touch, "PDV Selfcheckout": st.session_state.m_pdv_self}
         for p, qtd in pdv_map.items():
@@ -152,7 +148,6 @@ if tela == "Gerador de Proposta":
             st.session_state[f"perm_val_VR Mobile"] += st.session_state.m_mobile
             st.session_state[f"tmp_m_VR Mobile"] = st.session_state[f"perm_val_VR Mobile"]
             st.session_state.m_mobile = 0
-            if 'tmp_mobile' in st.session_state: st.session_state.tmp_mobile = 0
 
         sem = st.session_state.m_semanas
         serv_map = {"Implantação e Treinamento": sem * 44, "Migração Banco de Dados": 8 if st.session_state.m_migracao else 0, "Definição de Escopo": 8 if st.session_state.m_escopo else 0}
@@ -206,7 +201,6 @@ if tela == "Gerador de Proposta":
                 with b2: st.button("🗑️ Limpar Tudo", on_click=limpar_tudo, use_container_width=True)
             st.markdown("---")
 
-        # --- PARTE 2: TELA DE VENDA (INCLUSÃO MANUAL) ---
         col_i, col_m, col_d = st.columns(3) if perfil_venda == "Executivo (Rua)" else (*st.columns(2), None)
         with col_i:
             st.markdown('<div class="section-header"><span class="section-title">IMPLANTAÇÃO E SERVIÇOS</span></div>', unsafe_allow_html=True)
@@ -225,7 +219,7 @@ if tela == "Gerador de Proposta":
                 for i in st.session_state.sel_d:
                     st.number_input(f"{i} (R$ {despesas_db[i]['valor']:,.2f}/un)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_d_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_d_{i}"))
 
-    # --- PARTE 3: CARD DE RESUMO ---
+    # --- PARTE 3: CARD DE RESUMO (MANTENDO LINHA RETA) ---
     st.markdown("<h2 style='text-align:center; font-weight:800; margin-top:30px;'>RESUMO DO INVESTIMENTO</h2>", unsafe_allow_html=True)
     res_cols = st.columns(3) if perfil_venda == "Executivo (Rua)" else st.columns([1, 2, 2, 1])[1:3]
 
@@ -286,7 +280,7 @@ if tela == "Gerador de Proposta":
                 for ex in ["VR Promo", "VR Carteira Digital", "VR Analytics"]: 
                     html_m += f"<li class='item-incluso'><span>└ {ex}</span><span>Incluso</span></li>"
         desc_html = f'<div style="color:#2e7d32; font-weight:bold;">Desconto: {desc}%</div>' if (exibir_detalhe_desc and desc > 0) else '<div style="height:21px"></div>'
-        st.markdown(f'<div class="resumo-card" style="border-top-color:#2e7d32;"><span class="resumo-label">Manutenção Mensal</span><div class="resumo-valor" style="color:#2e7d32;">R$ {t_liq:,.2f}</div>{desc_html}<div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{html_m if html_m else "<li>Nenhum</li>"}</ul></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="resumo-card" style="border-top-color:#2e7d32;"><span class="resumo-label">Mensalidade</span><div class="resumo-valor" style="color:#2e7d32;">R$ {t_liq:,.2f}</div>{desc_html}<div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{html_m if html_m else "<li>Nenhum</li>"}</ul></div>', unsafe_allow_html=True)
 
     if perfil_venda == "Executivo (Rua)":
         with res_cols[2]:
@@ -294,7 +288,6 @@ if tela == "Gerador de Proposta":
             html_d = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{st.session_state[f'perm_val_{i}']} un x R$ {despesas_db[i]['valor']:,.2f}</span></li>" for i in st.session_state.sel_d if i in despesas_db and st.session_state[f"perm_val_{i}"] > 0])
             st.markdown(f'<div class="resumo-card" style="border-top-color:#1976d2;"><span class="resumo-label">Logística</span><div class="resumo-valor" style="color:#1976d2;">R$ {t_desp:,.2f}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">{regra_logistica}</div><div class="resumo-subtitulo">DETALHAMENTO</div><ul class="lista-itens">{html_d if html_d else "<li>Sem despesas</li>"}</ul></div>', unsafe_allow_html=True)
 
-# --- PARTE 4: CONSULTA DE PREÇO ---
 elif tela == "Consulta de Preço":
     st.markdown('<h1 class="hero-title">ANÁLISE TÉCNICA</h1>', unsafe_allow_html=True)
     if full_db:
