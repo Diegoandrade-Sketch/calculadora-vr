@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from sqlalchemy import create_engine
+import urllib.parse # <--- ADICIONE ESTA LINHA AQUI
 import os
 
 # ==========================================
@@ -15,7 +16,13 @@ DB_HOST = st.secrets["DB_HOST"]
 DB_PORT = st.secrets["DB_PORT"]
 DB_NAME = st.secrets["DB_NAME"]
 
-CONN_STR = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+# Codifica a senha para evitar que caracteres especiais (como @, #, !) quebrem a string
+DB_PASS_ENCODED = urllib.parse.quote_plus(DB_PASS)
+
+# Monta a string usando a senha codificada
+CONN_STR = f"postgresql://{DB_USER}:{DB_PASS_ENCODED}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+
+# ... O resto do código (funções f_br, carregar_dados_vendas_sql, etc) continua igualzinho ...
 
 # FUNÇÕES DE FORMATAÇÃO E LIMPEZA
 def limpar_valor(valor):
