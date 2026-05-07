@@ -33,7 +33,6 @@ def carregar_dados_vendas():
         df.columns = [str(c).strip().lower() for c in df.columns]
         df = df.map(lambda x: x.strip() if isinstance(x, str) else x)
         
-        # Garante as 7 colunas de inteligência
         for col in ['horas_padrao', 'adesao_vinculada', 'valor_hora_implantacao']:
             if col not in df.columns: df[col] = 0.0
 
@@ -53,7 +52,7 @@ def carregar_dados_vendas():
 
 sistemas_db, servicos_db, despesas_db, full_db = carregar_dados_vendas()
 
-# ESTILIZAÇÃO CSS (LINHA RETA E LEITURA FLUIDA)
+# ESTILIZAÇÃO CSS
 st.markdown("""
     <style>
     .stApp { background: linear-gradient(135deg, #ffffff 0%, #fff5ed 100%); }
@@ -65,7 +64,7 @@ st.markdown("""
     .section-header { background: linear-gradient(90deg, #ff6600 0%, #ff944d 100%); padding: 8px 15px; border-radius: 5px; margin-bottom: 15px; margin-top: 20px; }
     .section-title { color: #ffffff; font-size: 1.1rem; font-weight: bold; margin: 0; }
     .lista-itens { list-style-type: none; padding-left: 0; margin-top: 10px; flex-grow: 1; }
-    .lista-itens li { padding: 8px 0; border-bottom: 1px dashed #e0e0e0; display: flex; justify-content: space-between; align-items: center; gap: 15px; }
+    .lista-itens li { padding: 8px 0; border-bottom: 1px dashed #e0e0e0; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
     .lista-itens li span:first-child { font-weight: bold; font-size: 0.88rem; color: #444; }
     .item-incluso { padding-left: 20px !important; color: #777; font-size: 0.85rem; font-style: italic; border-bottom: none !important; }
     </style>
@@ -104,7 +103,7 @@ def sync_combo():
         st.session_state.m_pdv_conv, st.session_state.m_tef, st.session_state.m_semanas = 5, "SiTef Express", 3
         st.session_state.m_migracao, st.session_state.m_escopo, st.session_state.m_erp_pro, st.session_state.m_xml, st.session_state.m_mobile = True, True, True, True, 1
 
-# --- SIDEBAR (LOGO E SELETORES RESTAURADOS) ---
+# --- SIDEBAR ---
 with st.sidebar:
     if os.path.exists("logo_vr.png"): st.image("logo_vr.png", width=180)
     tela = st.radio("Navegação:", ["Gerador de Proposta", "Consulta de Preço"])
@@ -120,11 +119,10 @@ with st.sidebar:
         regra_logistica = st.selectbox("Faturamento Logística", ["Faturamento na assinatura", "Faturamento pós Implantação"])
 
 # ==========================================
-# LÓGICA DO GERADOR DE PROPOSTA
+# GERADOR DE PROPOSTA
 # ==========================================
 if tela == "Gerador de Proposta":
     
-    # --- PARTE 1: MAPEAMENTO DA OPERAÇÃO ---
     def aplicar_mapeamento():
         pdv_map = {"VR PDV Convencional": st.session_state.m_pdv_conv, "PDV Touchscreen": st.session_state.m_pdv_touch, "PDV Selfcheckout": st.session_state.m_pdv_self}
         for p, qtd in pdv_map.items():
@@ -230,10 +228,10 @@ if tela == "Gerador de Proposta":
     st.markdown("<h2 style='text-align:center; font-weight:800; margin-top:30px;'>RESUMO DO INVESTIMENTO</h2>", unsafe_allow_html=True)
     res_cols = st.columns(3) if perfil_venda == "Executivo (Rua)" else st.columns([1, 2, 2, 1])[1:3]
 
+    # SETUP
     total_setup, html_setup = 0.0, ""
     v_hora_base = servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)
 
-    # Cálculo Setup
     for s_nome in st.session_state.sel_i:
         horas = st.session_state[f"perm_val_{s_nome}"]
         if horas > 0:
@@ -259,15 +257,7 @@ if tela == "Gerador de Proposta":
             html_setup += f"<li><span>Taxa de Adesão {m_nome}</span><span class='item-detalhe'>1 un x R$ {val_ads:,.2f} | Total: R$ {val_ads:,.2f}</span></li>"
 
     with res_cols[0]:
-        st.markdown(f'''
-            <div class="resumo-card">
-                <span class="resumo-label">Investimento Implantação (Setup)</span>
-                <div class="resumo-valor">R$ {total_setup:,.2f}</div>
-                <div style="font-weight:bold;">{parcelas_setup}x de R$ {total_setup/parcelas_setup:,.2f}</div>
-                <div class="resumo-subtitulo">DETALHAMENTO SETUP</div>
-                <ul class="lista-itens">{html_setup if html_setup else "<li>Nenhum item</li>"}</ul>
-            </div>
-        ''', unsafe_allow_html=True)
+        st.markdown(f'<div class="resumo-card"><span class="resumo-label">Investimento Implantação (Setup)</span><div class="resumo-valor">R$ {total_setup:,.2f}</div><div style="font-weight:bold;">{parcelas_setup}x de R$ {total_setup/parcelas_setup:,.2f}</div><div class="resumo-subtitulo">DETALHAMENTO SETUP</div><ul class="lista-itens">{html_setup if html_setup else "<li>Nenhum item</li>"}</ul></div>', unsafe_allow_html=True)
 
     # MENSALIDADE
     with res_cols[1]:
@@ -304,11 +294,69 @@ if tela == "Gerador de Proposta":
                     html_d += f"<li><span>{i}</span><span class='item-detalhe'>{qtd_d} un x R$ {v_unit_d:,.2f} | Total: R$ {v_total_d:,.2f}</span></li>"
             st.markdown(f'<div class="resumo-card" style="border-top-color:#1976d2;"><span class="resumo-label">Logística</span><div class="resumo-valor" style="color:#1976d2;">R$ {t_desp:,.2f}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">{regra_logistica}</div><div class="resumo-subtitulo">DETALHAMENTO</div><ul class="lista-itens">{html_d if html_d else "<li>Sem despesas</li>"}</ul></div>', unsafe_allow_html=True)
 
-# --- PARTE 4: CONSULTA DE PREÇO ---
+# --- PARTE 4: CONSULTA DE PREÇO (SIMULADOR RÁPIDO) ---
 elif tela == "Consulta de Preço":
     st.markdown('<h1 class="hero-title">ANÁLISE TÉCNICA</h1>', unsafe_allow_html=True)
+    st.markdown('<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">🔍 Simulador de Produto Individual</h3></div>', unsafe_allow_html=True)
+    
     if full_db:
-        p_sel = st.selectbox("Produto:", sorted(list(full_db.keys())))
+        opcoes_busca = sorted(list(full_db.keys()))
+        p_sel = st.selectbox("Selecione o produto para simulação:", opcoes_busca)
+        
         if p_sel:
             d = full_db[p_sel]
-            st.markdown(f'<div class="resumo-card" style="min-height:auto;"><div class="resumo-valor">R$ {d["valor"]:,.2f}</div><p><b>H. Padrão:</b> {d.get("horas_padrao",0)}h | <b>Hora Esp.:</b> R$ {d.get("valor_hora_implantacao",0):,.2f}</p><hr><p>{d["descricao"]}</p></div>', unsafe_allow_html=True)
+            v_hora_base = servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)
+            
+            # Cálculo na hora
+            v_mensal = d.get('valor', 0.0)
+            h_pad = d.get('horas_padrao', 0)
+            v_h_esp = d.get('valor_hora_implantacao', 0)
+            v_ads = d.get('adesao_vinculada', 0.0)
+            
+            rate = v_h_esp if v_h_esp > 0 else v_hora_base
+            v_impl_calc = h_pad * rate
+            v_setup_total = v_impl_calc + v_ads
+            
+            c1, c2, c3 = st.columns(3)
+            
+            with c1:
+                st.markdown(f'''
+                    <div class="resumo-card" style="border-top-color:#2e7d32;">
+                        <span class="resumo-label">Investimento Mensal</span>
+                        <div class="resumo-valor" style="color:#2e7d32;">R$ {v_mensal:,.2f}</div>
+                        <div class="resumo-subtitulo">DETALHE</div>
+                        <ul class="lista-itens">
+                            <li><span>{p_sel}</span><span class="item-detalhe">1 un x R$ {v_mensal:,.2f} | Total: R$ {v_mensal:,.2f}</span></li>
+                        </ul>
+                    </div>
+                ''', unsafe_allow_html=True)
+
+            with c2:
+                html_sim_setup = ""
+                if h_pad > 0:
+                    html_sim_setup += f"<li><span>Implantação</span><span class='item-detalhe'>{h_pad}h x R$ {rate:,.2f} | Total: R$ {v_impl_calc:,.2f}</span></li>"
+                if v_ads > 0:
+                    html_sim_setup += f"<li><span>Taxa de Adesão</span><span class='item-detalhe'>1 un x R$ {v_ads:,.2f} | Total: R$ {v_ads:,.2f}</span></li>"
+                
+                st.markdown(f'''
+                    <div class="resumo-card">
+                        <span class="resumo-label">Investimento de Setup</span>
+                        <div class="resumo-valor">R$ {v_setup_total:,.2f}</div>
+                        <div style="font-weight:bold;">Sugestão: 4x de R$ {v_setup_total/4:,.2f}</div>
+                        <div class="resumo-subtitulo">COMPOSIÇÃO</div>
+                        <ul class="lista-itens">
+                            {html_sim_setup if html_sim_setup else "<li>Sem setup vinculado</li>"}
+                        </ul>
+                    </div>
+                ''', unsafe_allow_html=True)
+
+            with c3:
+                desc_texto = d.get('descricao', "Descrição técnica não disponível.")
+                st.markdown(f'''
+                    <div class="resumo-card" style="border-top-color:#262730;">
+                        <span class="resumo-label">Descrição Técnica</span>
+                        <div style="margin-top:15px; font-size:0.9rem; color:#444; line-height:1.4;">
+                            {desc_texto}
+                        </div>
+                    </div>
+                ''', unsafe_allow_html=True)
