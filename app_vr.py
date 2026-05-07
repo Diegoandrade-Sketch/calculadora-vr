@@ -13,13 +13,11 @@ EXCEL_FILE = "tabela_preco_chat.xlsx"
 def limpar_valor(valor):
     if pd.isna(valor) or str(valor).strip() == "": return 0.0
     v = str(valor).replace('R$', '').replace(' ', '').strip()
-    # Se houver vírgula e ponto, assume formato BR (1.234,56)
-    if ',' in v and '.' in v:
+    # Tratamento para garantir que 161.60 não vire 1616
+    if ',' in v and '.' in v: # Formato 1.234,56
         v = v.replace('.', '').replace(',', '.')
-    # Se houver apenas vírgula, assume decimal BR (1234,56)
-    elif ',' in v:
+    elif ',' in v: # Formato 1234,56
         v = v.replace(',', '.')
-    # Se houver apenas ponto, assume decimal US (1234.56) - Evita multiplicar por 10
     try:
         return float(v)
     except: return 0.0
@@ -38,14 +36,15 @@ def carregar_dados_vendas():
         df.columns = [str(c).strip().lower() for c in df.columns]
         df = df.map(lambda x: x.strip() if isinstance(x, str) else x)
         
-        # Garantir existência das novas colunas
-        for col in ['horas_padrao', 'adesao_vinculada', 'valor_hora_implantacao']:
-            if col not in df.columns: df[col] = 0 if 'valor' in col or 'horas' in col else ""
+        # Garantir colunas de inteligência
+        cols_novas = ['horas_padrao', 'adesao_vinculada', 'valor_hora_implantacao']
+        for col in cols_novas:
+            if col not in df.columns: 
+                df[col] = 0 if 'valor' in col or 'horas' in col else ""
 
         df['valor'] = df['valor'].apply(limpar_valor)
         df['valor_hora_implantacao'] = df['valor_hora_implantacao'].apply(limpar_valor)
 
-        # Criamos o dicionário usando o nome do produto original como chave
         full = df.set_index('produto').to_dict('index')
         sist = {k: v for k, v in full.items() if 'sist' in str(v['tipo']).lower()}
         serv = {k: v for k, v in full.items() if 'serv' in str(v['tipo']).lower()}
@@ -53,7 +52,7 @@ def carregar_dados_vendas():
         
         return sist, serv, desp, full
     except Exception as e:
-        st.error(f"Erro ao carregar colunas do Excel: {e}")
+        st.error(f"Erro ao carregar dados: {e}")
         return {}, {}, {}, {}
 
 sistemas_db, servicos_db, despesas_db, full_db = carregar_dados_vendas()
@@ -82,12 +81,11 @@ init_state = {
     'm_erp_pro': False, 'm_xml': False, 'm_escopo': False, 'm_controller': False, 'm_cartaz': False, 'm_masterfisco': False, 'm_backup': False
 }
 
+for k, v in init_state.items():
+    if k not in st.session_state: st.session_state[k] = v
 if 'sel_i' not in st.session_state: st.session_state.sel_i = []
 if 'sel_m' not in st.session_state: st.session_state.sel_m = []
 if 'sel_d' not in st.session_state: st.session_state.sel_d = []
-
-for k, v in init_state.items():
-    if k not in st.session_state: st.session_state[k] = v
 
 for nome in full_db.keys():
     if f"perm_val_{nome}" not in st.session_state: st.session_state[f"perm_val_{nome}"] = 0
@@ -110,25 +108,26 @@ def sync_combo():
         st.session_state.m_pdv_conv, st.session_state.m_tef, st.session_state.m_semanas = 5, "SiTef Express", 3
         st.session_state.m_migracao, st.session_state.m_escopo, st.session_state.m_erp_pro, st.session_state.m_xml, st.session_state.m_mobile = True, True, True, True, 1
 
-# --- SIDEBAR ---
+# SIDEBAR
 with st.sidebar:
     if os.path.exists("logo_vr.png"): st.image("logo_vr.png", width=180)
     tela = st.radio("Navegação:", ["Gerador de Proposta", "Consulta de Preço"])
     if tela == "Gerador de Proposta":
+        st.write("---")
         mapeamento_ativo = st.toggle("Mapeamento Inteligente", value=False)
         modo_apresentacao = st.toggle("Modo Apresentação")
         perfil_venda = st.selectbox("Perfil do Cliente", ["Executivo (Rua)", "CS (Base)"])
         desc = st.number_input("Desconto (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.5)
+        exibir_detalhe_desc = st.toggle("Exibir Desconto na Tela", value=True)
         faturamento_sistema = st.selectbox("Início Mensalidade", ["Na assinatura", "30 dias", "60 dias", "Após implantação"])
         parcelas_setup = st.selectbox("Parcelas Setup", [1, 2, 3, 4, 5, 6], index=3)
         regra_logistica = st.selectbox("Faturamento Logística", ["Faturamento na assinatura", "Faturamento pós Implantação"])
 
-# ==========================================
 # GERADOR DE PROPOSTA
-# ==========================================
 if tela == "Gerador de Proposta":
     
     def aplicar_mapeamento():
+        # PDVs
         pdv_map = {"VR PDV Convencional": st.session_state.m_pdv_conv, "PDV Touchscreen": st.session_state.m_pdv_touch, "PDV Selfcheckout": st.session_state.m_pdv_self}
         for p, qtd in pdv_map.items():
             if p in sistemas_db:
@@ -136,6 +135,7 @@ if tela == "Gerador de Proposta":
                 st.session_state[f"tmp_m_{p}"] = qtd
                 if qtd > 0 and p not in st.session_state.sel_m: st.session_state.sel_m.append(p)
         
+        # TEF
         total_pdvs = sum(pdv_map.values())
         st.session_state.sel_m = [item for item in st.session_state.sel_m if "SiTef" not in item]
         if st.session_state.m_tef == "SiTef Express":
@@ -145,6 +145,7 @@ if tela == "Gerador de Proposta":
                 st.session_state[f"tmp_m_{escolhido}"] = 1
                 st.session_state.sel_m.append(escolhido)
 
+        # Sistemas Extras
         exp_map = {"E-Commerce": st.session_state.m_ecommerce, "M-Commerce": st.session_state.m_app, "VR Connect (Android/IOS)": st.session_state.m_connect, "VR ERP PRO": st.session_state.m_erp_pro, "Gerenciador XML": st.session_state.m_xml, "VR Controller 360": st.session_state.m_controller, "VR Cartaz": st.session_state.m_cartaz, "VR MasterFisco Brasil": st.session_state.m_masterfisco, "VR Backup": st.session_state.m_backup}
         for item, ativo in exp_map.items():
             if item in sistemas_db:
@@ -152,6 +153,7 @@ if tela == "Gerador de Proposta":
                 st.session_state[f"tmp_m_{item}"] = 1 if ativo else 0
                 if ativo and item not in st.session_state.sel_m: st.session_state.sel_m.append(item)
 
+        # VR Mobile
         if "VR Mobile" in sistemas_db and st.session_state.m_mobile > 0:
             if "VR Mobile" not in st.session_state.sel_m: st.session_state.sel_m.append("VR Mobile")
             st.session_state[f"perm_val_VR Mobile"] += st.session_state.m_mobile
@@ -159,6 +161,7 @@ if tela == "Gerador de Proposta":
             st.session_state.m_mobile = 0
             if 'tmp_mobile' in st.session_state: st.session_state.tmp_mobile = 0
 
+        # Serviços e Logística
         sem = st.session_state.m_semanas
         serv_map = {"Implantação e Treinamento": sem * 44, "Migração Banco de Dados": 8 if st.session_state.m_migracao else 0, "Definição de Escopo": 8 if st.session_state.m_escopo else 0}
         for s_item, s_horas in serv_map.items():
@@ -167,7 +170,6 @@ if tela == "Gerador de Proposta":
                 st.session_state[f"tmp_i_{s_item}"] = s_horas
                 if s_horas > 0 and s_item not in st.session_state.sel_i: st.session_state.sel_i.append(s_item)
 
-        # Logística Baseada nas Semanas
         if "Alimentacao" in despesas_db: 
             st.session_state[f"perm_val_Alimentacao"] = sem * 10
             st.session_state[f"tmp_d_Alimentacao"] = sem * 10
@@ -186,17 +188,33 @@ if tela == "Gerador de Proposta":
             with c1:
                 st.number_input("PDV Convencional", min_value=0, key="tmp_pdv_conv", value=st.session_state.m_pdv_conv, on_change=sync_state, args=("m_pdv_conv", "tmp_pdv_conv"))
                 st.number_input("PDV Touch", min_value=0, key="tmp_pdv_touch", value=st.session_state.m_pdv_touch, on_change=sync_state, args=("m_pdv_touch", "tmp_pdv_touch"))
+                st.number_input("PDV Selfcheckout", min_value=0, key="tmp_pdv_self", value=st.session_state.m_pdv_self, on_change=sync_state, args=("m_pdv_self", "tmp_pdv_self"))
             with c2:
                 st.selectbox("TEF", ["Não utiliza", "SiTef Express", "VR TEF"], key="tmp_tef", index=["Não utiliza", "SiTef Express", "VR TEF"].index(st.session_state.m_tef), on_change=sync_state, args=("m_tef", "tmp_tef"))
                 st.number_input("Semanas", min_value=0, key="tmp_semanas", value=st.session_state.m_semanas, on_change=sync_state, args=("m_semanas", "tmp_semanas"))
+                st.checkbox("Migração?", key="tmp_migracao", value=st.session_state.m_migracao, on_change=sync_state, args=("m_migracao", "tmp_migracao"))
+                st.checkbox("Escopo?", key="tmp_escopo", value=st.session_state.m_escopo, on_change=sync_state, args=("m_escopo", "tmp_escopo"))
             with c3:
                 st.number_input("VR Mobile", min_value=0, key="tmp_mobile", value=st.session_state.m_mobile, on_change=sync_state, args=("m_mobile", "tmp_mobile"))
+                sc1, sc2, sc3 = st.columns(3)
+                with sc1:
+                    st.toggle("VR ERP PRO", key="tmp_erp_pro", value=st.session_state.m_erp_pro, on_change=sync_state, args=("m_erp_pro", "tmp_erp_pro"))
+                    st.toggle("G. XML", key="tmp_xml", value=st.session_state.m_xml, on_change=sync_state, args=("m_xml", "tmp_xml"))
+                    st.toggle("Connect", key="tmp_connect", value=st.session_state.m_connect, on_change=sync_state, args=("m_connect", "tmp_connect"))
+                with sc2:
+                    st.toggle("VR Backup", key="tmp_backup", value=st.session_state.m_backup, on_change=sync_state, args=("m_backup", "tmp_backup"))
+                    st.toggle("VR Cartaz", key="tmp_cartaz", value=st.session_state.m_cartaz, on_change=sync_state, args=("m_cartaz", "tmp_cartaz"))
+                    st.toggle("E-Commerce", key="tmp_ecommerce", value=st.session_state.m_ecommerce, on_change=sync_state, args=("m_ecommerce", "tmp_ecommerce"))
+                with sc3:
+                    st.toggle("C. 360", key="tmp_controller", value=st.session_state.m_controller, on_change=sync_state, args=("m_controller", "tmp_controller"))
+                    st.toggle("MasterFisco", key="tmp_masterfisco", value=st.session_state.m_masterfisco, on_change=sync_state, args=("m_masterfisco", "tmp_masterfisco"))
+                    st.toggle("M-Commerce", key="tmp_app", value=st.session_state.m_app, on_change=sync_state, args=("m_app", "tmp_app"))
                 b1, b2 = st.columns(2)
                 with b1: st.button("✨ Aplicar Inteligência", on_click=aplicar_mapeamento, use_container_width=True)
                 with b2: st.button("🗑️ Limpar Tudo", on_click=limpar_tudo, use_container_width=True)
             st.markdown("---")
 
-        # --- PARTE 2: INCLUSÃO MANUAL (COLUNA DE LOGÍSTICA RESTAURADA) ---
+        # PARTE 2: INCLUSÃO MANUAL
         col_i, col_m, col_d = st.columns(3) if perfil_venda == "Executivo (Rua)" else (*st.columns(2), None)
         with col_i:
             st.markdown('<div class="section-header"><span class="section-title">IMPLANTAÇÃO E SERVIÇOS</span></div>', unsafe_allow_html=True)
@@ -215,13 +233,14 @@ if tela == "Gerador de Proposta":
                 for i in st.session_state.sel_d:
                     st.number_input(f"{i} (R$ {despesas_db[i]['valor']:,.2f}/un)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_d_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_d_{i}"))
 
-    # --- PARTE 3: CARD DE RESUMO ---
+    # PARTE 3: RESUMO
     st.markdown("<h2 style='text-align:center; font-weight:800; margin-top:30px;'>RESUMO DO INVESTIMENTO</h2>", unsafe_allow_html=True)
     res_cols = st.columns(3) if perfil_venda == "Executivo (Rua)" else st.columns([1, 2, 2, 1])[1:3]
 
     total_setup, html_setup = 0.0, ""
     v_hora_base = servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)
 
+    # Cálculo do Setup (Manuais + Inteligência)
     for s_nome in st.session_state.sel_i:
         horas = st.session_state[f"perm_val_{s_nome}"]
         if horas > 0:
@@ -230,19 +249,19 @@ if tela == "Gerador de Proposta":
             html_setup += f"<li><span>{s_nome}</span><span class='item-detalhe'>{horas}h x R$ {servicos_db[s_nome]['valor']:,.2f}</span></li>"
 
     for m_nome in st.session_state.sel_m:
-        dados = full_db.get(m_nome, {})
-        h_padrao = dados.get('horas_padrao', 0)
-        v_hora_esp = dados.get('valor_hora_implantacao', 0)
-        ads_vinc = str(dados.get('adesao_vinculada', "")).strip()
+        d = full_db.get(m_nome, {})
+        h_pad = d.get('horas_padrao', 0)
+        v_h_esp = d.get('valor_hora_implantacao', 0)
+        ads_vinc = str(d.get('adesao_vinculada', "")).strip()
 
-        if h_padrao > 0:
-            rate = v_hora_esp if v_hora_esp > 0 else v_hora_base
-            total_setup += (h_padrao * rate)
-            html_setup += f"<li><span>Implantação {m_nome}</span><span class='item-detalhe'>{h_padrao}h x R$ {rate:,.2f}</span></li>"
+        if h_pad > 0:
+            rate = v_h_esp if v_h_esp > 0 else v_hora_base
+            total_setup += (h_pad * rate)
+            html_setup += f"<li><span>Implantação {m_nome}</span><span class='item-detalhe'>{h_pad}h x R$ {rate:,.2f}</span></li>"
         
         if ads_vinc and ads_vinc.lower() != "nan":
-            # Busca case-insensitive na tabela
-            chave_ads = next((k for k in full_db.keys() if k.lower() == ads_vinc.lower()), None)
+            # Busca inteligente (ignora espaços e acentos no básico)
+            chave_ads = next((k for k in full_db.keys() if k.lower().strip() == ads_vinc.lower().strip()), None)
             if chave_ads:
                 v_ads = full_db[chave_ads]['valor']
                 total_setup += v_ads
@@ -257,24 +276,24 @@ if tela == "Gerador de Proposta":
             if item == "VR PDV Convencional": return 2
             if "SiTef" in item: return 3
             return 99
-        lista_ord = sorted(st.session_state.sel_m, key=get_peso)
+        l_ord = sorted(st.session_state.sel_m, key=get_peso)
         t_bruto = sum(st.session_state[f"perm_val_{i}"] * sistemas_db[i]["valor"] for i in st.session_state.sel_m if i in sistemas_db)
         t_liq = t_bruto * (1 - (desc/100))
         html_m = ""
-        for i in lista_ord:
+        for i in l_ord:
             html_m += f"<li><span>{i}</span><span class='item-detalhe'>{st.session_state[f'perm_val_{i}']} un x R$ {sistemas_db[i]['valor']:,.2f}</span></li>"
             if i == "VR ERP PRO":
                 for ex in ["VR Promo", "VR Carteira Digital", "VR Analytics"]: html_m += f"<li class='item-incluso'><span>└ {ex}</span><span>Incluso</span></li>"
-        st.markdown(f'<div class="resumo-card" style="border-top-color: #2e7d32;"><span class="resumo-label">Mensalidade</span><div class="resumo-valor" style="color: #2e7d32;">R$ {t_liq:,.2f}</div><div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{html_m if html_m else "<li>Nenhum</li>"}</ul></div>', unsafe_allow_html=True)
+        desc_html = f'<div style="color:#2e7d32; font-weight:bold;">Desconto: {desc}%</div>' if (exibir_detalhe_desc and desc > 0) else '<div style="height:21px"></div>'
+        st.markdown(f'<div class="resumo-card" style="border-top-color:#2e7d32;"><span class="resumo-label">Mensalidade</span><div class="resumo-valor" style="color:#2e7d32;">R$ {t_liq:,.2f}</div>{desc_html}<div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{html_m if html_m else "<li>Nenhum</li>"}</ul></div>', unsafe_allow_html=True)
 
-    # Card 3 Restaurado
     if perfil_venda == "Executivo (Rua)":
         with res_cols[2]:
             t_desp = sum(st.session_state[f"perm_val_{i}"] * despesas_db[i]["valor"] for i in st.session_state.sel_d if i in despesas_db)
             html_d = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{st.session_state[f'perm_val_{i}']} un x R$ {despesas_db[i]['valor']:,.2f}</span></li>" for i in st.session_state.sel_d if i in despesas_db and st.session_state[f"perm_val_{i}"] > 0])
-            st.markdown(f'<div class="resumo-card" style="border-top-color: #1976d2;"><span class="resumo-label">Logística</span><div class="resumo-valor" style="color: #1976d2;">R$ {t_desp:,.2f}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">{regra_logistica}</div><div class="resumo-subtitulo">DETALHAMENTO</div><ul class="lista-itens">{html_d if html_d else "<li>Sem despesas</li>"}</ul></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="resumo-card" style="border-top-color:#1976d2;"><span class="resumo-label">Logística</span><div class="resumo-valor" style="color:#1976d2;">R$ {t_desp:,.2f}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">{regra_logistica}</div><div class="resumo-subtitulo">DETALHAMENTO</div><ul class="lista-itens">{html_d if html_d else "<li>Sem despesas</li>"}</ul></div>', unsafe_allow_html=True)
 
-# --- PARTE 4: CONSULTA PREÇO ---
+# CONSULTA TÉCNICA
 elif tela == "Consulta de Preço":
     st.markdown('<h1 class="hero-title">ANÁLISE TÉCNICA</h1>', unsafe_allow_html=True)
     if full_db:
