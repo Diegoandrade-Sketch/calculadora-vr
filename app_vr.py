@@ -12,8 +12,15 @@ EXCEL_FILE = "tabela_preco_chat.xlsx"
 
 def limpar_valor(valor):
     if pd.isna(valor) or str(valor).strip() == "": return 0.0
+    v = str(valor).replace('R$', '').replace(' ', '').strip()
+    # Se houver vírgula e ponto, assume formato BR (1.234,56)
+    if ',' in v and '.' in v:
+        v = v.replace('.', '').replace(',', '.')
+    # Se houver apenas vírgula, assume decimal BR (1234,56)
+    elif ',' in v:
+        v = v.replace(',', '.')
+    # Se houver apenas ponto, assume decimal US (1234.56) - Evita multiplicar por 10
     try:
-        v = str(valor).replace('R$', '').replace(' ', '').replace('.', '').replace(',', '.')
         return float(v)
     except: return 0.0
 
@@ -28,18 +35,17 @@ def carregar_dados_vendas():
         else:
             df = pd.read_csv(SHEET_URL)
         
-        # Padronização de colunas
         df.columns = [str(c).strip().lower() for c in df.columns]
         df = df.map(lambda x: x.strip() if isinstance(x, str) else x)
         
-        # Garantir existência das novas colunas de inteligência
-        if 'horas_padrao' not in df.columns: df['horas_padrao'] = 0
-        if 'adesao_vinculada' not in df.columns: df['adesao_vinculada'] = ""
-        if 'valor_hora_implantacao' not in df.columns: df['valor_hora_implantacao'] = 0
+        # Garantir existência das novas colunas
+        for col in ['horas_padrao', 'adesao_vinculada', 'valor_hora_implantacao']:
+            if col not in df.columns: df[col] = 0 if 'valor' in col or 'horas' in col else ""
 
         df['valor'] = df['valor'].apply(limpar_valor)
         df['valor_hora_implantacao'] = df['valor_hora_implantacao'].apply(limpar_valor)
 
+        # Criamos o dicionário usando o nome do produto original como chave
         full = df.set_index('produto').to_dict('index')
         sist = {k: v for k, v in full.items() if 'sist' in str(v['tipo']).lower()}
         serv = {k: v for k, v in full.items() if 'serv' in str(v['tipo']).lower()}
@@ -118,7 +124,7 @@ with st.sidebar:
         regra_logistica = st.selectbox("Faturamento Logística", ["Faturamento na assinatura", "Faturamento pós Implantação"])
 
 # ==========================================
-# GERADOR DE PROPOSTA (PARTES 1, 2, 3)
+# GERADOR DE PROPOSTA
 # ==========================================
 if tela == "Gerador de Proposta":
     
@@ -161,6 +167,16 @@ if tela == "Gerador de Proposta":
                 st.session_state[f"tmp_i_{s_item}"] = s_horas
                 if s_horas > 0 and s_item not in st.session_state.sel_i: st.session_state.sel_i.append(s_item)
 
+        # Logística Baseada nas Semanas
+        if "Alimentacao" in despesas_db: 
+            st.session_state[f"perm_val_Alimentacao"] = sem * 10
+            st.session_state[f"tmp_d_Alimentacao"] = sem * 10
+            if sem > 0 and "Alimentacao" not in st.session_state.sel_d: st.session_state.sel_d.append("Alimentacao")
+        if "Hospedagem" in despesas_db: 
+            st.session_state[f"perm_val_Hospedagem"] = sem * 4
+            st.session_state[f"tmp_d_Hospedagem"] = sem * 4
+            if sem > 0 and "Hospedagem" not in st.session_state.sel_d: st.session_state.sel_d.append("Hospedagem")
+
     if not modo_apresentacao:
         st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
         if mapeamento_ativo:
@@ -180,7 +196,7 @@ if tela == "Gerador de Proposta":
                 with b2: st.button("🗑️ Limpar Tudo", on_click=limpar_tudo, use_container_width=True)
             st.markdown("---")
 
-        # --- PARTE 2: INCLUSÃO MANUAL ---
+        # --- PARTE 2: INCLUSÃO MANUAL (COLUNA DE LOGÍSTICA RESTAURADA) ---
         col_i, col_m, col_d = st.columns(3) if perfil_venda == "Executivo (Rua)" else (*st.columns(2), None)
         with col_i:
             st.markdown('<div class="section-header"><span class="section-title">IMPLANTAÇÃO E SERVIÇOS</span></div>', unsafe_allow_html=True)
@@ -192,16 +208,20 @@ if tela == "Gerador de Proposta":
             st.session_state.sel_m = st.multiselect("Sistemas", list(sistemas_db.keys()), default=[s for s in st.session_state.sel_m if s in sistemas_db])
             for i in st.session_state.sel_m:
                 st.number_input(f"{i} (R$ {sistemas_db[i]['valor']:,.2f}/un)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_m_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_m_{i}"))
+        if col_d:
+            with col_d:
+                st.markdown('<div class="section-header"><span class="section-title">DESPESAS LOGÍSTICAS</span></div>', unsafe_allow_html=True)
+                st.session_state.sel_d = st.multiselect("Despesas", list(despesas_db.keys()), default=[s for s in st.session_state.sel_d if s in despesas_db])
+                for i in st.session_state.sel_d:
+                    st.number_input(f"{i} (R$ {despesas_db[i]['valor']:,.2f}/un)", min_value=0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_d_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_d_{i}"))
 
-    # --- PARTE 3: CARD DE RESUMO (TRANSPARÊNCIA E VENDA CASADA) ---
+    # --- PARTE 3: CARD DE RESUMO ---
     st.markdown("<h2 style='text-align:center; font-weight:800; margin-top:30px;'>RESUMO DO INVESTIMENTO</h2>", unsafe_allow_html=True)
     res_cols = st.columns(3) if perfil_venda == "Executivo (Rua)" else st.columns([1, 2, 2, 1])[1:3]
 
     total_setup, html_setup = 0.0, ""
-    # Valor da hora técnica padrão
     v_hora_base = servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)
 
-    # 1. Serviços Manuais
     for s_nome in st.session_state.sel_i:
         horas = st.session_state[f"perm_val_{s_nome}"]
         if horas > 0:
@@ -209,25 +229,24 @@ if tela == "Gerador de Proposta":
             total_setup += v_item
             html_setup += f"<li><span>{s_nome}</span><span class='item-detalhe'>{horas}h x R$ {servicos_db[s_nome]['valor']:,.2f}</span></li>"
 
-    # 2. Inteligência de Venda Casada (Horas Específicas e Adesão)
     for m_nome in st.session_state.sel_m:
         dados = full_db.get(m_nome, {})
         h_padrao = dados.get('horas_padrao', 0)
-        v_hora_especifico = dados.get('valor_hora_implantacao', 0)
-        adesao_vinculada = str(dados.get('adesao_vinculada', "")).strip()
+        v_hora_esp = dados.get('valor_hora_implantacao', 0)
+        ads_vinc = str(dados.get('adesao_vinculada', "")).strip()
 
-        # Calcula Horas do Produto
         if h_padrao > 0:
-            rate = v_hora_especifico if v_hora_especifico > 0 else v_hora_base
+            rate = v_hora_esp if v_hora_esp > 0 else v_hora_base
             total_setup += (h_padrao * rate)
             html_setup += f"<li><span>Implantação {m_nome}</span><span class='item-detalhe'>{h_padrao}h x R$ {rate:,.2f}</span></li>"
         
-        # Calcula Adesão
-        if adesao_vinculada != "" and adesao_vinculada != "nan":
-            if adesao_vinculada in full_db:
-                v_adesao = full_db[adesao_vinculada]['valor']
-                total_setup += v_adesao
-                html_setup += f"<li><span>Taxa de Adesão {adesao_vinculada}</span><span class='item-detalhe'>QTD 1 x R$ {v_adesao:,.2f}</span></li>"
+        if ads_vinc and ads_vinc.lower() != "nan":
+            # Busca case-insensitive na tabela
+            chave_ads = next((k for k in full_db.keys() if k.lower() == ads_vinc.lower()), None)
+            if chave_ads:
+                v_ads = full_db[chave_ads]['valor']
+                total_setup += v_ads
+                html_setup += f"<li><span>Taxa de Adesão {chave_ads}</span><span class='item-detalhe'>QTD 1 x R$ {v_ads:,.2f}</span></li>"
 
     with res_cols[0]:
         st.markdown(f'<div class="resumo-card"><span class="resumo-label">Investimento Implantação (Setup)</span><div class="resumo-valor">R$ {total_setup:,.2f}</div><div style="font-weight:bold;">{parcelas_setup}x de R$ {total_setup/parcelas_setup:,.2f}</div><div class="resumo-subtitulo">DETALHAMENTO SETUP</div><ul class="lista-itens">{html_setup if html_setup else "<li>Nenhum item</li>"}</ul></div>', unsafe_allow_html=True)
@@ -238,15 +257,22 @@ if tela == "Gerador de Proposta":
             if item == "VR PDV Convencional": return 2
             if "SiTef" in item: return 3
             return 99
-        lista_ordenada_m = sorted(st.session_state.sel_m, key=get_peso)
-        t_men_bruto = sum(st.session_state[f"perm_val_{i}"] * sistemas_db[i]["valor"] for i in st.session_state.sel_m if i in sistemas_db)
-        t_men_liq = t_men_bruto * (1 - (desc/100))
+        lista_ord = sorted(st.session_state.sel_m, key=get_peso)
+        t_bruto = sum(st.session_state[f"perm_val_{i}"] * sistemas_db[i]["valor"] for i in st.session_state.sel_m if i in sistemas_db)
+        t_liq = t_bruto * (1 - (desc/100))
         html_m = ""
-        for i in lista_ordenada_m:
+        for i in lista_ord:
             html_m += f"<li><span>{i}</span><span class='item-detalhe'>{st.session_state[f'perm_val_{i}']} un x R$ {sistemas_db[i]['valor']:,.2f}</span></li>"
             if i == "VR ERP PRO":
                 for ex in ["VR Promo", "VR Carteira Digital", "VR Analytics"]: html_m += f"<li class='item-incluso'><span>└ {ex}</span><span>Incluso</span></li>"
-        st.markdown(f'<div class="resumo-card" style="border-top-color: #2e7d32;"><span class="resumo-label">Mensalidade</span><div class="resumo-valor" style="color: #2e7d32;">R$ {t_men_liq:,.2f}</div><div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{html_m if html_m else "<li>Nenhum</li>"}</ul></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="resumo-card" style="border-top-color: #2e7d32;"><span class="resumo-label">Mensalidade</span><div class="resumo-valor" style="color: #2e7d32;">R$ {t_liq:,.2f}</div><div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{html_m if html_m else "<li>Nenhum</li>"}</ul></div>', unsafe_allow_html=True)
+
+    # Card 3 Restaurado
+    if perfil_venda == "Executivo (Rua)":
+        with res_cols[2]:
+            t_desp = sum(st.session_state[f"perm_val_{i}"] * despesas_db[i]["valor"] for i in st.session_state.sel_d if i in despesas_db)
+            html_d = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{st.session_state[f'perm_val_{i}']} un x R$ {despesas_db[i]['valor']:,.2f}</span></li>" for i in st.session_state.sel_d if i in despesas_db and st.session_state[f"perm_val_{i}"] > 0])
+            st.markdown(f'<div class="resumo-card" style="border-top-color: #1976d2;"><span class="resumo-label">Logística</span><div class="resumo-valor" style="color: #1976d2;">R$ {t_desp:,.2f}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">{regra_logistica}</div><div class="resumo-subtitulo">DETALHAMENTO</div><ul class="lista-itens">{html_d if html_d else "<li>Sem despesas</li>"}</ul></div>', unsafe_allow_html=True)
 
 # --- PARTE 4: CONSULTA PREÇO ---
 elif tela == "Consulta de Preço":
