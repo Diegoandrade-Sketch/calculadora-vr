@@ -125,48 +125,4 @@ with st.sidebar:
     tela = st.radio("Navegação:", ["Gerador de Proposta", "Consulta de Preço"])
     if tela == "Gerador de Proposta":
         st.write("---")
-        mapeamento_ativo = st.toggle("Mapeamento Inteligente", value=False)
-        modo_apresentacao = st.toggle("Modo Apresentação")
-        perfil_venda = st.selectbox("Perfil do Cliente", ["Executivo (Rua)", "CS (Base)"])
-        desc = st.number_input("Desconto (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.5)
-        exibir_detalhe_desc = st.toggle("Exibir Desconto na Tela", value=True)
-        faturamento_sistema = st.selectbox("Início Mensalidade", ["Na assinatura", "30 dias", "60 dias", "Após implantação"])
-        parcelas_setup = st.selectbox("Parcelas Setup", [1, 2, 3, 4, 5, 6], index=3)
-        regra_logistica = st.selectbox("Faturamento Logística", ["Faturamento na assinatura", "Faturamento pós Implantação"])
-
-# ==========================================
-# TELA: GERADOR DE PROPOSTA
-# ==========================================
-if tela == "Gerador de Proposta":
-    
-    def aplicar_mapeamento():
-        pdv_map = {"VR PDV Convencional": st.session_state.m_pdv_conv, "PDV Touchscreen": st.session_state.m_pdv_touch, "PDV Selfcheckout": st.session_state.m_pdv_self}
-        for p, qtd in pdv_map.items():
-            if p in sistemas_db:
-                st.session_state[f"perm_val_{p}"] = qtd
-                if qtd > 0 and p not in st.session_state.sel_m: st.session_state.sel_m.append(p)
-        
-        total_pdvs = sum(pdv_map.values())
-        st.session_state.sel_m = [item for item in st.session_state.sel_m if "SiTef" not in item]
-        if st.session_state.m_tef == "SiTef Express":
-            escolhido = "SiTef Express até 3 PDVs" if total_pdvs <= 3 else "SiTef Express até 6 PDVs" if total_pdvs <= 6 else "SiTef Express até 8 PDVs" if total_pdvs <= 8 else "SiTef Express acima de 8 PDVs"
-            if escolhido in sistemas_db:
-                st.session_state[f"perm_val_{escolhido}"] = 1
-                if escolhido not in st.session_state.sel_m: st.session_state.sel_m.append(escolhido)
-
-        exp_map = {"VR ERP PRO": st.session_state.m_erp_pro, "Gerenciador XML": st.session_state.m_xml, "VR Backup": st.session_state.m_backup}
-        for item, ativo in exp_map.items():
-            if item in sistemas_db:
-                st.session_state[f"perm_val_{item}"] = 1 if ativo else 0
-                if ativo and item not in st.session_state.sel_m: st.session_state.sel_m.append(item)
-
-        sem = st.session_state.m_semanas
-        serv_map = {"Implantação e Treinamento": sem * 44, "Migração Banco de Dados": 8 if st.session_state.m_migracao else 0}
-        for s_item, s_horas in serv_map.items():
-            if s_item in servicos_db:
-                st.session_state[f"perm_val_{s_item}"] = s_horas
-                if s_horas > 0 and s_item not in st.session_state.sel_i: st.session_state.sel_i.append(s_item)
-
-    if not modo_apresentacao:
-        st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
-        if mapeamento_ativo:
+        mapeamento_ativo = st.toggle("Mapeamento Intelig
