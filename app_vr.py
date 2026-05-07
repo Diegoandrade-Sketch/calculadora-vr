@@ -3,10 +3,11 @@ import pandas as pd
 import os
 
 # ==========================================
-# CONFIGURAÇÕES INICIAIS E BANCO DE DADOS
+# CONFIGURAÇÕES INICIAIS E CONTROLE DE VERSÃO
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
+APP_VERSION = "v1.0.0 - Stable"
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTgmdf_FgFd91dkm5zoD0l6l2ailLhCsEV-3pyFsQxRzoyNw2E96eQQoCYkfxHitA9oCIvfaI30-k-2/pub?output=csv"
 EXCEL_FILE = "tabela_preco_chat.xlsx"
 
@@ -32,13 +33,23 @@ def f_pct(valor):
 def sync_state(key_permanente, key_widget):
     st.session_state[key_permanente] = st.session_state[key_widget]
 
+# ==========================================
+# CONEXÃO E TELEMETRIA DE DADOS
+# ==========================================
 @st.cache_data(ttl=60)
 def carregar_dados_vendas():
+    status_msg = "🔴 Desconectado / Erro"
+    status_cor = "#ef4444" # Vermelho
+    
     try:
         if os.path.exists(EXCEL_FILE):
             df = pd.read_excel(EXCEL_FILE)
+            status_msg = "Excel Local (Fallback)"
+            status_cor = "#3b82f6" # Azul
         else:
             df = pd.read_csv(SHEET_URL)
+            status_msg = "Google Sheets (Online)"
+            status_cor = "#f59e0b" # Amarelo/Laranja
         
         df.columns = [str(c).strip().lower() for c in df.columns]
         df = df.map(lambda x: x.strip() if isinstance(x, str) else x)
@@ -55,12 +66,13 @@ def carregar_dados_vendas():
         serv = {k: v for k, v in full.items() if 'serv' in str(v['tipo']).lower()}
         desp = {k: v for k, v in full.items() if 'desp' in str(v['tipo']).lower()}
         
-        return sist, serv, desp, full
+        return sist, serv, desp, full, status_msg, status_cor
+    
     except Exception as e:
         st.error(f"Erro ao carregar dados: {e}")
-        return {}, {}, {}, {}
+        return {}, {}, {}, {}, status_msg, status_cor
 
-sistemas_db, servicos_db, despesas_db, full_db = carregar_dados_vendas()
+sistemas_db, servicos_db, despesas_db, full_db, db_status, db_cor = carregar_dados_vendas()
 
 # ESTILIZAÇÃO CSS
 st.markdown("""
@@ -113,7 +125,9 @@ def sync_combo():
         st.session_state.m_pdv_conv, st.session_state.m_tef, st.session_state.m_semanas = 5, "SiTef Express", 3
         st.session_state.m_migracao, st.session_state.m_escopo, st.session_state.m_erp_pro, st.session_state.m_xml, st.session_state.m_mobile = True, True, True, True, 1
 
-# --- SIDEBAR ---
+# ==========================================
+# SIDEBAR COM CONTROLE DE VERSÃO
+# ==========================================
 with st.sidebar:
     if os.path.exists("logo_vr.png"): st.image("logo_vr.png", width=180)
     tela = st.radio("Navegação:", ["Gerador de Proposta", "Consulta de Preço"])
@@ -127,6 +141,19 @@ with st.sidebar:
         faturamento_sistema = st.selectbox("Início Mensalidade", ["Na assinatura", "30 dias", "60 dias", "Após implantação"])
         parcelas_setup = st.selectbox("Parcelas Setup", [1, 2, 3, 4, 5, 6], index=3)
         regra_logistica = st.selectbox("Faturamento Logística", ["Faturamento na assinatura", "Faturamento pós Implantação"])
+    
+    # RODAPÉ DE TELEMETRIA
+    st.markdown("<br>" * 5, unsafe_allow_html=True) # Empurra para o fundo
+    st.markdown(f'''
+        <hr style="margin: 10px 0; border-color: #ddd;">
+        <div style="font-size: 0.8rem; color: #555;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                <div style="width: 10px; height: 10px; border-radius: 50%; background-color: {db_cor};"></div>
+                <b>Base:</b> {db_status}
+            </div>
+            <div><b>App Version:</b> {APP_VERSION}</div>
+        </div>
+    ''', unsafe_allow_html=True)
 
 # ==========================================
 # GERADOR DE PROPOSTA
@@ -134,7 +161,6 @@ with st.sidebar:
 if tela == "Gerador de Proposta":
     
     def aplicar_mapeamento():
-        # PDVs
         pdv_map = {"VR PDV Convencional": st.session_state.m_pdv_conv, "PDV Touchscreen": st.session_state.m_pdv_touch, "PDV Selfcheckout": st.session_state.m_pdv_self}
         for p, qtd in pdv_map.items():
             if p in sistemas_db:
@@ -142,7 +168,6 @@ if tela == "Gerador de Proposta":
                 st.session_state[f"tmp_m_{p}"] = qtd
                 if qtd > 0 and p not in st.session_state.sel_m: st.session_state.sel_m.append(p)
         
-        # TEF
         total_pdvs = sum(pdv_map.values())
         st.session_state.sel_m = [item for item in st.session_state.sel_m if "SiTef" not in item]
         if st.session_state.m_tef == "SiTef Express":
@@ -152,7 +177,6 @@ if tela == "Gerador de Proposta":
                 st.session_state[f"tmp_m_{escolhido}"] = 1
                 st.session_state.sel_m.append(escolhido)
 
-        # Sistemas Extras RESTAURADOS
         exp_map = {
             "E-Commerce": st.session_state.m_ecommerce, "M-Commerce": st.session_state.m_app, 
             "VR Connect (Android/IOS)": st.session_state.m_connect, "VR ERP PRO": st.session_state.m_erp_pro, 
@@ -166,14 +190,12 @@ if tela == "Gerador de Proposta":
                 st.session_state[f"tmp_m_{item}"] = 1 if ativo else 0
                 if ativo and item not in st.session_state.sel_m: st.session_state.sel_m.append(item)
 
-        # VR Mobile RESTAURADO
         if "VR Mobile" in sistemas_db and st.session_state.m_mobile > 0:
             if "VR Mobile" not in st.session_state.sel_m: st.session_state.sel_m.append("VR Mobile")
             st.session_state[f"perm_val_VR Mobile"] += st.session_state.m_mobile
             st.session_state[f"tmp_m_VR Mobile"] = st.session_state[f"perm_val_VR Mobile"]
             st.session_state.m_mobile = 0
 
-        # Serviços e Logística
         sem = st.session_state.m_semanas
         serv_map = {"Implantação e Treinamento": sem * 44, "Migração Banco de Dados": 8 if st.session_state.m_migracao else 0, "Definição de Escopo": 8 if st.session_state.m_escopo else 0}
         for s_item, s_horas in serv_map.items():
@@ -307,7 +329,6 @@ if tela == "Gerador de Proposta":
         desc_html = f'<div style="color:#2e7d32; font-weight:bold;">Desconto: {desc}%</div>' if (exibir_detalhe_desc and desc > 0) else '<div style="height:21px"></div>'
         st.markdown(f'<div class="resumo-card" style="border-top-color:#2e7d32;"><span class="resumo-label">Manutenção Mensal</span><div class="resumo-valor" style="color:#2e7d32;">R$ {f_br(t_liq)}</div>{desc_html}<div style="font-weight:bold; font-size: 0.9rem; margin-top:5px;">Início: {faturamento_sistema}</div><div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{html_m if html_m else "<li>Nenhum</li>"}</ul></div>', unsafe_allow_html=True)
 
-    # LOGÍSTICA RESTAURADA
     if perfil_venda == "Executivo (Rua)":
         with res_cols[2]:
             t_desp = sum(st.session_state[f"perm_val_{i}"] * despesas_db[i]["valor"] for i in st.session_state.sel_d if i in despesas_db)
