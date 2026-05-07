@@ -52,7 +52,7 @@ def carregar_dados_vendas():
 
 sistemas_db, servicos_db, despesas_db, full_db = carregar_dados_vendas()
 
-# ESTILIZAÇÃO CSS
+# ESTILIZAÇÃO CSS (FOCO EM LINHA RETA E LEITURA FLUIDA)
 st.markdown("""
     <style>
     .stApp { background: linear-gradient(135deg, #ffffff 0%, #fff5ed 100%); }
@@ -64,7 +64,7 @@ st.markdown("""
     .section-header { background: linear-gradient(90deg, #ff6600 0%, #ff944d 100%); padding: 8px 15px; border-radius: 5px; margin-bottom: 15px; margin-top: 20px; }
     .section-title { color: #ffffff; font-size: 1.1rem; font-weight: bold; margin: 0; }
     .lista-itens { list-style-type: none; padding-left: 0; margin-top: 10px; flex-grow: 1; }
-    .lista-itens li { padding: 8px 0; border-bottom: 1px dashed #e0e0e0; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .lista-itens li { padding: 8px 0; border-bottom: 1px dashed #e0e0e0; display: flex; justify-content: space-between; align-items: center; gap: 15px; }
     .lista-itens li span:first-child { font-weight: bold; font-size: 0.88rem; color: #444; }
     .item-incluso { padding-left: 20px !important; color: #777; font-size: 0.85rem; font-style: italic; border-bottom: none !important; }
     </style>
@@ -123,6 +123,7 @@ with st.sidebar:
 # ==========================================
 if tela == "Gerador de Proposta":
     
+    # --- PARTE 1: MAPEAMENTO DA OPERAÇÃO ---
     def aplicar_mapeamento():
         pdv_map = {"VR PDV Convencional": st.session_state.m_pdv_conv, "PDV Touchscreen": st.session_state.m_pdv_touch, "PDV Selfcheckout": st.session_state.m_pdv_self}
         for p, qtd in pdv_map.items():
@@ -257,7 +258,15 @@ if tela == "Gerador de Proposta":
             html_setup += f"<li><span>Taxa de Adesão {m_nome}</span><span class='item-detalhe'>1 un x R$ {val_ads:,.2f} | Total: R$ {val_ads:,.2f}</span></li>"
 
     with res_cols[0]:
-        st.markdown(f'<div class="resumo-card"><span class="resumo-label">Investimento Implantação (Setup)</span><div class="resumo-valor">R$ {total_setup:,.2f}</div><div style="font-weight:bold;">{parcelas_setup}x de R$ {total_setup/parcelas_setup:,.2f}</div><div class="resumo-subtitulo">DETALHAMENTO SETUP</div><ul class="lista-itens">{html_setup if html_setup else "<li>Nenhum item</li>"}</ul></div>', unsafe_allow_html=True)
+        st.markdown(f'''
+            <div class="resumo-card">
+                <span class="resumo-label">Investimento Implantação (Setup)</span>
+                <div class="resumo-valor">R$ {total_setup:,.2f}</div>
+                <div style="font-weight:bold;">{parcelas_setup}x de R$ {total_setup/parcelas_setup:,.2f}</div>
+                <div class="resumo-subtitulo">DETALHAMENTO SETUP</div>
+                <ul class="lista-itens">{html_setup if html_setup else "<li>Nenhum item</li>"}</ul>
+            </div>
+        ''', unsafe_allow_html=True)
 
     # MENSALIDADE
     with res_cols[1]:
@@ -297,18 +306,25 @@ if tela == "Gerador de Proposta":
 # --- PARTE 4: CONSULTA DE PREÇO (SIMULADOR RÁPIDO) ---
 elif tela == "Consulta de Preço":
     st.markdown('<h1 class="hero-title">ANÁLISE TÉCNICA</h1>', unsafe_allow_html=True)
-    st.markdown('<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">🔍 Simulador de Produto Individual</h3></div>', unsafe_allow_html=True)
+    st.markdown('<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">🔍 Simulador de Negociação Individual</h3></div>', unsafe_allow_html=True)
     
     if full_db:
         opcoes_busca = sorted(list(full_db.keys()))
-        p_sel = st.selectbox("Selecione o produto para simulação:", opcoes_busca)
-        
+        col_busca, col_desc = st.columns([2, 1])
+        with col_busca:
+            p_sel = st.selectbox("Selecione o produto para simulação:", opcoes_busca)
+        with col_desc:
+            desc_simulacao = st.number_input("Simular Desconto (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.5, key="desc_sim")
+
         if p_sel:
             d = full_db[p_sel]
             v_hora_base = servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)
             
-            # Cálculo na hora
-            v_mensal = d.get('valor', 0.0)
+            # Mensalidade liq
+            v_mensal_bruto = d.get('valor', 0.0)
+            v_mensal_liq = v_mensal_bruto * (1 - (desc_simulacao / 100))
+            
+            # Setup calc
             h_pad = d.get('horas_padrao', 0)
             v_h_esp = d.get('valor_hora_implantacao', 0)
             v_ads = d.get('adesao_vinculada', 0.0)
@@ -320,18 +336,7 @@ elif tela == "Consulta de Preço":
             c1, c2, c3 = st.columns(3)
             
             with c1:
-                st.markdown(f'''
-                    <div class="resumo-card" style="border-top-color:#2e7d32;">
-                        <span class="resumo-label">Investimento Mensal</span>
-                        <div class="resumo-valor" style="color:#2e7d32;">R$ {v_mensal:,.2f}</div>
-                        <div class="resumo-subtitulo">DETALHE</div>
-                        <ul class="lista-itens">
-                            <li><span>{p_sel}</span><span class="item-detalhe">1 un x R$ {v_mensal:,.2f} | Total: R$ {v_mensal:,.2f}</span></li>
-                        </ul>
-                    </div>
-                ''', unsafe_allow_html=True)
-
-            with c2:
+                # CARD 1: SETUP
                 html_sim_setup = ""
                 if h_pad > 0:
                     html_sim_setup += f"<li><span>Implantação</span><span class='item-detalhe'>{h_pad}h x R$ {rate:,.2f} | Total: R$ {v_impl_calc:,.2f}</span></li>"
@@ -350,13 +355,32 @@ elif tela == "Consulta de Preço":
                     </div>
                 ''', unsafe_allow_html=True)
 
-            with c3:
-                desc_texto = d.get('descricao', "Descrição técnica não disponível.")
+            with c2:
+                # CARD 2: MENSALIDADE
+                html_bruto = f'<span style="text-decoration: line-through; color: #777; font-size: 0.9rem;">R$ {v_mensal_bruto:,.2f}</span>' if desc_simulacao > 0 else ""
                 st.markdown(f'''
-                    <div class="resumo-card" style="border-top-color:#262730;">
-                        <span class="resumo-label">Descrição Técnica</span>
-                        <div style="margin-top:15px; font-size:0.9rem; color:#444; line-height:1.4;">
-                            {desc_texto}
+                    <div class="resumo-card" style="border-top-color:#2e7d32;">
+                        <span class="resumo-label">Investimento Mensal</span>
+                        <div class="resumo-valor" style="color:#2e7d32;">R$ {v_mensal_liq:,.2f}</div>
+                        {html_bruto}
+                        <div class="resumo-subtitulo">DETALHE</div>
+                        <ul class="lista-itens">
+                            <li><span>{p_sel}</span><span class="item-detalhe">1 un x R$ {v_mensal_liq:,.2f} | Total: R$ {v_mensal_liq:,.2f}</span></li>
+                        </ul>
+                    </div>
+                ''', unsafe_allow_html=True)
+
+            with c3:
+                # CARD 3: RESUMO NEGOCIAÇÃO
+                st.markdown(f'''
+                    <div class="resumo-card" style="border-top-color:#262730; min-height: auto;">
+                        <span class="resumo-label">Resumo da Negociação</span>
+                        <div style="margin-top:15px; font-size:0.95rem; color:#444;">
+                            <p><b>Desconto aplicado:</b> {desc_simulacao}%</p>
+                            <p><b>Economia Mensal:</b> R$ {(v_mensal_bruto - v_mensal_liq):,.2f}</p>
+                            <p><b>Economia Anual:</b> R$ {(v_mensal_bruto - v_mensal_liq)*12:,.2f}</p>
+                            <hr>
+                            <p style="font-size: 0.85rem; color: #666;"><i>Use esta tela para simular condições agressivas de fechamento.</i></p>
                         </div>
                     </div>
                 ''', unsafe_allow_html=True)
