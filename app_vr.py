@@ -366,4 +366,15 @@ elif tela == "Gerador de Proposta":
                     qtd_d = st.session_state[f"perm_val_{i}"]
                     v_total_d = qtd_d * v_unit_d
                     html_d += f"<li><span>{i}</span><span class='item-detalhe'>{qtd_d} un x R$ {f_br(v_unit_d)} | Total: R$ {f_br(v_total_d)}</span></li>"
-            st.markdown(f'<div class="resumo-card" style="border-top-color:#1976d2;"><span class="resumo-label">Logística</span><div class="resumo-valor" style="color:#1976d2;">R$ {f_br(t_desp)}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">{regra_logistica}</div><div class="resumo-sub
+            
+            # --- BLOCO CORRIGIDO E PROTEGIDO CONTRA CORTES ---
+            st.markdown(f'''
+                <div class="resumo-card" style="border-top-color:#1976d2;">
+                    <span class="resumo-label">Logística</span>
+                    <div class="resumo-valor" style="color:#1976d2;">R$ {f_br(t_desp)}</div>
+                    <div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">{regra_logistica}</div>
+                    <div class="resumo-subtitulo">DETALHAMENTO</div>
+                    <ul class="lista-itens">{html_d if html_d else "<li>Sem despesas</li>"}</ul>
+                </div>
+            ''', unsafe_allow_html=True)
+            # -------------------------------------------------
