@@ -240,4 +240,63 @@ elif tela == "Gerador de Proposta":
         st.markdown('<div class="section-header"><span class="section-title">IMPLANTAÇÃO E SERVIÇOS</span></div>', unsafe_allow_html=True)
         st.session_state.sel_i = st.multiselect("Serviços", list(servicos_db.keys()), default=[s for s in st.session_state.sel_i if s in servicos_db])
         for i in st.session_state.sel_i:
-            st.number_input(f"{i}", min_value=
+            st.number_input(f"{i}", min_value=0, key=f"tmp_i_{i}", value=st.session_state[f"perm_val_{i}"], on_change=sync_state, args=(f"perm_val_{i}", f"tmp_i_{i}"))
+    with col_m:
+        st.markdown('<div class="section-header"><span class="section-title">MENSALIDADES SISTEMAS</span></div>', unsafe_allow_html=True)
+        st.session_state.sel_m = st.multiselect("Sistemas", list(sistemas_db.keys()), default=[s for s in st.session_state.sel_m if s in sistemas_db])
+        for i in st.session_state.sel_m:
+            st.number_input(f"{i}", min_value=0, key=f"tmp_m_{i}", value=st.session_state[f"perm_val_{i}"], on_change=sync_state, args=(f"perm_val_{i}", f"tmp_m_{i}"))
+
+    # RESUMO GERAL
+    st.markdown("<h2 style='text-align:center; font-weight:800; margin-top:30px;'>RESUMO DO INVESTIMENTO</h2>", unsafe_allow_html=True)
+    res_cols = st.columns(3) if perfil_venda == "Executivo (Rua)" else st.columns([1, 2, 2, 1])[1:3]
+
+    total_setup, html_setup = 0.0, ""
+    v_hora_base = servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)
+
+    for s_nome in st.session_state.sel_i:
+        horas = st.session_state[f"perm_val_{s_nome}"]
+        if horas > 0:
+            v_item = horas * servicos_db[s_nome]['valor']
+            total_setup += v_item
+            html_setup += f"<li><span>{s_nome}</span><span class='item-detalhe'>{horas}h x R$ {f_br(servicos_db[s_nome]['valor'])}</span></li>"
+
+    for m_nome in st.session_state.sel_m:
+        d = full_db.get(m_nome, {})
+        h_pad, v_h_esp, val_ads = d.get('horas_padrao', 0), d.get('valor_hora_implantacao', 0), d.get('adesao_vinculada', 0.0)
+        if h_pad > 0:
+            rate = v_h_esp if v_h_esp > 0 else v_hora_base
+            total_setup += (h_pad * rate)
+            html_setup += f"<li><span>Implantação {m_nome}</span><span class='item-detalhe'>{h_pad}h x R$ {f_br(rate)}</span></li>"
+        if val_ads > 0:
+            total_setup += val_ads
+            html_setup += f"<li><span>Taxa de Adesão {m_nome}</span><span class='item-detalhe'>1 un x R$ {f_br(val_ads)}</span></li>"
+
+    with res_cols[0]:
+        st.markdown(f'<div class="resumo-card"><span class="resumo-label">Investimento de Setup</span><div class="resumo-valor">R$ {f_br(total_setup)}</div><div style="font-weight:bold;">{parcelas_setup}x de R$ {f_br(total_setup/parcelas_setup)}</div><div class="resumo-subtitulo">DETALHAMENTO</div><ul class="lista-itens">{html_setup if html_setup else "<li>Nenhum item</li>"}</ul></div>', unsafe_allow_html=True)
+
+    with res_cols[1]:
+        t_liq = sum(st.session_state[f"perm_val_{i}"] * sistemas_db[i]["valor"] for i in st.session_state.sel_m if i in sistemas_db) * (1 - (desc/100))
+        html_m = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{st.session_state[f'perm_val_{i}']} un x R$ {f_br(sistemas_db[i]['valor'])}</span></li>" for i in st.session_state.sel_m if i in sistemas_db])
+        st.markdown(f'<div class="resumo-card" style="border-top-color:#2e7d32;"><span class="resumo-label">Manutenção Mensal</span><div class="resumo-valor" style="color:#2e7d32;">R$ {f_br(t_liq)}</div><div style="font-weight:bold; font-size: 0.9rem;">Início: {faturamento_sistema}</div><div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{html_m if html_m else "<li>Nenhum</li>"}</ul></div>', unsafe_allow_html=True)
+
+# TELA: CONSULTA DE PREÇO (SIMULADOR CLEAN)
+elif tela == "Consulta de Preço":
+    st.markdown('<h1 class="hero-title">ANÁLISE TÉCNICA</h1>', unsafe_allow_html=True)
+    if full_db:
+        p_sel = st.selectbox("Selecione o produto:", sorted(list(full_db.keys())))
+        desc_sim = st.number_input("Simular Desconto (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.5)
+
+        if p_sel:
+            d = full_db[p_sel]
+            v_bruto = d.get('valor', 0.0)
+            v_liq = v_bruto * (1 - (desc_sim / 100))
+            
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.markdown(f'<div class="resumo-card"><span class="resumo-label">Mensalidade Cheia</span><div class="resumo-valor">R$ {f_br(v_bruto)}</div></div>', unsafe_allow_html=True)
+            with c2:
+                bloco_desc = f'<div class="resumo-subtitulo">DETALHE</div><ul class="lista-itens"><li><span>Desconto</span><span class="item-detalhe">{f_pct(desc_sim)}% off</span></li></ul>' if desc_sim > 0 else ""
+                st.markdown(f'<div class="resumo-card" style="border-top-color:#2e7d32;"><span class="resumo-label">Mensalidade com Desconto</span><div class="resumo-valor" style="color:#2e7d32;">R$ {f_br(v_liq)}</div>{bloco_desc}</div>', unsafe_allow_html=True)
+            with c3:
+                st.markdown(f'<div class="resumo-card" style="border-top-color:#262730; min-height: auto;"><span class="resumo-label">Economia Anual</span><div class="resumo-valor" style="color:#262730;">R$ {f_br((v_bruto-v_liq)*12)}</div></div>', unsafe_allow_html=True)
