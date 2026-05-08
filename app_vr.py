@@ -56,7 +56,7 @@ def carregar_dados_vendas():
     try:
         if CONN_STR:
             engine = create_engine(CONN_STR)
-            df = pd.read_sql("SELECT * FROM product", engine)
+            df = pd.read_sql("SELECT title AS produto, * FROM product", engine)
             status_msg = "PostgreSQL Conectado"
             status_cor = "#22c55e" # Verde
         else:
