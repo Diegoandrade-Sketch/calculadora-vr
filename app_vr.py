@@ -260,4 +260,169 @@ if tela == "Gerador de Proposta":
                 st.number_input("VR Mobile", min_value=0.0, step=1.0, key="tmp_mobile", value=float(st.session_state.m_mobile), on_change=sync_state, args=("m_mobile", "tmp_mobile"))
                 sc1, sc2, sc3 = st.columns(3)
                 with sc1:
-                    st.toggle("VR ERP PRO", key="tmp_erp_pro", value=st.session_state.
+                    st.toggle("VR ERP PRO", key="tmp_erp_pro", value=st.session_state.m_erp_pro, on_change=sync_state, args=("m_erp_pro", "tmp_erp_pro"))
+                    st.toggle("G. XML", key="tmp_xml", value=st.session_state.m_xml, on_change=sync_state, args=("m_xml", "tmp_xml"))
+                    st.toggle("Connect", key="tmp_connect", value=st.session_state.m_connect, on_change=sync_state, args=("m_connect", "tmp_connect"))
+                with sc2:
+                    st.toggle("VR Backup", key="tmp_backup", value=st.session_state.m_backup, on_change=sync_state, args=("m_backup", "tmp_backup"))
+                    st.toggle("VR Cartaz", key="tmp_cartaz", value=st.session_state.m_cartaz, on_change=sync_state, args=("m_cartaz", "tmp_cartaz"))
+                    st.toggle("E-Commerce", key="tmp_ecommerce", value=st.session_state.m_ecommerce, on_change=sync_state, args=("m_ecommerce", "tmp_ecommerce"))
+                with sc3:
+                    st.toggle("C. 360", key="tmp_controller", value=st.session_state.m_controller, on_change=sync_state, args=("m_controller", "tmp_controller"))
+                    st.toggle("MasterFisco", key="tmp_masterfisco", value=st.session_state.m_masterfisco, on_change=sync_state, args=("m_masterfisco", "tmp_masterfisco"))
+                    st.toggle("M-Commerce", key="tmp_app", value=st.session_state.m_app, on_change=sync_state, args=("m_app", "tmp_app"))
+                b1, b2 = st.columns(2)
+                with b1: st.button("✨ Aplicar Inteligência", on_click=aplicar_mapeamento, use_container_width=True)
+                with b2: st.button("🗑️ Limpar Tudo", on_click=limpar_tudo, use_container_width=True)
+            st.markdown("---")
+
+        # Roda a reconciliação antes de desenhar as caixas laranjas (Regra Conciliador)
+        processar_regras_colaterais()
+
+        # --- PARTE 2: INCLUSÃO MANUAL (FLOAT FIX APLICADO) ---
+        col_i, col_m, col_d = st.columns(3) if perfil_venda == "Executivo (Rua)" else (*st.columns(2), None)
+        with col_i:
+            st.markdown('<div class="section-header"><span class="section-title">IMPLANTAÇÃO E SERVIÇOS</span></div>', unsafe_allow_html=True)
+            st.session_state.sel_i = st.multiselect("Serviços", list(servicos_db.keys()), default=[s for s in st.session_state.sel_i if s in servicos_db])
+            for i in st.session_state.sel_i:
+                st.number_input(f"{i} (R$ {f_br(servicos_db[i]['valor'])}/un)", min_value=0.0, step=1.0, value=float(st.session_state[f"perm_val_{i}"]), key=f"tmp_i_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_i_{i}"))
+        with col_m:
+            st.markdown('<div class="section-header"><span class="section-title">MENSALIDADES SISTEMAS</span></div>', unsafe_allow_html=True)
+            st.session_state.sel_m = st.multiselect("Sistemas", list(sistemas_db.keys()), default=[s for s in st.session_state.sel_m if s in sistemas_db])
+            for i in st.session_state.sel_m:
+                st.number_input(f"{i} (R$ {f_br(sistemas_db[i]['valor'])}/un)", min_value=0.0, step=1.0, value=float(st.session_state[f"perm_val_{i}"]), key=f"tmp_m_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_m_{i}"))
+        if col_d:
+            with col_d:
+                st.markdown('<div class="section-header"><span class="section-title">DESPESAS LOGÍSTICAS</span></div>', unsafe_allow_html=True)
+                st.session_state.sel_d = st.multiselect("Despesas", list(despesas_db.keys()), default=[s for s in st.session_state.sel_d if s in despesas_db])
+                for i in st.session_state.sel_d:
+                    st.number_input(f"{i} (R$ {f_br(despesas_db[i]['valor'])}/un)", min_value=0.0, step=1.0, value=float(st.session_state[f"perm_val_{i}"]), key=f"tmp_d_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_d_{i}"))
+
+    # --- PARTE 3: CARD DE RESUMO (INTACTO DA v1.0.0) ---
+    st.markdown("<h2 style='text-align:center; font-weight:800; margin-top:30px;'>RESUMO DO INVESTIMENTO</h2>", unsafe_allow_html=True)
+    res_cols = st.columns(3) if perfil_venda == "Executivo (Rua)" else st.columns([1, 2, 2, 1])[1:3]
+
+    total_setup, html_setup = 0.0, ""
+    v_hora_base = servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)
+
+    for s_nome in st.session_state.sel_i:
+        horas = st.session_state[f"perm_val_{s_nome}"]
+        if horas > 0:
+            v_item = horas * servicos_db[s_nome]['valor']
+            total_setup += v_item
+            html_setup += f"<li><span>{s_nome}</span><span class='item-detalhe'>{horas}h x R$ {f_br(servicos_db[s_nome]['valor'])} | Total: R$ {f_br(v_item)}</span></li>"
+
+    for m_nome in st.session_state.sel_m:
+        d = full_db.get(m_nome, {})
+        h_pad = d.get('horas_padrao', 0.0)
+        v_h_esp = d.get('valor_hora_implantacao', 0.0)
+        val_ads = d.get('adesao_vinculada', 0.0)
+
+        if h_pad > 0:
+            rate = v_h_esp if v_h_esp > 0 else v_hora_base
+            v_impl = h_pad * rate
+            total_setup += v_impl
+            html_setup += f"<li><span>Implantação {m_nome}</span><span class='item-detalhe'>{h_pad}h x R$ {f_br(rate)} | Total: R$ {f_br(v_impl)}</span></li>"
+        
+        if val_ads > 0:
+            total_setup += val_ads
+            html_setup += f"<li><span>Taxa de Adesão {m_nome}</span><span class='item-detalhe'>1 un x R$ {f_br(val_ads)} | Total: R$ {f_br(val_ads)}</span></li>"
+
+    with res_cols[0]:
+        st.markdown(f'''
+            <div class="resumo-card">
+                <span class="section-title" style="color:#262730;">Investimento Implantação (Setup)</span>
+                <div class="resumo-valor">R$ {f_br(total_setup)}</div>
+                <div style="font-weight:bold;">{parcelas_setup}x de R$ {f_br(total_setup/parcelas_setup)}</div>
+                <div style="margin-top:15px; font-weight:bold; font-size:0.8rem; color:#888;">DETALHAMENTO SETUP</div>
+                <ul class="lista-itens">{html_setup if html_setup else "<li>Nenhum item</li>"}</ul>
+            </div>
+        ''', unsafe_allow_html=True)
+
+    with res_cols[1]:
+        def get_peso(item):
+            if item == "VR ERP PRO": return 1
+            if item == "VR PDV Convencional": return 2
+            if "SiTef" in item: return 3
+            return 99
+        l_ord = sorted(st.session_state.sel_m, key=get_peso)
+        t_bruto = sum(st.session_state[f"perm_val_{i}"] * sistemas_db[i]["valor"] for i in st.session_state.sel_m if i in sistemas_db)
+        t_liq = t_bruto * (1 - (desc/100))
+        html_m = ""
+        for i in l_ord:
+            v_unit = sistemas_db[i]['valor']
+            qtd = st.session_state[f'perm_val_{i}']
+            v_total_m = qtd * v_unit
+            html_m += f"<li><span>{i}</span><span class='item-detalhe'>{qtd} un x R$ {f_br(v_unit)} | Total: R$ {f_br(v_total_m)}</span></li>"
+            if i == "VR ERP PRO":
+                for ex in ["VR Promo", "VR Carteira Digital", "VR Analytics"]: 
+                    html_m += f"<li class='item-incluso'><span>└ {ex}</span><span>Incluso</span></li>"
+        desc_html = f'<div style="color:#2e7d32; font-weight:bold;">Desconto: {desc}%</div>' if (exibir_detalhe_desc and desc > 0) else '<div style="height:21px"></div>'
+        st.markdown(f'<div class="resumo-card" style="border-top-color:#2e7d32;"><span class="section-title" style="color:#262730;">Manutenção Mensal</span><div class="resumo-valor" style="color:#2e7d32;">R$ {f_br(t_liq)}</div>{desc_html}<div style="font-weight:bold; font-size: 0.9rem; margin-top:5px;">Início: {faturamento_sistema}</div><div style="margin-top:15px; font-weight:bold; font-size:0.8rem; color:#888;">SISTEMAS</div><ul class="lista-itens">{html_m if html_m else "<li>Nenhum</li>"}</ul></div>', unsafe_allow_html=True)
+
+    if perfil_venda == "Executivo (Rua)":
+        with res_cols[2]:
+            t_desp = sum(st.session_state[f"perm_val_{i}"] * despesas_db[i]["valor"] for i in st.session_state.sel_d if i in despesas_db)
+            html_d = ""
+            for i in st.session_state.sel_d:
+                if i in despesas_db and st.session_state[f"perm_val_{i}"] > 0:
+                    v_unit_d = despesas_db[i]['valor']
+                    qtd_d = st.session_state[f"perm_val_{i}"]
+                    v_total_d = qtd_d * v_unit_d
+                    html_d += f"<li><span>{i}</span><span class='item-detalhe'>{qtd_d} un x R$ {f_br(v_unit_d)} | Total: R$ {f_br(v_total_d)}</span></li>"
+            st.markdown(f'<div class="resumo-card" style="border-top-color:#1976d2;"><span class="section-title" style="color:#262730;">Logística</span><div class="resumo-valor" style="color:#1976d2;">R$ {f_br(t_desp)}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">{regra_logistica}</div><div style="margin-top:15px; font-weight:bold; font-size:0.8rem; color:#888;">DETALHAMENTO</div><ul class="lista-itens">{html_d if html_d else "<li>Sem despesas</li>"}</ul></div>', unsafe_allow_html=True)
+
+# ==========================================
+# --- PARTE 4: CONSULTA DE PREÇO (SIMULADOR CLEAN INTACTO) ---
+# ==========================================
+elif tela == "Consulta de Preço":
+    st.markdown('<h1 class="hero-title">ANÁLISE TÉCNICA</h1>', unsafe_allow_html=True)
+    st.markdown('<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">🔍 Simulador de Negociação Individual</h3></div>', unsafe_allow_html=True)
+    
+    if full_db:
+        col_busca, col_desc = st.columns([2, 1])
+        with col_busca: p_sel = st.selectbox("Selecione o produto:", sorted(list(full_db.keys())))
+        with col_desc: desc_simulacao = st.number_input("Simular Desconto (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.5, key="desc_sim")
+
+        if p_sel:
+            d = full_db[p_sel]
+            v_mensal_bruto, v_hora_base = d.get('valor', 0.0), servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)
+            v_mensal_liq = v_mensal_bruto * (1 - (desc_simulacao / 100))
+            h_pad, v_h_esp, v_ads = d.get('horas_padrao', 0.0), d.get('valor_hora_implantacao', 0.0), d.get('adesao_vinculada', 0.0)
+            rate = v_h_esp if v_h_esp > 0 else v_hora_base
+            v_setup_total = (h_pad * rate) + v_ads
+            
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                html_sim_setup = ""
+                if h_pad > 0: html_sim_setup += f"<li><span>Implantação</span><span class='item-detalhe'>{h_pad}h x R$ {f_br(rate)} | Total: R$ {f_br(h_pad*rate)}</span></li>"
+                if v_ads > 0: html_sim_setup += f"<li><span>Taxa de Adesão</span><span class='item-detalhe'>1 un x R$ {f_br(v_ads)} | Total: R$ {f_br(v_ads)}</span></li>"
+                bloco_setup = f'<div style="margin-top:15px; font-weight:bold; font-size:0.8rem; color:#888;">COMPOSIÇÃO</div><ul class="lista-itens">{html_sim_setup}</ul>' if html_sim_setup else ""
+                st.markdown(f'<div class="resumo-card"><span class="section-title" style="color:#262730;">Investimento de Setup</span><div class="resumo-valor">R$ {f_br(v_setup_total)}</div><div style="font-weight:bold;">Sugestão: 4x de R$ {f_br(v_setup_total/4)}</div>{bloco_setup}</div>', unsafe_allow_html=True)
+
+            with c2:
+                html_bruto = f'<span style="text-decoration: line-through; color: #777; font-size: 0.9rem;">R$ {f_br(v_mensal_bruto)}</span>' if desc_simulacao > 0 else ""
+                bloco_mensal = ""
+                if desc_simulacao > 0:
+                    bloco_mensal = f'''
+                        <div style="margin-top:15px; font-weight:bold; font-size:0.8rem; color:#888;">DETALHE</div>
+                        <ul class="lista-itens">
+                            <li><span>Desconto Aplicado</span><span class="item-detalhe">{f_pct(desc_simulacao)}% off</span></li>
+                            <li><span>Valor Original</span><span class="item-detalhe">R$ {f_br(v_mensal_bruto)}</span></li>
+                        </ul>
+                    '''
+                st.markdown(f'<div class="resumo-card" style="border-top-color:#2e7d32;"><span class="section-title" style="color:#262730;">Investimento Mensal</span><div class="resumo-valor" style="color:#2e7d32;">R$ {f_br(v_mensal_liq)}</div>{html_bruto}{bloco_mensal}</div>', unsafe_allow_html=True)
+
+            with c3:
+                st.markdown(f'''
+                    <div class="resumo-card" style="border-top-color:#262730; min-height: auto;">
+                        <span class="section-title" style="color:#262730;">Resumo da Negociação</span>
+                        <div style="margin-top:15px; font-size:0.95rem; color:#444;">
+                            <p><b>Desconto:</b> {f_pct(desc_simulacao)}%</p>
+                            <p><b>Economia Mensal:</b> R$ {f_br(v_mensal_bruto - v_mensal_liq)}</p>
+                            <p><b>Economia Anual:</b> R$ {f_br((v_mensal_bruto - v_mensal_liq)*12)}</p>
+                            <hr>
+                            <p style="font-size: 0.85rem; color: #666;"><i>Interface limpa: detalhes ocultos quando o desconto é zero.</i></p>
+                        </div>
+                    </div>
+                ''', unsafe_allow_html=True)
