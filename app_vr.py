@@ -179,3 +179,57 @@ elif tela == "Gerador de Proposta":
         for p_nome, p_dados in serv_db.items():
             if "projeto" in p_nome.lower() and "conciliador" in p_nome.lower():
                 if p_nome not in st.session_state.sel_i: st.session_state.sel_i.append(p_nome)
+
+    # Itens Selecionados no Card 1
+    for s_nome in st.session_state.sel_i:
+        qtd = st.session_state[f"v_{s_nome}"]
+        if qtd > 0:
+            v_unit = serv_db[s_nome]['valor']
+            v_total = qtd * v_unit
+            setup_total += v_total
+            html_setup += f"<li><span>{s_nome}</span><span class='item-detalhe'>R$ {f_br(v_total)}</span></li>"
+
+    # Adesão Automática (Transparência)
+    for m_nome in st.session_state.sel_m:
+        if st.session_state[f"v_{m_nome}"] > 0:
+            # Busca adesão correspondente no banco
+            for a_nome, a_dados in ades_db.items():
+                # Se o nome do sistema estiver contido no nome da adesão
+                if m_nome.lower() in a_nome.lower():
+                    v_ad = a_dados['valor']
+                    setup_total += v_ad
+                    html_setup += f"<li><span>Taxa Adesão {m_nome}</span><span class='item-detalhe'>R$ {f_br(v_ad)}</span></li>"
+
+    with r1:
+        st.markdown(f'''<div class="resumo-card"><span>Investimento Setup</span><div class="resumo-valor">R$ {f_br(setup_total)}</div><div style="font-weight:bold;">{parcelas}x de R$ {f_br(setup_total/parcelas)}</div><ul class="lista-itens">{html_setup if html_setup else "<li>Nenhum item</li>"}</ul></div>''', unsafe_allow_html=True)
+
+    # --- CARD 2: MANUTENÇÃO ---
+    maint_total, html_maint = 0.0, ""
+    for m_nome in st.session_state.sel_m:
+        qtd = st.session_state[f"v_{m_nome}"]
+        if qtd > 0:
+            v_unit = sist_db[m_nome]['valor']
+            v_total = (qtd * v_unit) * (1 - (desc/100))
+            maint_total += v_total
+            html_maint += f"<li><span>{m_nome}</span><span class='item-detalhe'>R$ {f_br(v_total)}</span></li>"
+            
+            # REGRA VR ERP PRO: Itens Inclusos
+            if "vr erp pro" in m_nome.lower():
+                html_maint += '<li class="item-incluso"><span>+ VR Promo</span><span>Incluso</span></li>'
+                html_maint += '<li class="item-incluso"><span>+ VR Analytics</span><span>Incluso</span></li>'
+                html_maint += '<li class="item-incluso"><span>+ VR Carteira Digital</span><span>Incluso</span></li>'
+
+    with r2:
+        st.markdown(f'''<div class="resumo-card" style="border-top-color:#2e7d32;"><span>Mensalidade</span><div class="resumo-valor" style="color:#2e7d32;">R$ {f_br(maint_total)}</div><ul class="lista-itens">{html_maint if html_maint else "<li>Nenhum</li>"}</ul></div>''', unsafe_allow_html=True)
+
+    # --- CARD 3: LOGÍSTICA ---
+    log_total, html_log = 0.0, ""
+    for d_nome in st.session_state.sel_d:
+        qtd = st.session_state[f"v_{d_nome}"]
+        if qtd > 0:
+            v_total = qtd * desp_db[d_nome]['valor']
+            log_total += v_total
+            html_log += f"<li><span>{d_nome}</span><span class='item-detalhe'>R$ {f_br(v_total)}</span></li>"
+
+    with r3:
+        st.markdown(f'''<div class="resumo-card" style="border-top-color:#1976d2;"><span>Logística</span><div class="resumo-valor" style="color:#1976d2;">R$ {f_br(log_total)}</div><ul class="lista-itens">{html_log if html_log else "<li>Sem despesas</li>"}</ul></div>''', unsafe_allow_html=True)
