@@ -100,4 +100,17 @@ sistemas_db, servicos_db, despesas_db, full_db, db_status, db_cor, df_raw = carr
 # ==========================================
 st.markdown("""
     <style>
-    .stApp {
+    .stApp { background: linear-gradient(135deg, #ffffff 0%, #fff5ed 100%); }
+    .hero-title { color: #262730; font-size: 4.5rem; font-weight: 900; margin: 0; line-height: 1; text-transform: uppercase; letter-spacing: -3px; }
+    .mapeamento-container { background-color: #ffffff; border-left: 10px solid #ff6600; padding: 20px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+    .resumo-card { background-color: #ffffff; border: 1px solid #f0f0f0; border-top: 8px solid #ff6600; padding: 25px; border-radius: 8px; min-height: 450px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
+    .resumo-valor { color: #ff6600; font-size: 2.3rem; font-weight: 900; margin-bottom: 5px; }
+    .item-detalhe { color: #333; font-size: 0.82rem; font-weight: 600; background-color: #fcfcfc; padding: 2px 8px; border-radius: 4px; border: 1px solid #eee; white-space: nowrap; }
+    .section-header { background: linear-gradient(90deg, #ff6600 0%, #ff944d 100%); padding: 8px 15px; border-radius: 5px; margin-bottom: 15px; margin-top: 20px; }
+    .section-title { color: #ffffff; font-size: 1.1rem; font-weight: bold; margin: 0; }
+    .lista-itens { list-style-type: none; padding-left: 0; margin-top: 10px; flex-grow: 1; }
+    .lista-itens li { padding: 8px 0; border-bottom: 1px dashed #e0e0e0; display: flex; justify-content: space-between; align-items: center; gap: 15px; }
+    .lista-itens li span:first-child { font-weight: bold; font-size: 0.88rem; color: #444; }
+    .item-incluso { padding-left: 20px !important; color: #777; font-size: 0.85rem; font-style: italic; border-bottom: none !important; }
+    </style>
+    """, unsafe_allow_html=True)
