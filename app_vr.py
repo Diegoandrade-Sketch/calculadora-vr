@@ -128,4 +128,148 @@ st.markdown("""
     .resumo-card { background-color: #ffffff; border: 1px solid #f0f0f0; border-top: 8px solid #ff6600; padding: 25px; border-radius: 8px; min-height: 450px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
     .resumo-valor { color: #ff6600; font-size: 2.3rem; font-weight: 900; margin-bottom: 5px; }
     .item-detalhe { color: #333; font-size: 0.82rem; font-weight: 600; background-color: #fcfcfc; padding: 2px 8px; border-radius: 4px; border: 1px solid #eee; white-space: nowrap; }
-    .section-header { background: linear-gradient(90deg, #ff6600 0%, #ff944d 100%); padding: 8px 15px; border-radius: 5px;
+    .section-header { background: linear-gradient(90deg, #ff6600 0%, #ff944d 100%); padding: 8px 15px; border-radius: 5px; margin-bottom: 15px; margin-top: 20px; }
+    .section-title { color: #ffffff; font-size: 1.1rem; font-weight: bold; margin: 0; }
+    .lista-itens { list-style-type: none; padding-left: 0; margin-top: 10px; flex-grow: 1; }
+    .lista-itens li { padding: 8px 0; border-bottom: 1px dashed #e0e0e0; display: flex; justify-content: space-between; align-items: center; gap: 15px; }
+    .lista-itens li span:first-child { font-weight: bold; font-size: 0.88rem; color: #444; }
+    </style>
+""", unsafe_allow_html=True)
+
+# ==========================================
+# ESTADO GLOBAL E SIDEBAR (RESTAURADO v1.1.2)
+# ==========================================
+init_state = {
+    'm_combo': "Montar Manualmente", 'm_pdv_conv': 0, 'm_pdv_touch': 0, 'm_pdv_self': 0, 'm_semanas': 0, 'm_mobile': 0,
+    'm_tef': "Não utiliza", 'm_migracao': False, 'm_ecommerce': False, 'm_app': False, 'm_connect': False,
+    'm_erp_pro': False, 'm_xml': False, 'm_escopo': False, 'm_controller': False, 'm_cartaz': False, 'm_masterfisco': False, 'm_backup': False
+}
+for k, v in init_state.items():
+    if k not in st.session_state: st.session_state[k] = v
+
+if 'sel_i' not in st.session_state: st.session_state.sel_i = []
+if 'sel_m' not in st.session_state: st.session_state.sel_m = []
+if 'sel_d' not in st.session_state: st.session_state.sel_d = []
+
+for nome in full_db.keys():
+    if f"perm_val_{nome}" not in st.session_state: st.session_state[f"perm_val_{nome}"] = 0
+
+def limpar_tudo():
+    for k, v in init_state.items(): st.session_state[k] = v
+    st.session_state.sel_i, st.session_state.sel_m, st.session_state.sel_d = [], [], []
+    for nome in full_db.keys(): st.session_state[f"perm_val_{nome}"] = 0
+
+with st.sidebar:
+    if os.path.exists("logo_vr.png"): st.image("logo_vr.png", width=180)
+    tela = st.radio("Navegação:", ["Gerador de Proposta", "Consulta de Preço", "Painel Admin"])
+    
+    if tela == "Gerador de Proposta":
+        st.write("---")
+        mapeamento_ativo = st.toggle("Mapeamento Inteligente", value=False)
+        perfil_venda = st.selectbox("Perfil do Cliente", ["Executivo (Rua)", "CS (Base)"])
+        desc = st.number_input("Desconto (%)", min_value=0.0, max_value=30.0, value=0.0, step=0.5)
+        faturamento_sistema = st.selectbox("Início Mensalidade", ["Na assinatura", "30 dias", "60 dias", "Após implantação"])
+        parcelas_setup = st.selectbox("Parcelas Setup", [1, 2, 3, 4, 5, 6], index=3)
+
+    st.markdown("<br>" * 3, unsafe_allow_html=True)
+    st.markdown(f'''
+        <hr style="margin: 10px 0; border-color: #ddd;">
+        <div style="font-size: 0.8rem; color: #555;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                <div style="width: 10px; height: 10px; border-radius: 50%; background-color: {db_cor};"></div>
+                <b>DB:</b> {db_status}
+            </div>
+            <div><b>Versão:</b> {APP_VERSION}</div>
+        </div>
+    ''', unsafe_allow_html=True)
+
+# ==========================================
+# TELAS (LAYOUT v1.1.2)
+# ==========================================
+if tela == "Painel Admin":
+    st.markdown('<h1 class="hero-title">BACKOFFICE</h1>', unsafe_allow_html=True)
+    senha_admin = st.text_input("Senha Admin:", type="password")
+    if senha_admin == ADMIN_PASS_REQUIRED:
+        st.success("Conectado à base Bitrix")
+        st.dataframe(df_raw, use_container_width=True)
+
+elif tela == "Gerador de Proposta":
+    def aplicar_mapeamento():
+        pdv_map = {"VR PDV Convencional": st.session_state.m_pdv_conv, "PDV Touchscreen": st.session_state.m_pdv_touch, "PDV Selfcheckout": st.session_state.m_pdv_self}
+        for p, qtd in pdv_map.items():
+            if p in sistemas_db:
+                st.session_state[f"perm_val_{p}"] = qtd
+                if qtd > 0 and p not in st.session_state.sel_m: st.session_state.sel_m.append(p)
+        
+        sem = st.session_state.m_semanas
+        serv_map = {"Implantação e Treinamento": sem * 44, "Migração Banco de Dados": 8 if st.session_state.m_migracao else 0}
+        for s_item, s_horas in serv_map.items():
+            if s_item in servicos_db:
+                st.session_state[f"perm_val_{s_item}"] = s_horas
+                if s_horas > 0 and s_item not in st.session_state.sel_i: st.session_state.sel_i.append(s_item)
+
+    st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
+    
+    if mapeamento_ativo:
+        st.markdown('<div class="mapeamento-container"><h4>🛒 Mapeamento da Operação</h4></div>', unsafe_allow_html=True)
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.number_input("PDVs Convencionais", min_value=0, key="tmp_pdv_conv", value=st.session_state.m_pdv_conv, on_change=sync_state, args=("m_pdv_conv", "tmp_pdv_conv"))
+            st.number_input("PDVs Touch", min_value=0, key="tmp_pdv_touch", value=st.session_state.m_pdv_touch, on_change=sync_state, args=("m_pdv_touch", "tmp_pdv_touch"))
+        with c2:
+            st.number_input("Semanas de Implantação", min_value=0, key="tmp_semanas", value=st.session_state.m_semanas, on_change=sync_state, args=("m_semanas", "tmp_semanas"))
+            st.checkbox("Migração?", key="tmp_migracao", value=st.session_state.m_migracao, on_change=sync_state, args=("m_migracao", "tmp_migracao"))
+        with c3:
+            st.button("✨ Aplicar Inteligência", on_click=aplicar_mapeamento, use_container_width=True)
+            st.button("🗑️ Limpar Tudo", on_click=limpar_tudo, use_container_width=True)
+
+    col_i, col_m, col_d = st.columns(3) if perfil_venda == "Executivo (Rua)" else (*st.columns(2), None)
+    
+    with col_i:
+        st.markdown('<div class="section-header"><span class="section-title">IMPLANTAÇÃO E SERVIÇOS</span></div>', unsafe_allow_html=True)
+        st.session_state.sel_i = st.multiselect("Serviços", list(servicos_db.keys()), default=[s for s in st.session_state.sel_i if s in servicos_db])
+        for i in st.session_state.sel_i:
+            st.number_input(f"{i}", min_value=0, key=f"tmp_i_{i}", value=st.session_state[f"perm_val_{i}"], on_change=sync_state, args=(f"perm_val_{i}", f"tmp_i_{i}"))
+
+    with col_m:
+        st.markdown('<div class="section-header"><span class="section-title">MENSALIDADES SISTEMAS</span></div>', unsafe_allow_html=True)
+        st.session_state.sel_m = st.multiselect("Sistemas", list(sistemas_db.keys()), default=[s for s in st.session_state.sel_m if s in sistemas_db])
+        for i in st.session_state.sel_m:
+            st.number_input(f"{i}", min_value=0, key=f"tmp_m_{i}", value=st.session_state[f"perm_val_{i}"], on_change=sync_state, args=(f"perm_val_{i}", f"tmp_m_{i}"))
+
+    st.markdown("<h2 style='text-align:center; font-weight:800; margin-top:30px;'>RESUMO DO INVESTIMENTO</h2>", unsafe_allow_html=True)
+    res_cols = st.columns(3) if perfil_venda == "Executivo (Rua)" else st.columns([1, 2, 2, 1])[1:3]
+    
+    total_setup, html_setup = 0.0, ""
+    v_hora_base = 125.0
+
+    for s_nome in st.session_state.sel_i:
+        h = st.session_state[f"perm_val_{s_nome}"]
+        if h > 0:
+            v_item = h * servicos_db[s_nome].get('valor', 0)
+            total_setup += v_item
+            html_setup += f"<li><span>{s_nome}</span><span class='item-detalhe'>{h}h x R$ {f_br(servicos_db[s_nome].get('valor', 0))}</span></li>"
+
+    for m_nome in st.session_state.sel_m:
+        d = full_db.get(m_nome, {})
+        h_p, ad = d.get('horas_padrao', 0), d.get('adesao_vinculada', 0.0)
+        if h_p > 0:
+            total_setup += (h_p * v_hora_base)
+            html_setup += f"<li><span>Implantação {m_nome}</span><span class='item-detalhe'>{h_p}h x R$ {f_br(v_hora_base)}</span></li>"
+        if ad > 0:
+            total_setup += ad
+            html_setup += f"<li><span>Taxa de Adesão {m_nome}</span><span class='item-detalhe'>R$ {f_br(ad)}</span></li>"
+
+    with res_cols[0]:
+        st.markdown(f'''<div class="resumo-card"><span class="resumo-label">Investimento Implantação (Setup)</span><div class="resumo-valor">R$ {f_br(total_setup)}</div><div style="font-weight:bold;">{parcelas_setup}x de R$ {f_br(total_setup/parcelas_setup)}</div><div class="resumo-subtitulo">DETALHAMENTO</div><ul class="lista-itens">{html_setup if html_setup else "<li>Nenhum item</li>"}</ul></div>''', unsafe_allow_html=True)
+    
+    with res_cols[1]:
+        t_liq = sum(st.session_state[f"perm_val_{i}"] * sistemas_db[i].get("valor", 0) for i in st.session_state.sel_m if i in sistemas_db) * (1 - (desc/100))
+        html_m = "".join([f"<li><span>{i}</span><span class='item-detalhe'>{st.session_state[f'perm_val_{i}']} un x R$ {f_br(sistemas_db[i].get('valor', 0))}</span></li>" for i in st.session_state.sel_m if i in sistemas_db])
+        st.markdown(f'''<div class="resumo-card" style="border-top-color:#2e7d32;"><span class="resumo-label">Manutenção Mensal</span><div class="resumo-valor" style="color:#2e7d32;">R$ {f_br(t_liq)}</div><div style="font-weight:bold; font-size: 0.9rem;">Início: {faturamento_sistema}</div><div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{html_m if html_m else "<li>Nenhum</li>"}</ul></div>''', unsafe_allow_html=True)
+
+elif tela == "Consulta de Preço":
+    st.markdown('<h1 class="hero-title">ANÁLISE TÉCNICA</h1>', unsafe_allow_html=True)
+    if full_db:
+        p_sel = st.selectbox("Produto:", sorted(list(full_db.keys())))
+        if p_sel: st.json(full_db[p_sel])
