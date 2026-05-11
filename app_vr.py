@@ -9,7 +9,7 @@ import os
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-APP_VERSION = "v1.5.0 - Enterprise Relational"
+APP_VERSION = "v1.5.1 - Enterprise Final"
 ADMIN_PASS_REQUIRED = "333666"
 
 try:
@@ -81,7 +81,7 @@ def carregar_dados_vendas():
                         'qtd': float(row['quantidade_padrao'])
                     })
             except Exception:
-                pass # Se a tabela não existir ainda, apenas segue o jogo vazio
+                pass # Se a tabela não existir, o sistema não trava
             
             return sist, serv, desp, full, id_to_name, name_to_id, vinculos_db, status_msg, status_cor, df, df_vinc
         else:
@@ -149,7 +149,7 @@ def sync_combo():
         st.session_state.m_migracao, st.session_state.m_escopo, st.session_state.m_erp_pro, st.session_state.m_xml, st.session_state.m_mobile = True, True, True, True, 1.0
 
 # ==========================================
-# SIDEBAR COM CONTROLE DE VERSÃO (v1.0.0)
+# SIDEBAR COM CONTROLE DE VERSÃO
 # ==========================================
 with st.sidebar:
     if os.path.exists("logo_vr.png"): st.image("logo_vr.png", width=180)
@@ -176,6 +176,23 @@ with st.sidebar:
             <div><b>App Version:</b> {APP_VERSION}</div>
         </div>
     ''', unsafe_allow_html=True)
+
+# ==========================================
+# FUNÇÃO RECONCILIAÇÃO RELACIONAL
+# ==========================================
+def processar_regras_colaterais():
+    """Lê a tabela product_vinculo e injeta os itens dependentes no estado do Streamlit"""
+    for m_nome in st.session_state.sel_m:
+        pai_id = name_to_id.get(m_nome)
+        if pai_id and pai_id in vinculos_db:
+            for regra in vinculos_db[pai_id]:
+                filho_id = regra['id_filho']
+                filho_nome = id_to_name.get(filho_id)
+                if filho_nome:
+                    if regra['tipo'] in ['projeto', 'adesao']:
+                        if filho_nome not in st.session_state.sel_i:
+                            st.session_state.sel_i.append(filho_nome)
+                            st.session_state[f"perm_val_{filho_nome}"] = float(regra['qtd'])
 
 # ==========================================
 # TELA 1: PAINEL ADMIN (BACKOFFICE RELACIONAL)
@@ -226,24 +243,6 @@ if tela == "Painel Admin":
         st.dataframe(df_raw, use_container_width=True)
         st.markdown("### 🗄️ Tabela de Vínculos (Regras)")
         st.dataframe(df_vinc, use_container_width=True)
-
-# ==========================================
-# RECONCILIAÇÃO RELACIONAL ANTES DO RENDER
-# ==========================================
-def processar_regras_colaterais():
-    """Lê a tabela product_vinculo e injeta os itens dependentes no estado do Streamlit"""
-    for m_nome in st.session_state.sel_m:
-        pai_id = name_to_id.get(m_nome)
-        if pai_id and pai_id in vinculos_db:
-            for regra in vinculos_db[pai_id]:
-                filho_id = regra['id_filho']
-                filho_nome = id_to_name.get(filho_id)
-                if filho_nome:
-                    if regra['tipo'] in ['projeto', 'adesao']:
-                        if filho_nome not in st.session_state.sel_i:
-                            st.session_state.sel_i.append(filho_nome)
-                            # Injeta a quantidade ditada pelo banco
-                            st.session_state[f"perm_val_{filho_nome}"] = float(regra['qtd'])
 
 # ==========================================
 # TELA 2: GERADOR DE PROPOSTA
@@ -333,14 +332,12 @@ elif tela == "Gerador de Proposta":
                     st.toggle("C. 360", key="tmp_controller", value=st.session_state.m_controller, on_change=sync_state, args=("m_controller", "tmp_controller"))
                     st.toggle("MasterFisco", key="tmp_masterfisco", value=st.session_state.m_masterfisco, on_change=sync_state, args=("m_masterfisco", "tmp_masterfisco"))
                     st.toggle("M-Commerce", key="tmp_app", value=st.session_state.m_app, on_change=sync_state, args=("m_app", "tmp_app"))
-                
-                # RESTAURADO: Botões do Mapeamento v1.0.0
                 b1, b2 = st.columns(2)
                 with b1: st.button("✨ Aplicar Inteligência", on_click=aplicar_mapeamento, use_container_width=True)
                 with b2: st.button("🗑️ Limpar Tudo", on_click=limpar_tudo, use_container_width=True)
             st.markdown("---")
 
-        # Roda inteligência relacional antes do render
+        # Roda a inteligência relacional ANTES do render dos formulários manuais
         processar_regras_colaterais()
 
         # --- PARTE 2: INCLUSÃO MANUAL ---
@@ -376,14 +373,13 @@ elif tela == "Gerador de Proposta":
             total_setup += v_item
             html_setup += f"<li><span>{s_nome}</span><span class='item-detalhe'>{horas} un x R$ {f_br(servicos_db[s_nome]['valor'])} | Total: R$ {f_br(v_item)}</span></li>"
 
-    # Lógica clássica para sistemas sem tabela de vinculo (Fallback)
+    # Fallback (para sistemas antigos sem vínculos preenchidos no DB)
     for m_nome in st.session_state.sel_m:
         d = full_db.get(m_nome, {})
         h_pad = d.get('horas_padrao', 0.0)
         v_h_esp = d.get('valor_hora_implantacao', 0.0)
         val_ads = d.get('adesao_vinculada', 0.0)
 
-        # Só adiciona textualmente se não estiver nas regras relacionais já puxadas para a tela de Implantação
         pai_id = name_to_id.get(m_nome)
         tem_vinculo_banco = pai_id in vinculos_db
 
@@ -425,7 +421,6 @@ elif tela == "Gerador de Proposta":
             v_total_m = qtd * v_unit
             html_m += f"<li><span>{i}</span><span class='item-detalhe'>{qtd} un x R$ {f_br(v_unit)} | Total: R$ {f_br(v_total_m)}</span></li>"
             
-            # Checa se há "Inclusos" mapeados no banco de dados para este sistema
             pai_id = name_to_id.get(i)
             inclusos_banco = [v for v in vinculos_db.get(pai_id, []) if v['tipo'] == 'incluso']
             if inclusos_banco:
@@ -433,7 +428,6 @@ elif tela == "Gerador de Proposta":
                     n_inc = id_to_name.get(v['id_filho'], "Item Incluso")
                     html_m += f"<li class='item-incluso'><span>└ {n_inc}</span><span>Incluso</span></li>"
             elif i == "VR ERP PRO":
-                # Fallback visual caso ainda não tenham cadastrado o vínculo no banco
                 for ex in ["VR Promo", "VR Carteira Digital", "VR Analytics"]: 
                     html_m += f"<li class='item-incluso'><span>└ {ex}</span><span>Incluso</span></li>"
                     
@@ -453,7 +447,7 @@ elif tela == "Gerador de Proposta":
             st.markdown(f'<div class="resumo-card" style="border-top-color:#1976d2;"><span class="resumo-label">Logística</span><div class="resumo-valor" style="color:#1976d2;">R$ {f_br(t_desp)}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">{regra_logistica}</div><div class="resumo-subtitulo">DETALHAMENTO</div><ul class="lista-itens">{html_d if html_d else "<li>Sem despesas</li>"}</ul></div>', unsafe_allow_html=True)
 
 # ==========================================
-# --- PARTE 4: CONSULTA DE PREÇO (SIMULADOR CLEAN) ---
+# --- TELA 3: CONSULTA DE PREÇO (SIMULADOR) ---
 # ==========================================
 elif tela == "Consulta de Preço":
     st.markdown('<h1 class="hero-title">ANÁLISE TÉCNICA</h1>', unsafe_allow_html=True)
