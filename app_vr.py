@@ -9,7 +9,7 @@ import os
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-APP_VERSION = "v1.6.1 - Restoration Stable"
+APP_VERSION = "v1.6.2 - Final Gold"
 ADMIN_PASS_REQUIRED = "333666"
 
 try:
@@ -35,7 +35,7 @@ def sync_state(key_permanente, key_widget):
     st.session_state[key_permanente] = st.session_state[key_widget]
 
 # ==========================================
-# DATA LAYER (POSTGRES RELACIONAL)
+# CONEXÃO E TELEMETRIA DE DADOS
 # ==========================================
 @st.cache_data(ttl=60)
 def carregar_dados_vendas():
@@ -49,7 +49,6 @@ def carregar_dados_vendas():
             df.columns = [str(c).strip().lower() for c in df.columns]
             df = df.drop_duplicates(subset=['produto'], keep='last')
             
-            # Type Safety - Conversão para Float
             cols_num = ['valor', 'horas_padrao', 'adesao_vinculada', 'valor_hora_implantacao', 'typeproductid']
             for col in cols_num:
                 if col in df.columns:
@@ -60,8 +59,8 @@ def carregar_dados_vendas():
             name_to_id = {v: k for k, v in id_to_name.items()}
 
             sist = {k: v for k, v in full.items() if v.get('typeproductid') == 604}
-            serv = {k: v for k, v in full.items() if v.get('typeproductid') == 606 and not any(x in k.lower() for x in ['km', 'hospedagem', 'logistica', 'alimentacao'])}
-            desp = {k: v for k, v in full.items() if any(x in k.lower() for x in ['km', 'hospedagem', 'logistica', 'alimentacao'])}
+            serv = {k: v for k, v in full.items() if v.get('typeproductid') == 606 and not any(x in k.lower() for x in ['km', 'hospedagem', 'logistica', 'alimentacao', 'despesa'])}
+            desp = {k: v for k, v in full.items() if any(x in k.lower() for x in ['km', 'hospedagem', 'logistica', 'alimentacao', 'despesa'])}
             
             vinculos_db = {}
             df_vinc = pd.DataFrame()
@@ -76,14 +75,13 @@ def carregar_dados_vendas():
             except Exception: pass 
             
             return sist, serv, desp, full, id_to_name, name_to_id, vinculos_db, status_msg, status_cor, df, df_vinc
-    except Exception as e:
-        st.error(f"Erro no banco: {e}")
+    except Exception: pass
     return {}, {}, {}, {}, {}, {}, {}, status_msg, status_cor, pd.DataFrame(), pd.DataFrame()
 
 sistemas_db, servicos_db, despesas_db, full_db, id_to_name, name_to_id, vinculos_db, db_status, db_cor, df_raw, df_vinc = carregar_dados_vendas()
 
 # ==========================================
-# ESTILIZAÇÃO CSS (v1.0.0 INTACTA)
+# ESTILIZAÇÃO CSS (v1.0.0)
 # ==========================================
 st.markdown("""
     <style>
@@ -102,7 +100,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# ESTADO GLOBAL (v1.0.0 COMPLETO)
+# ESTADO GLOBAL
 init_state = {
     'm_combo': "Montar Manualmente", 'm_pdv_conv': 0.0, 'm_pdv_touch': 0.0, 'm_pdv_self': 0.0, 'm_semanas': 0.0, 'm_mobile': 0.0,
     'm_tef': "Não utiliza", 'm_migracao': False, 'm_ecommerce': False, 'm_app': False, 'm_connect': False,
@@ -129,15 +127,11 @@ def limpar_tudo():
     for nome in full_db.keys(): st.session_state[f"perm_val_{nome}"] = 0.0
 
 def sync_combo():
-    combo = st.session_state.tmp_combo
-    st.session_state.m_combo = combo
-    if combo == "Padrão Pequeno Porte":
+    if st.session_state.tmp_combo == "Padrão Pequeno Porte":
         st.session_state.m_pdv_conv, st.session_state.m_tef, st.session_state.m_semanas = 5.0, "SiTef Express", 3.0
         st.session_state.m_migracao, st.session_state.m_escopo, st.session_state.m_erp_pro, st.session_state.m_xml, st.session_state.m_mobile = True, True, True, True, 1.0
 
-# ==========================================
-# LÓGICA DE NEGÓCIO (RELACIONAL)
-# ==========================================
+# LÓGICA DE NEGÓCIO RELACIONAL
 def processar_regras_colaterais():
     for m_nome in st.session_state.sel_m:
         p_id = name_to_id.get(m_nome)
@@ -150,7 +144,7 @@ def processar_regras_colaterais():
                         st.session_state[f"perm_val_{f_nome}"] = float(r['qtd'])
 
 # ==========================================
-# SIDEBAR (v1.0.0)
+# SIDEBAR
 # ==========================================
 with st.sidebar:
     if os.path.exists("logo_vr.png"): st.image("logo_vr.png", width=180)
@@ -163,57 +157,55 @@ with st.sidebar:
         desc = st.number_input("Desconto (%)", 0.0, 30.0, 0.0, 0.5)
         exibir_detalhe_desc = st.toggle("Exibir Desconto na Tela", value=True)
         faturamento_sistema = st.selectbox("Início Mensalidade", ["Na assinatura", "30 dias", "60 dias", "Após implantação"])
-        parcelas_setup = st.selectbox("Parcelas Setup", [1, 2, 3, 4, 5, 6], index=3)
-        regra_logistica = st.selectbox("Faturamento Logística", ["Faturamento na assinatura", "Faturamento pós Implantação"])
+        parcelas_setup = st.selectbox("Parcelas Setup", [1, 2, 3, 4, 5, 6, 10, 12], index=3)
+        regra_despesas = st.selectbox("Faturamento Despesas", ["Faturamento na assinatura", "Faturamento pós Implantação"])
     st.markdown(f'''<hr><div style="font-size:0.8rem; color:{db_cor};">● {db_status}</div><div style="font-size:0.7rem; color:#888;">{APP_VERSION}</div>''', unsafe_allow_html=True)
 
 # ==========================================
-# TELA 1: PAINEL ADMIN (BACKOFFICE)
+# PAINEL ADMIN
 # ==========================================
 if tela == "Painel Admin":
     st.markdown('<h1 class="hero-title">BACKOFFICE</h1>', unsafe_allow_html=True)
     if st.text_input("Senha Admin:", type="password") == ADMIN_PASS_REQUIRED:
-        st.success("Autenticado")
         t_vinc, t_sql, t_cat = st.tabs(["🔗 Vínculos Relacionais", "💻 Terminal SQL Seguro", "🗄️ Catálogo"])
-        
         with t_vinc:
-            with st.form("form_vinc"):
+            with st.form("form_v"):
                 c1, c2, c3, c4 = st.columns([2,2,1,1])
-                p_sel = c1.selectbox("Se o vendedor escolher:", sorted(list(sistemas_db.keys())))
-                f_sel = c2.selectbox("Incluir item:", sorted(list(full_db.keys())))
-                tp_sel = c3.selectbox("Tipo:", ["projeto", "adesao", "incluso"])
-                qt_sel = c4.number_input("Qtd:", min_value=0.0, value=1.0)
-                if st.form_submit_button("Salvar Regra"):
+                pai = c1.selectbox("Se escolher SISTEMA:", sorted(list(sistemas_db.keys())))
+                fil = c2.selectbox("Incluir ITEM:", sorted(list(full_db.keys())))
+                tip = c3.selectbox("Tipo:", ["projeto", "adesao", "incluso"])
+                qtd = c4.number_input("Qtd:", min_value=0.0, value=1.0)
+                if st.form_submit_button("Salvar Vínculo"):
                     try:
                         engine = create_engine(CONN_STR)
                         with engine.begin() as conn:
                             conn.execute(text("INSERT INTO product_vinculo (id_produto_pai, id_produto_filho, tipo_vinculo, quantidade_padrao) VALUES (:p, :f, :t, :q)"), 
-                                         {"p": name_to_id[p_sel], "f": name_to_id[f_sel], "t": tp_sel, "q": qt_sel})
-                        st.success("Salvo!"); st.cache_data.clear()
+                                         {"p": name_to_id[pai], "f": name_to_id[fil], "t": tip, "q": qtd})
+                        st.success("Vínculo Criado!"); st.cache_data.clear()
                     except Exception as e: st.error(e)
             st.dataframe(df_vinc, use_container_width=True)
 
         with t_sql:
-            st.warning("⚠️ Terminal Blindado (Sem DROP/DELETE/TRUNCATE)")
-            query = st.text_area("SQL Command:", height=150)
-            if st.button("Executar"):
-                q_low = query.lower()
-                if any(p in q_low for p in ["drop ", "delete ", "truncate "]): st.error("Bloqueado")
+            st.warning("⚠️ Terminal SQL Seguro (DROP/DELETE/TRUNCATE bloqueados)")
+            query = st.text_area("Digite o comando SQL:")
+            if st.button("Executar SQL"):
+                q_l = query.lower()
+                if any(p in q_l for p in ["drop ", "delete ", "truncate "]): st.error("Comando não permitido.")
                 else:
                     try:
                         engine = create_engine(CONN_STR)
-                        if q_low.strip().startswith("select"):
-                            with engine.connect() as conn: # Correção do erro de immutabledict
+                        if q_l.strip().startswith("select"):
+                            with engine.connect() as conn: # Correção immutabledict
                                 res = pd.read_sql(text(query), conn)
                             st.dataframe(res)
                         else:
                             with engine.begin() as conn: r = conn.execute(text(query))
-                            st.success(f"Afetadas: {r.rowcount}"); st.cache_data.clear()
+                            st.success(f"Linhas afetadas: {r.rowcount}"); st.cache_data.clear()
                     except Exception as e: st.error(e)
         with t_cat: st.dataframe(df_raw, use_container_width=True)
 
 # ==========================================
-# TELA 2: GERADOR DE PROPOSTA (UI v1.0.0)
+# GERADOR DE PROPOSTA
 # ==========================================
 elif tela == "Gerador de Proposta":
     
@@ -247,6 +239,15 @@ elif tela == "Gerador de Proposta":
             if k in servicos_db:
                 st.session_state[f"perm_val_{k}"] = v
                 if v > 0 and k not in st.session_state.sel_i: st.session_state.sel_i.append(k)
+
+        # Restauração da Inteligência de Despesas do Projeto (ex-logística)
+        if sem > 0:
+            if "Alimentacao" in despesas_db:
+                st.session_state["perm_val_Alimentacao"] = sem * 10.0
+                if "Alimentacao" not in st.session_state.sel_d: st.session_state.sel_d.append("Alimentacao")
+            if "Hospedagem" in despesas_db:
+                st.session_state["perm_val_Hospedagem"] = sem * 4.0
+                if "Hospedagem" not in st.session_state.sel_d: st.session_state.sel_d.append("Hospedagem")
 
     if not modo_apresentacao:
         st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
@@ -287,38 +288,44 @@ elif tela == "Gerador de Proposta":
         st.markdown('<div class="section-header"><span class="section-title">IMPLANTAÇÃO E SERVIÇOS</span></div>', unsafe_allow_html=True)
         st.session_state.sel_i = st.multiselect("Serviços", list(servicos_db.keys()), default=st.session_state.sel_i)
         for i in st.session_state.sel_i:
-            st.number_input(f"{i}", 0.0, step=1.0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_i_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_i_{i}"))
+            v_u = servicos_db[i]['valor']
+            st.number_input(f"{i} (R$ {f_br(v_u)}/h)", 0.0, step=1.0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_i_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_i_{i}"))
     with c2:
         st.markdown('<div class="section-header"><span class="section-title">MENSALIDADES SISTEMAS</span></div>', unsafe_allow_html=True)
         st.session_state.sel_m = st.multiselect("Sistemas", list(sistemas_db.keys()), default=st.session_state.sel_m)
         for i in st.session_state.sel_m:
-            st.number_input(f"{i}", 0.0, step=1.0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_m_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_m_{i}"))
+            v_u = sistemas_db[i]['valor']
+            st.number_input(f"{i} (R$ {f_br(v_u)}/un)", 0.0, step=1.0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_m_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_m_{i}"))
     if c3:
         with c3:
-            st.markdown('<div class="section-header"><span class="section-title">DESPESAS LOGÍSTICAS</span></div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-header"><span class="section-title">DESPESAS DO PROJETO</span></div>', unsafe_allow_html=True)
             st.session_state.sel_d = st.multiselect("Despesas", list(despesas_db.keys()), default=st.session_state.sel_d)
             for i in st.session_state.sel_d:
-                st.number_input(f"{i}", 0.0, step=1.0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_d_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_d_{i}"))
+                v_u = despesas_db[i]['valor']
+                st.number_input(f"{i} (R$ {f_br(v_u)}/un)", 0.0, step=1.0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_d_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_d_{i}"))
 
     st.markdown("<h2 style='text-align:center; font-weight:800; margin-top:30px;'>RESUMO DO INVESTIMENTO</h2>", unsafe_allow_html=True)
     res_cols = st.columns(3) if perfil_venda == "Executivo (Rua)" else st.columns([1, 2, 2, 1])[1:3]
     
     t_setup, h_setup = 0.0, ""
+    v_h_base = servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)
+
     for n in st.session_state.sel_i:
         q = st.session_state[f"perm_val_{n}"]
         if q > 0:
-            v_un = servicos_db.get(n, full_db.get(n, {'valor':0.0}))['valor']
-            t_setup += (q * v_un); h_setup += f"<li><span>{n}</span><span class='item-detalhe'>R$ {f_br(q*v_un)}</span></li>"
+            v_u = servicos_db.get(n, full_db.get(n, {'valor':0.0}))['valor']
+            t_setup += (q * v_u)
+            h_setup += f"<li><span>{n}</span><span class='item-detalhe'>{int(q)}h x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_u)}</span></li>"
     
-    v_hora_base = servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)
     for n in st.session_state.sel_m:
         if name_to_id.get(n) not in vinculos_db:
             d = sistemas_db[n]; h = d.get('horas_padrao', 0.0); ads = d.get('adesao_vinculada', 0.0)
             if h > 0:
-                v_imp = h * (d.get('valor_hora_implantacao', 0.0) or v_hora_base)
-                t_setup += v_imp; h_setup += f"<li><span>Implantação {n}</span><span class='item-detalhe'>R$ {f_br(v_imp)}</span></li>"
+                v_rate = (d.get('valor_hora_implantacao', 0.0) or v_h_base)
+                t_setup += (h * v_rate)
+                h_setup += f"<li><span>Implantação {n}</span><span class='item-detalhe'>{int(h)}h x R$ {f_br(v_rate)} | Total: R$ {f_br(h*v_rate)}</span></li>"
             if ads > 0:
-                t_setup += ads; h_setup += f"<li><span>Taxa de Adesão {n}</span><span class='item-detalhe'>R$ {f_br(ads)}</span></li>"
+                t_setup += ads; h_setup += f"<li><span>Taxa de Adesão {n}</span><span class='item-detalhe'>1 un x R$ {f_br(ads)} | Total: R$ {f_br(ads)}</span></li>"
 
     with res_cols[0]:
         st.markdown(f'''<div class="resumo-card"><span class="resumo-label">Investimento Implantação (Setup)</span><div class="resumo-valor">R$ {f_br(t_setup)}</div><div style="font-weight:bold;">{parcelas_setup}x de R$ {f_br(t_setup/parcelas_setup)}</div><div class="resumo-subtitulo">DETALHAMENTO SETUP</div><ul class="lista-itens">{h_setup if h_setup else "<li>Nenhum item</li>"}</ul></div>''', unsafe_allow_html=True)
@@ -327,51 +334,50 @@ elif tela == "Gerador de Proposta":
     for n in sorted(st.session_state.sel_m):
         q = st.session_state[f"perm_val_{n}"]
         if q > 0:
-            v_liq = (q * sistemas_db[n]['valor']) * (1 - (desc/100))
-            t_mensal += v_liq; h_m += f"<li><span>{n}</span><span class='item-detalhe'>R$ {f_br(v_liq)}</span></li>"
+            v_u = sistemas_db[n]['valor']; v_liq_u = v_u * (1 - (desc/100))
+            t_mensal += (q * v_liq_u)
+            h_m += f"<li><span>{n}</span><span class='item-detalhe'>{int(q)} un x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_liq_u)}</span></li>"
             vincs = [id_to_name.get(v['id_filho']) for v in vinculos_db.get(name_to_id.get(n), []) if v['tipo'] == 'incluso']
             for inc in vincs: h_m += f"<li class='item-incluso'><span>└ {inc}</span><span>Incluso</span></li>"
             if n == "VR ERP PRO" and not vincs:
-                for inc in ["VR Promo", "VR Analytics"]: h_m += f"<li class='item-incluso'><span>└ {inc}</span><span>Incluso</span></li>"
+                for inc in ["VR Promo", "VR Carteira Digital", "VR Analytics"]: h_m += f"<li class='item-incluso'><span>└ {inc}</span><span>Incluso</span></li>"
 
     with res_cols[1]:
-        d_html = f'<div style="color:#2e7d32; font-weight:bold;">Desconto: {desc}%</div>' if (exibir_detalhe_desc and desc > 0) else '<div style="height:21px"></div>'
-        st.markdown(f'''<div class="resumo-card" style="border-top-color:#2e7d32;"><span class="resumo-label">Manutenção Mensal</span><div class="resumo-valor" style="color:#2e7d32;">R$ {f_br(t_mensal)}</div>{d_html}<div style="font-weight:bold;">Início: {faturamento_sistema}</div><div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{h_m if h_m else "<li>Nenhum</li>"}</ul></div>''', unsafe_allow_html=True)
+        d_h = f'<div style="color:#2e7d32; font-weight:bold;">Desconto: {desc}%</div>' if (exibir_detalhe_desc and desc > 0) else '<div style="height:21px"></div>'
+        st.markdown(f'''<div class="resumo-card" style="border-top-color:#2e7d32;"><span class="resumo-label">Manutenção Mensal</span><div class="resumo-valor" style="color:#2e7d32;">R$ {f_br(t_mensal)}</div>{d_h}<div style="font-weight:bold;">Início: {faturamento_sistema}</div><div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{h_m if h_m else "<li>Nenhum</li>"}</ul></div>''', unsafe_allow_html=True)
 
     if perfil_venda == "Executivo (Rua)":
-        t_desp, h_d = 0.0, ""
+        t_d, h_d = 0.0, ""
         for n in st.session_state.sel_d:
             q = st.session_state[f"perm_val_{n}"]
             if q > 0:
-                v_un = despesas_db[n]['valor']; t_desp += (q * v_un)
-                h_d += f"<li><span>{n}</span><span class='item-detalhe'>R$ {f_br(q*v_un)}</span></li>"
+                v_u = despesas_db[n]['valor']; t_d += (q * v_u)
+                h_d += f"<li><span>{n}</span><span class='item-detalhe'>{int(q)} un x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_u)}</span></li>"
         with res_cols[2]:
-            st.markdown(f'''<div class="resumo-card" style="border-top-color:#1976d2;"><span class="resumo-label">Logística</span><div class="resumo-valor" style="color:#1976d2;">R$ {f_br(t_desp)}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.8rem;">{regra_logistica}</div><div class="resumo-subtitulo">DETALHAMENTO</div><ul class="lista-itens">{h_d if h_d else "<li>Sem despesas</li>"}</ul></div>''', unsafe_allow_html=True)
+            st.markdown(f'''<div class="resumo-card" style="border-top-color:#1976d2;"><span class="resumo-label">Despesas do Projeto</span><div class="resumo-valor" style="color:#1976d2;">R$ {f_br(t_d)}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.8rem;">{regra_despesas}</div><div class="resumo-subtitulo">DETALHAMENTO</div><ul class="lista-itens">{h_d if h_d else "<li>Sem despesas</li>"}</ul></div>''', unsafe_allow_html=True)
 
 # ==========================================
-# TELA 3: CONSULTA DE PREÇO (v1.0.0 COMPLETO)
+# CONSULTA DE PREÇO
 # ==========================================
 elif tela == "Consulta de Preço":
     st.markdown('<h1 class="hero-title">ANÁLISE TÉCNICA</h1>', unsafe_allow_html=True)
     st.markdown('<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">🔍 Simulador de Negociação Individual</h3></div>', unsafe_allow_html=True)
-    col_busca, col_desc = st.columns([2, 1])
-    p_sel = col_busca.selectbox("Selecione o produto:", sorted(list(full_db.keys())))
-    desc_sim = col_desc.number_input("Simular Desconto (%)", 0.0, 30.0, 0.0, 0.5)
-    
+    cb, cd = st.columns([2, 1])
+    p_sel = cb.selectbox("Selecione o produto:", sorted(list(full_db.keys())))
+    desc_s = cd.number_input("Simular Desconto (%)", 0.0, 30.0, 0.0, 0.5)
     if p_sel:
-        d = full_db[p_sel]; v_bruto = d.get('valor', 0.0); v_liq = v_bruto * (1 - (desc_sim/100))
-        h_pad, v_h_esp, ads = d.get('horas_padrao', 0.0), d.get('valor_hora_implantacao', 0.0), d.get('adesao_vinculada', 0.0)
-        rate = v_h_esp if v_h_esp > 0 else servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)
-        t_setup = (h_pad * rate) + ads
-        
+        d = full_db[p_sel]; v_b = d.get('valor', 0.0); v_l = v_b * (1 - (desc_s/100))
+        h_p, v_he, ads = d.get('horas_padrao', 0.0), d.get('valor_hora_implantacao', 0.0), d.get('adesao_vinculada', 0.0)
+        rt = v_he if v_he > 0 else v_h_base
+        t_s = (h_p * rt) + ads
         c1, c2, c3 = st.columns(3)
         with c1:
             h_s = ""
-            if h_pad > 0: h_s += f"<li><span>Implantação</span><span class='item-detalhe'>{h_pad}h x R$ {f_br(rate)} | Total: R$ {f_br(h_pad*rate)}</span></li>"
+            if h_p > 0: h_s += f"<li><span>Implantação</span><span class='item-detalhe'>{h_p}h x R$ {f_br(rt)} | Total: R$ {f_br(h_p*rt)}</span></li>"
             if ads > 0: h_s += f"<li><span>Taxa de Adesão</span><span class='item-detalhe'>1 un x R$ {f_br(ads)} | Total: R$ {f_br(ads)}</span></li>"
-            st.markdown(f'<div class="resumo-card"><span>Investimento de Setup</span><div class="resumo-valor">R$ {f_br(t_setup)}</div><div class="resumo-subtitulo">COMPOSIÇÃO</div><ul class="lista-itens">{h_s}</ul></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="resumo-card"><span>Investimento de Setup</span><div class="resumo-valor">R$ {f_br(t_s)}</div><div class="resumo-subtitulo">COMPOSIÇÃO</div><ul class="lista-itens">{h_s}</ul></div>', unsafe_allow_html=True)
         with c2:
-            html_b = f'<span style="text-decoration: line-through; color: #777; font-size: 0.9rem;">R$ {f_br(v_bruto)}</span>' if desc_sim > 0 else ""
-            st.markdown(f'<div class="resumo-card" style="border-top-color:#2e7d32;"><span>Investimento Mensal</span><div class="resumo-valor" style="color:#2e7d32;">R$ {f_br(v_liq)}</div>{html_b}<div class="resumo-subtitulo">DETALHE</div><ul class="lista-itens"><li><span>Desconto</span><span class="item-detalhe">{f_pct(desc_sim)}%</span></li></ul></div>', unsafe_allow_html=True)
+            html_b = f'<span style="text-decoration: line-through; color: #777; font-size: 0.9rem;">R$ {f_br(v_b)}</span>' if desc_s > 0 else ""
+            st.markdown(f'<div class="resumo-card" style="border-top-color:#2e7d32;"><span>Investimento Mensal</span><div class="resumo-valor" style="color:#2e7d32;">R$ {f_br(v_l)}</div>{html_b}<div class="resumo-subtitulo">DETALHE</div><ul class="lista-itens"><li><span>Desconto</span><span class="item-detalhe">{f_pct(desc_s)}%</span></li></ul></div>', unsafe_allow_html=True)
         with c3:
-            st.markdown(f'<div class="resumo-card" style="border-top-color:#262730; min-height: auto;"><span>Resumo da Negociação</span><div style="margin-top:15px;"><p><b>Economia Mensal:</b> R$ {f_br(v_bruto-v_liq)}</p><p><b>Economia Anual:</b> R$ {f_br((v_bruto-v_liq)*12)}</p></div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="resumo-card" style="border-top-color:#262730; min-height: auto;"><span>Resumo</span><div style="margin-top:15px;"><p><b>Economia Mensal:</b> R$ {f_br(v_b-v_l)}</p><p><b>Economia Anual:</b> R$ {f_br((v_b-v_l)*12)}</p></div></div>', unsafe_allow_html=True)
