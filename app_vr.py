@@ -9,7 +9,7 @@ import os
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-APP_VERSION = "v1.6.2 - Final Gold"
+APP_VERSION = "v1.6.3 - Bugfix Escopo"
 ADMIN_PASS_REQUIRED = "333666"
 
 try:
@@ -365,6 +365,10 @@ elif tela == "Consulta de Preço":
     cb, cd = st.columns([2, 1])
     p_sel = cb.selectbox("Selecione o produto:", sorted(list(full_db.keys())))
     desc_s = cd.number_input("Simular Desconto (%)", 0.0, 30.0, 0.0, 0.5)
+    
+    # 💡 CORREÇÃO DO BUGFIX (ESCOPO DA VARIÁVEL)
+    v_h_base = servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)
+    
     if p_sel:
         d = full_db[p_sel]; v_b = d.get('valor', 0.0); v_l = v_b * (1 - (desc_s/100))
         h_p, v_he, ads = d.get('horas_padrao', 0.0), d.get('valor_hora_implantacao', 0.0), d.get('adesao_vinculada', 0.0)
