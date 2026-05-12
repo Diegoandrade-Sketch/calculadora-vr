@@ -3,14 +3,16 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 import urllib.parse
 import os
+import json
 
 # ==========================================
 # CONFIGURAÇÕES INICIAIS E CONTROLE DE VERSÃO
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-APP_VERSION = "v1.6.4 - Architecture Gold"
+APP_VERSION = "v1.6.5 - High Availability"
 ADMIN_PASS_REQUIRED = "333666"
+CACHE_FILE = "cache_vr.json"
 
 try:
     DB_USER = st.secrets["DB_USER"]
@@ -23,6 +25,7 @@ try:
 except Exception:
     CONN_STR = None
 
+# FUNÇÕES DE FORMATAÇÃO
 def f_br(valor):
     if pd.isna(valor) or valor == 0: return "0,00"
     return f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -34,49 +37,76 @@ def sync_state(key_permanente, key_widget):
     st.session_state[key_permanente] = st.session_state[key_widget]
 
 # ==========================================
-# DATA LAYER & CLASSIFICAÇÃO FUZZY
+# DATA LAYER (COM CONTINGÊNCIA OFFLINE)
 # ==========================================
 @st.cache_data(ttl=60)
 def carregar_dados_vendas():
     status_msg, status_cor = "🔴 Desconectado", "#ef4444"
+    
+    # --- TENTATIVA A: CONEXÃO ONLINE ---
     try:
         if CONN_STR:
             engine = create_engine(CONN_STR)
             df = pd.read_sql("SELECT * FROM product", engine)
-            status_msg, status_cor = "PostgreSQL (Online)", "#22c55e"
+            df_vinc = pd.read_sql("SELECT * FROM product_vinculo", engine)
             
-            df.columns = [str(c).strip().lower() for c in df.columns]
-            df = df.drop_duplicates(subset=['produto'], keep='last')
-            
-            for col in ['valor', 'horas_padrao', 'adesao_vinculada', 'valor_hora_implantacao', 'typeproductid']:
-                if col in df.columns: df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
-
-            full = df.set_index('produto').to_dict('index')
-            id_to_name = df.set_index('id')['produto'].to_dict() if 'id' in df.columns else {}
-            name_to_id = {v: k for k, v in id_to_name.items()}
-
-            sist = {k: v for k, v in full.items() if v.get('typeproductid') == 604}
-            
-            # Palavras-chave robustas para separar serviços de despesas do projeto
-            kw_desp = ['km', 'hospedagem', 'logistica', 'alimentacao', 'despesa', 'passagem', 'viagem', 'deslocamento', 'pedagio']
-            serv = {k: v for k, v in full.items() if v.get('typeproductid') == 606 and not any(x in k.lower() for x in kw_desp)}
-            desp = {k: v for k, v in full.items() if any(x in k.lower() for x in kw_desp)}
-            
-            vinculos_db = {}
-            df_vinc = pd.DataFrame()
+            # Salva o Cache de Segurança
             try:
-                df_vinc = pd.read_sql("SELECT * FROM product_vinculo", engine)
-                for _, row in df_vinc.iterrows():
-                    pai_id = row['id_produto_pai']
-                    if pai_id not in vinculos_db: vinculos_db[pai_id] = []
-                    vinculos_db[pai_id].append({
-                        'id_filho': row['id_produto_filho'], 'tipo': row['tipo_vinculo'], 'qtd': float(row['quantidade_padrao'])
-                    })
-            except Exception: pass 
+                cache_payload = {
+                    'df_raw': df.to_json(orient='records'),
+                    'df_vinc': df_vinc.to_json(orient='records')
+                }
+                with open(CACHE_FILE, "w") as f:
+                    json.dump(cache_payload, f)
+            except Exception: pass
+
+            status_msg, status_cor = "🟢 PostgreSQL (Online)", "#22c55e"
             
-            return sist, serv, desp, full, id_to_name, name_to_id, vinculos_db, status_msg, status_cor, df, df_vinc
-    except Exception: pass
-    return {}, {}, {}, {}, {}, {}, {}, status_msg, status_cor, pd.DataFrame(), pd.DataFrame()
+    except Exception:
+        # --- TENTATIVA B: PARAQUEDAS (OFFLINE) ---
+        if os.path.exists(CACHE_FILE):
+            try:
+                with open(CACHE_FILE, "r") as f:
+                    cache_payload = json.load(f)
+                df = pd.read_json(cache_payload['df_raw'], orient='records')
+                df_vinc = pd.read_json(cache_payload['df_vinc'], orient='records')
+                status_msg, status_cor = "🟡 Modo Offline (Cache Local)", "#facc15"
+            except Exception:
+                return {}, {}, {}, {}, {}, {}, {}, "🔴 Erro de Cache", "#ef4444", pd.DataFrame(), pd.DataFrame()
+        else:
+            return {}, {}, {}, {}, {}, {}, {}, status_msg, status_cor, pd.DataFrame(), pd.DataFrame()
+
+    # --- PROCESSAMENTO DOS DADOS ---
+    try:
+        df.columns = [str(c).strip().lower() for c in df.columns]
+        df = df.drop_duplicates(subset=['produto'], keep='last')
+        
+        for col in ['valor', 'horas_padrao', 'adesao_vinculada', 'valor_hora_implantacao', 'typeproductid']:
+            if col in df.columns: df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+
+        full = df.set_index('produto').to_dict('index')
+        id_to_name = df.set_index('id')['produto'].to_dict() if 'id' in df.columns else {}
+        name_to_id = {v: k for k, v in id_to_name.items()}
+
+        sist = {k: v for k, v in full.items() if v.get('typeproductid') == 604}
+        kw_desp = ['km', 'hospedagem', 'logistica', 'alimentacao', 'despesa', 'passagem', 'viagem', 'deslocamento', 'pedagio']
+        serv = {k: v for k, v in full.items() if v.get('typeproductid') == 606 and not any(x in k.lower() for x in kw_desp)}
+        desp = {k: v for k, v in full.items() if any(x in k.lower() for x in kw_desp)}
+        
+        vinculos_db = {}
+        df_vinc.columns = [str(c).strip().lower() for c in df_vinc.columns]
+        for _, row in df_vinc.iterrows():
+            pai_id = int(row['id_produto_pai'])
+            if pai_id not in vinculos_db: vinculos_db[pai_id] = []
+            vinculos_db[pai_id].append({
+                'id_filho': int(row['id_produto_filho']), 
+                'tipo': row['tipo_vinculo'], 
+                'qtd': float(row['quantidade_padrao'])
+            })
+            
+        return sist, serv, desp, full, id_to_name, name_to_id, vinculos_db, status_msg, status_cor, df, df_vinc
+    except Exception:
+        return {}, {}, {}, {}, {}, {}, {}, "🔴 Erro de Processamento", "#ef4444", pd.DataFrame(), pd.DataFrame()
 
 sistemas_db, servicos_db, despesas_db, full_db, id_to_name, name_to_id, vinculos_db, db_status, db_cor, df_raw, df_vinc = carregar_dados_vendas()
 
@@ -100,7 +130,9 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
+# ==========================================
 # ESTADO GLOBAL
+# ==========================================
 init_state = {
     'm_combo': "Montar Manualmente", 'm_pdv_conv': 0.0, 'm_pdv_touch': 0.0, 'm_pdv_self': 0.0, 'm_semanas': 0.0, 'm_mobile': 0.0,
     'm_tef': "Não utiliza", 'm_migracao': False, 'm_ecommerce': False, 'm_app': False, 'm_connect': False,
@@ -143,7 +175,7 @@ def processar_regras_colaterais():
                         novos_auto.add(f_nome)
                         st.session_state[f"perm_val_{f_nome}"] = float(r['qtd'])
 
-    # Remove os que perderam o vínculo (Anti-Fantasma)
+    # Remove os itens que perderam o vínculo do sistema pai
     for item in st.session_state.auto_added - novos_auto:
         if item in st.session_state.sel_i:
             st.session_state.sel_i.remove(item)
@@ -165,9 +197,9 @@ with st.sidebar:
     if tela == "Gerador de Proposta":
         st.write("---")
         mapeamento_ativo = st.toggle("Mapeamento Inteligente", value=False)
-        modo_apresentacao = st.toggle("Modo Apresentação (Limpar Tela)")
+        modo_apresentacao = st.toggle("Modo Apresentação (Ocultar Menus)")
         perfil_venda = st.selectbox("Perfil do Cliente", ["Executivo (Rua)", "CS (Base)"])
-        desc = st.number_input("Desconto (%)", 0.0, 30.0, 0.0, 0.5)
+        desc = st.number_input("Desconto Mensalidade (%)", 0.0, 30.0, 0.0, 0.5)
         exibir_detalhe_desc = st.toggle("Exibir Desconto na Tela", value=True)
         faturamento_sistema = st.selectbox("Início Mensalidade", ["Na assinatura", "30 dias", "60 dias", "Após implantação"])
         parcelas_setup = st.selectbox("Parcelas Setup", [1, 2, 3, 4, 5, 6, 10, 12], index=3)
@@ -179,42 +211,46 @@ with st.sidebar:
 # ==========================================
 if tela == "Painel Admin":
     st.markdown('<h1 class="hero-title">BACKOFFICE</h1>', unsafe_allow_html=True)
-    if st.text_input("Senha Admin:", type="password") == ADMIN_PASS_REQUIRED:
-        t_vinc, t_sql, t_cat = st.tabs(["🔗 Vínculos Relacionais", "💻 Terminal SQL Seguro", "🗄️ Catálogo"])
-        with t_vinc:
-            with st.form("form_v"):
-                c1, c2, c3, c4 = st.columns([2,2,1,1])
-                pai = c1.selectbox("Pai (SISTEMA):", sorted(list(sistemas_db.keys())))
-                fil = c2.selectbox("Filho (ITEM):", sorted(list(full_db.keys())))
-                tip = c3.selectbox("Tipo:", ["projeto", "adesao", "incluso"])
-                qtd = c4.number_input("Qtd:", min_value=0.0, value=1.0)
-                if st.form_submit_button("Salvar Vínculo"):
-                    try:
-                        engine = create_engine(CONN_STR)
-                        with engine.begin() as conn:
-                            conn.execute(text("INSERT INTO product_vinculo (id_produto_pai, id_produto_filho, tipo_vinculo, quantidade_padrao) VALUES (:p, :f, :t, :q)"), 
-                                         {"p": name_to_id[pai], "f": name_to_id[fil], "t": tip, "q": qtd})
-                        st.success("Vínculo Criado!"); st.cache_data.clear()
-                    except Exception as e: st.error(e)
-            st.dataframe(df_vinc, use_container_width=True)
+    if st.text_input("Senha de Autenticação:", type="password") == ADMIN_PASS_REQUIRED:
+        if "Offline" in db_status:
+            st.error("🚨 Você está no Modo Offline. O Painel Admin está bloqueado até a conexão com o banco ser reestabelecida.")
+        else:
+            t_vinc, t_sql, t_cat = st.tabs(["🔗 Vínculos Relacionais", "💻 Terminal SQL Seguro", "🗄️ Catálogo Completo"])
+            with t_vinc:
+                with st.form("form_v"):
+                    c1, c2, c3, c4 = st.columns([2,2,1,1])
+                    pai = c1.selectbox("Pai (SISTEMA):", sorted(list(sistemas_db.keys())))
+                    fil = c2.selectbox("Filho (ITEM):", sorted(list(full_db.keys())))
+                    tip = c3.selectbox("Tipo:", ["projeto", "adesao", "incluso"])
+                    qtd = c4.number_input("Qtd:", min_value=0.0, value=1.0)
+                    if st.form_submit_button("Salvar Vínculo"):
+                        try:
+                            engine = create_engine(CONN_STR)
+                            with engine.begin() as conn:
+                                conn.execute(text("INSERT INTO product_vinculo (id_produto_pai, id_produto_filho, tipo_vinculo, quantidade_padrao) VALUES (:p, :f, :t, :q)"), 
+                                             {"p": name_to_id[pai], "f": name_to_id[fil], "t": tip, "q": qtd})
+                            st.success("Vínculo Criado com Sucesso!"); st.cache_data.clear()
+                        except Exception as e: st.error(e)
+                st.dataframe(df_vinc, use_container_width=True)
 
-        with t_sql:
-            st.warning("⚠️ Terminal Blindado (DROP/DELETE/TRUNCATE bloqueados)")
-            query = st.text_area("Digite o SQL:")
-            if st.button("Executar SQL"):
-                q_l = query.lower()
-                if any(p in q_l for p in ["drop ", "delete ", "truncate "]): st.error("Comando bloqueado.")
-                else:
-                    try:
-                        engine = create_engine(CONN_STR)
-                        if q_l.strip().startswith("select"):
-                            with engine.connect() as conn: res = pd.read_sql(text(query), conn)
-                            st.dataframe(res)
-                        else:
-                            with engine.begin() as conn: r = conn.execute(text(query))
-                            st.success(f"Afetadas: {r.rowcount}"); st.cache_data.clear()
-                    except Exception as e: st.error(e)
-        with t_cat: st.dataframe(df_raw, use_container_width=True)
+            with t_sql:
+                st.warning("⚠️ Terminal Blindado (DROP/DELETE/TRUNCATE bloqueados automaticamente)")
+                query = st.text_area("Digite o comando SQL:")
+                if st.button("▶️ Executar SQL"):
+                    q_l = query.lower()
+                    if any(p in q_l for p in ["drop ", "delete ", "truncate "]): st.error("🚨 Comando bloqueado por segurança.")
+                    else:
+                        try:
+                            engine = create_engine(CONN_STR)
+                            if q_l.strip().startswith("select"):
+                                with engine.connect() as conn: res = pd.read_sql(text(query), conn)
+                                st.success(f"{len(res)} linhas retornadas.")
+                                st.dataframe(res, use_container_width=True)
+                            else:
+                                with engine.begin() as conn: r = conn.execute(text(query))
+                                st.success(f"Comando executado. Linhas afetadas: {r.rowcount}"); st.cache_data.clear()
+                        except Exception as e: st.error(e)
+            with t_cat: st.dataframe(df_raw, use_container_width=True)
 
 # ==========================================
 # TELA 2: GERADOR DE PROPOSTA
@@ -311,7 +347,7 @@ elif tela == "Gerador de Proposta":
     # A Lógica Relacional Roda Fora da Restrição de Interface para Manter o Estado
     processar_regras_colaterais()
 
-    # O Modo Apresentação PODE ocultar os inputs, deixando apenas os Cards
+    # Modo Apresentação: Oculta as colunas de inclusão manual
     if not modo_apresentacao:
         c1, c2, c3 = st.columns(3) if perfil_venda == "Executivo (Rua)" else (*st.columns(2), None)
         with c1:
@@ -334,7 +370,7 @@ elif tela == "Gerador de Proposta":
                     v_u = despesas_db[i]['valor']
                     st.number_input(f"{i} (R$ {f_br(v_u)}/un)", 0.0, step=1.0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_d_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_d_{i}"))
 
-    # Os CARDS aparecem independente do Modo Apresentação
+    # Os CARDS de Resumo (Aparecem mesmo no Modo Apresentação)
     st.markdown("<h2 style='text-align:center; font-weight:800; margin-top:30px;'>RESUMO DO INVESTIMENTO</h2>", unsafe_allow_html=True)
     res_cols = st.columns(3) if perfil_venda == "Executivo (Rua)" else st.columns([1, 2, 2, 1])[1:3]
     
@@ -418,7 +454,7 @@ elif tela == "Consulta de Preço":
                     uni = "h" if r['tipo'] == 'projeto' else "un"
                     h_s += f"<li><span>{f_nm}</span><span class='item-detalhe'>{int(f_q)}{uni} x R$ {f_br(f_val)} | Total: R$ {f_br(f_q*f_val)}</span></li>"
         else:
-            # Fallback Antigo
+            # Fallback Antigo (Caso não existam vínculos criados)
             h_p, v_he, ads = d.get('horas_padrao', 0.0), d.get('valor_hora_implantacao', 0.0), d.get('adesao_vinculada', 0.0)
             rt = v_he if v_he > 0 else v_h_base
             t_s = (h_p * rt) + ads
@@ -434,7 +470,7 @@ elif tela == "Consulta de Preço":
             with c3:
                 st.markdown(f'<div class="resumo-card" style="border-top-color:#262730; min-height: auto;"><span>Resumo Anual</span><div style="margin-top:15px;"><p><b>Economia Mensal:</b> R$ {f_br(v_b-v_l)}</p><p><b>Economia Anual:</b> R$ {f_br((v_b-v_l)*12)}</p></div></div>', unsafe_allow_html=True)
         else:
-            # Inteligência de Serviços (Sem cálculo de mensalidade)
+            # Inteligência de Serviços (Sem cálculo de mensalidade recorrente)
             c1, c2 = st.columns(2)
             with c1:
                 html_b = f'<span style="text-decoration: line-through; color: #777; font-size: 0.9rem;">R$ {f_br(v_b)}</span>' if desc_s > 0 else ""
