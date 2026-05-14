@@ -10,7 +10,7 @@ import json
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-APP_VERSION = "v1.6.9 - Architecture Gold (Exact Match & Shields)"
+APP_VERSION = "v1.7.0 - Architecture Gold (Sniper Mapping)"
 ADMIN_PASS_REQUIRED = "333666"
 CACHE_FILE = "cache_vr.json"
 
@@ -270,7 +270,7 @@ if tela == "Painel Admin":
 elif tela == "Gerador de Proposta":
     
     def aplicar_mapeamento():
-        # RESET AUTOMATICO: Esvazia o carrinho antes de preencher novamente
+        # RESET AUTOMATICO
         st.session_state.sel_m.clear()
         st.session_state.sel_i.clear()
         st.session_state.sel_d.clear()
@@ -281,7 +281,6 @@ elif tela == "Gerador de Proposta":
         for p_name in sistemas_db.keys():
             qtd = 0.0
             
-            # Buscas exatas do Dicionario de Dados
             if p_name == "VR PDV Convencional": qtd = st.session_state.m_pdv_conv
             elif p_name == "VR PDV Touchscreen": qtd = st.session_state.m_pdv_touch
             elif p_name == "VR PDV Self Checkout": qtd = st.session_state.m_pdv_self
@@ -292,18 +291,18 @@ elif tela == "Gerador de Proposta":
             elif p_name == "VR Cartaz" and st.session_state.m_cartaz: qtd = 1.0
             elif p_name == "VR E-Commerce" and st.session_state.m_ecommerce: qtd = 1.0
             elif p_name == "VR Controller 360 ( 1 CNPJ )" and st.session_state.m_controller: qtd = 1.0
+            elif p_name == "VR Masterfisco Brasil" and st.session_state.m_masterfisco: qtd = 1.0
             elif p_name == "VR M-Commerce" and st.session_state.m_app: qtd = 1.0
             elif p_name == "VR Mobile (Smartphone/Android)": qtd = float(st.session_state.m_mobile)
 
-            # TEF flexivel mantido conforme combinamos
-            p_low = p_name.lower()
-            if st.session_state.m_tef == "SiTef Express" and "sitef" in p_low:
+            # TEF Exato com Matematica de Faixas
+            if st.session_state.m_tef == "SiTef Express":
                 tot = st.session_state.m_pdv_conv + st.session_state.m_pdv_touch + st.session_state.m_pdv_self
-                if tot <= 3 and "3" in p_low: qtd = 1.0
-                elif 3 < tot <= 6 and "6" in p_low: qtd = 1.0
-                elif 6 < tot <= 8 and "8" in p_low: qtd = 1.0
-                elif tot > 8 and ("acima" in p_low or "+" in p_low): qtd = 1.0
-            elif st.session_state.m_tef == "VR TEF" and "vr tef" in p_low: qtd = 1.0
+                if tot <= 3 and p_name == "VR Sitef Express ate 3 PDVs": qtd = 1.0
+                elif 3 < tot <= 6 and p_name == "VR Sitef Express ate 6 PDVs": qtd = 1.0
+                elif 6 < tot <= 8 and p_name == "VR Sitef Express ate 8 PDVs": qtd = 1.0
+                elif tot > 8 and p_name == "VR Sitef Express a partir 9 PDVs": qtd = 1.0
+            elif st.session_state.m_tef == "VR TEF" and p_name.lower() == "vr tef": qtd = 1.0
 
             if qtd > 0:
                 st.session_state[f"perm_val_{p_name}"] = qtd
@@ -317,7 +316,7 @@ elif tela == "Gerador de Proposta":
             
             if "implanta" in s_low and "treinamento" in s_low: qtd = sem * 44.0
             elif st.session_state.m_escopo and "escopo" in s_low: qtd = 8.0
-            elif st.session_state.m_migracao and s_name == "Migracao de Dados Padrao": qtd = 8.0 # Servico exato de migracao
+            elif st.session_state.m_migracao and s_name == "Migracao de Dados Padrao": qtd = 8.0
 
             if qtd > 0:
                 st.session_state[f"perm_val_{s_name}"] = qtd
@@ -403,13 +402,13 @@ elif tela == "Gerador de Proposta":
             t_setup += (q * v_u)
             h_setup += f"<li><span>{n}</span><span class='item-detalhe'>{int(q)}h x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_u)}</span></li>"
     
-    # Lista de Isenção (Teste 2: Mobile, Touch, Selfcheckout isentos de setup/adesao)
+    # Lista de Isencao de Setup/Adesao
     itens_isentos_setup = ["VR Mobile (Smartphone/Android)", "VR PDV Touchscreen", "VR PDV Self Checkout"]
 
     for n in st.session_state.sel_m:
         if name_to_id.get(n) not in vinculos_db:
             if n in itens_isentos_setup:
-                continue # Pula o calculo de setup e adesao para os itens blindados
+                continue
 
             d = sistemas_db[n]; h = d.get('horas_padrao', 0.0); ads = d.get('adesao_vinculada', 0.0)
             if h > 0:
