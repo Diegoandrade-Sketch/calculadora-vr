@@ -10,7 +10,7 @@ import json
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-APP_VERSION = "v1.7.0 - Architecture Gold (Sniper Mapping)"
+APP_VERSION = "v1.7.1 - High Performance & Flow"
 ADMIN_PASS_REQUIRED = "333666"
 CACHE_FILE = "cache_vr.json"
 
@@ -37,9 +37,9 @@ def sync_state(key_permanente, key_widget):
     st.session_state[key_permanente] = st.session_state[key_widget]
 
 # ==========================================
-# DATA LAYER (COM CONTINGENCIA OFFLINE)
+# DATA LAYER (CACHE DE 1 HORA E CONTINGENCIA)
 # ==========================================
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=3600)
 def carregar_dados_vendas():
     status_msg, status_cor = "Desconectado", "#ef4444"
     
@@ -127,30 +127,70 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # ==========================================
-# ESTADO GLOBAL
+# ESTADO GLOBAL E CALLBACKS
 # ==========================================
 init_state = {
     'm_combo': "Montar Manualmente", 'm_pdv_conv': 0.0, 'm_pdv_touch': 0.0, 'm_pdv_self': 0.0, 'm_semanas': 0.0, 'm_mobile': 0.0,
     'm_tef': "Nao utiliza", 'm_migracao': False, 'm_ecommerce': False, 'm_app': False, 'm_connect': False,
     'm_erp_pro': False, 'm_xml': False, 'm_escopo': False, 'm_controller': False, 'm_cartaz': False, 'm_masterfisco': False, 'm_backup': False,
-    'auto_added': set()
+    'auto_added': set(), 'sel_m': [], 'sel_i': [], 'sel_d': [], 'ui_sel_m': [], 'ui_sel_i': [], 'ui_sel_d': []
 }
+
 for k, v in init_state.items():
     if k not in st.session_state: st.session_state[k] = v
-for lst in ['sel_i', 'sel_m', 'sel_d']:
-    if lst not in st.session_state: st.session_state[lst] = []
+
 for nome in full_db.keys():
     if f"perm_val_{nome}" not in st.session_state: st.session_state[f"perm_val_{nome}"] = 0.0
 
+def processar_regras_colaterais():
+    novos_auto = set()
+    for m_nome in st.session_state.sel_m:
+        p_id = name_to_id.get(m_nome)
+        if p_id and p_id in vinculos_db:
+            for r in vinculos_db[p_id]:
+                if r['tipo'] in ['projeto', 'adesao']:
+                    f_nome = id_to_name.get(r['id_filho'])
+                    if f_nome:
+                        novos_auto.add(f_nome)
+                        st.session_state[f"perm_val_{f_nome}"] = float(r['qtd'])
+
+    lista_servicos_atual = list(st.session_state.ui_sel_i)
+
+    for item in st.session_state.auto_added - novos_auto:
+        if item in lista_servicos_atual:
+            lista_servicos_atual.remove(item)
+            st.session_state[f"perm_val_{item}"] = 0.0
+
+    for item in novos_auto:
+        if item not in lista_servicos_atual:
+            lista_servicos_atual.append(item)
+
+    st.session_state.auto_added = novos_auto
+    st.session_state.ui_sel_i = lista_servicos_atual
+    st.session_state.sel_i = lista_servicos_atual
+
+def atualiza_sistemas_ui():
+    st.session_state.sel_m = st.session_state.ui_sel_m
+    processar_regras_colaterais()
+
+def atualiza_servicos_ui():
+    st.session_state.sel_i = st.session_state.ui_sel_i
+
+def atualiza_despesas_ui():
+    st.session_state.sel_d = st.session_state.ui_sel_d
+
 def limpar_tudo():
-    for k, v in init_state.items(): st.session_state[k] = v
+    for k, v in init_state.items(): 
+        st.session_state[k] = v if not isinstance(v, list) else []
+        if isinstance(v, set): st.session_state[k] = set()
+    
     if 'tmp_combo' in st.session_state: st.session_state.tmp_combo = "Montar Manualmente"
     for t in ['tmp_pdv_conv', 'tmp_pdv_touch', 'tmp_pdv_self', 'tmp_semanas', 'tmp_mobile']:
         if t in st.session_state: st.session_state[t] = 0.0
     toggles = ['tmp_erp_pro', 'tmp_xml', 'tmp_connect', 'tmp_backup', 'tmp_cartaz', 'tmp_ecommerce', 'tmp_controller', 'tmp_masterfisco', 'tmp_app', 'tmp_migracao', 'tmp_escopo']
     for t in toggles:
         if t in st.session_state: st.session_state[t] = False
-    st.session_state.sel_i, st.session_state.sel_m, st.session_state.sel_d = [], [], []
+    
     for nome in full_db.keys(): st.session_state[f"perm_val_{nome}"] = 0.0
 
 def sync_combo():
@@ -176,29 +216,6 @@ def sync_combo():
         st.session_state.m_migracao = True
         st.session_state.m_escopo = True
 
-def processar_regras_colaterais():
-    novos_auto = set()
-    for m_nome in st.session_state.sel_m:
-        p_id = name_to_id.get(m_nome)
-        if p_id and p_id in vinculos_db:
-            for r in vinculos_db[p_id]:
-                if r['tipo'] in ['projeto', 'adesao']:
-                    f_nome = id_to_name.get(r['id_filho'])
-                    if f_nome:
-                        novos_auto.add(f_nome)
-                        st.session_state[f"perm_val_{f_nome}"] = float(r['qtd'])
-
-    for item in st.session_state.auto_added - novos_auto:
-        if item in st.session_state.sel_i:
-            st.session_state.sel_i.remove(item)
-            st.session_state[f"perm_val_{item}"] = 0.0
-
-    for item in novos_auto:
-        if item not in st.session_state.sel_i:
-            st.session_state.sel_i.append(item)
-
-    st.session_state.auto_added = novos_auto
-
 # ==========================================
 # SIDEBAR
 # ==========================================
@@ -216,13 +233,13 @@ with st.sidebar:
         faturamento_sistema = st.selectbox("Inicio Mensalidade", ["Na assinatura", "30 dias", "60 dias", "Apos implantacao"])
         parcelas_setup = st.selectbox("Parcelas Setup", [1, 2, 3, 4, 5, 6, 10, 12], index=3)
         regra_despesas = st.selectbox("Faturamento Despesas", ["Faturamento na assinatura", "Faturamento pos Implantacao"])
-    st.markdown(f'''<hr><div style="font-size:0.8rem; color:{db_cor};">{db_status}</div><div style="font-size:0.7rem; color:#888;">{APP_VERSION}</div>''', unsafe_allow_html=True)
+    st.markdown(f"""<hr><div style="font-size:0.8rem; color:{db_cor};">{db_status}</div><div style="font-size:0.7rem; color:#888;">{APP_VERSION}</div>""", unsafe_allow_html=True)
 
 # ==========================================
 # TELA 1: PAINEL ADMIN
 # ==========================================
 if tela == "Painel Admin":
-    st.markdown('<h1 class="hero-title">BACKOFFICE</h1>', unsafe_allow_html=True)
+    st.markdown("""<h1 class="hero-title">BACKOFFICE</h1>""", unsafe_allow_html=True)
     if st.text_input("Senha de Autenticacao:", type="password") == ADMIN_PASS_REQUIRED:
         if "Offline" in db_status:
             st.error("Voce esta no Modo Offline. O Painel Admin esta bloqueado ate a conexao com o banco ser reestabelecida.")
@@ -270,17 +287,13 @@ if tela == "Painel Admin":
 elif tela == "Gerador de Proposta":
     
     def aplicar_mapeamento():
-        # RESET AUTOMATICO
-        st.session_state.sel_m.clear()
-        st.session_state.sel_i.clear()
-        st.session_state.sel_d.clear()
+        _sel_m, _sel_i, _sel_d = [], [], []
+        
         for k in full_db.keys():
             st.session_state[f"perm_val_{k}"] = 0.0
 
-        # MAPEAMENTO EXATO DOS SISTEMAS
         for p_name in sistemas_db.keys():
             qtd = 0.0
-            
             if p_name == "VR PDV Convencional": qtd = st.session_state.m_pdv_conv
             elif p_name == "VR PDV Touchscreen": qtd = st.session_state.m_pdv_touch
             elif p_name == "VR PDV Self Checkout": qtd = st.session_state.m_pdv_self
@@ -295,7 +308,6 @@ elif tela == "Gerador de Proposta":
             elif p_name == "VR M-Commerce" and st.session_state.m_app: qtd = 1.0
             elif p_name == "VR Mobile (Smartphone/Android)": qtd = float(st.session_state.m_mobile)
 
-            # TEF Exato com Matematica de Faixas
             if st.session_state.m_tef == "SiTef Express":
                 tot = st.session_state.m_pdv_conv + st.session_state.m_pdv_touch + st.session_state.m_pdv_self
                 if tot <= 3 and p_name == "VR Sitef Express ate 3 PDVs": qtd = 1.0
@@ -306,21 +318,19 @@ elif tela == "Gerador de Proposta":
 
             if qtd > 0:
                 st.session_state[f"perm_val_{p_name}"] = qtd
-                st.session_state.sel_m.append(p_name)
+                _sel_m.append(p_name)
 
-        # MAPEAMENTO EXATO DOS SERVICOS E DESPESAS
         sem = st.session_state.m_semanas
         for s_name in servicos_db.keys():
             s_low = s_name.lower()
             qtd = 0.0
-            
             if "implanta" in s_low and "treinamento" in s_low: qtd = sem * 44.0
             elif st.session_state.m_escopo and "escopo" in s_low: qtd = 8.0
             elif st.session_state.m_migracao and s_name == "Migracao de Dados Padrao": qtd = 8.0
 
             if qtd > 0:
                 st.session_state[f"perm_val_{s_name}"] = qtd
-                st.session_state.sel_i.append(s_name)
+                _sel_i.append(s_name)
 
         if sem > 0:
             for d_name in despesas_db.keys():
@@ -331,12 +341,21 @@ elif tela == "Gerador de Proposta":
 
                 if qtd > 0:
                     st.session_state[f"perm_val_{d_name}"] = qtd
-                    st.session_state.sel_d.append(d_name)
+                    _sel_d.append(d_name)
+                    
+        st.session_state.ui_sel_m = _sel_m
+        st.session_state.sel_m = _sel_m
+        st.session_state.ui_sel_i = _sel_i
+        st.session_state.sel_i = _sel_i
+        st.session_state.ui_sel_d = _sel_d
+        st.session_state.sel_d = _sel_d
+        
+        processar_regras_colaterais()
 
     if not modo_apresentacao:
-        st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
+        st.markdown("""<h1 class="hero-title">PROPOSTA COMERCIAL</h1>""", unsafe_allow_html=True)
         if mapeamento_ativo:
-            st.markdown('<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">Mapeamento da Operacao</h3></div>', unsafe_allow_html=True)
+            st.markdown("""<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">Mapeamento da Operacao</h3></div>""", unsafe_allow_html=True)
             st.selectbox("Combo Rapido", ["Montar Manualmente", "Padrao Pequeno Porte"], key="tmp_combo", on_change=sync_combo)
             c1, c2, c3 = st.columns(3)
             with c1:
@@ -365,31 +384,29 @@ elif tela == "Gerador de Proposta":
                 b2.button("Limpar Tudo", on_click=limpar_tudo, use_container_width=True)
         st.write("---")
 
-    processar_regras_colaterais()
-
     if not modo_apresentacao:
         c1, c2, c3 = st.columns(3) if perfil_venda == "Executivo (Rua)" else (*st.columns(2), None)
         with c1:
-            st.markdown('<div class="section-header"><span class="section-title">IMPLANTACAO E SERVICOS</span></div>', unsafe_allow_html=True)
-            st.session_state.sel_i = st.multiselect("Servicos", list(servicos_db.keys()), default=st.session_state.sel_i)
+            st.markdown("""<div class="section-header"><span class="section-title">IMPLANTACAO E SERVICOS</span></div>""", unsafe_allow_html=True)
+            st.multiselect("Servicos", list(servicos_db.keys()), key="ui_sel_i", on_change=atualiza_servicos_ui)
             for i in st.session_state.sel_i:
                 v_u = servicos_db[i]['valor']
                 st.number_input(f"{i} (R$ {f_br(v_u)}/h)", 0.0, step=1.0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_i_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_i_{i}"))
         with c2:
-            st.markdown('<div class="section-header"><span class="section-title">MENSALIDADES SISTEMAS</span></div>', unsafe_allow_html=True)
-            st.session_state.sel_m = st.multiselect("Sistemas", list(sistemas_db.keys()), default=st.session_state.sel_m)
+            st.markdown("""<div class="section-header"><span class="section-title">MENSALIDADES SISTEMAS</span></div>""", unsafe_allow_html=True)
+            st.multiselect("Sistemas", list(sistemas_db.keys()), key="ui_sel_m", on_change=atualiza_sistemas_ui)
             for i in st.session_state.sel_m:
                 v_u = sistemas_db[i]['valor']
                 st.number_input(f"{i} (R$ {f_br(v_u)}/un)", 0.0, step=1.0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_m_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_m_{i}"))
         if c3:
             with c3:
-                st.markdown('<div class="section-header"><span class="section-title">DESPESAS DO PROJETO</span></div>', unsafe_allow_html=True)
-                st.session_state.sel_d = st.multiselect("Despesas", list(despesas_db.keys()), default=st.session_state.sel_d)
+                st.markdown("""<div class="section-header"><span class="section-title">DESPESAS DO PROJETO</span></div>""", unsafe_allow_html=True)
+                st.multiselect("Despesas", list(despesas_db.keys()), key="ui_sel_d", on_change=atualiza_despesas_ui)
                 for i in st.session_state.sel_d:
                     v_u = despesas_db[i]['valor']
                     st.number_input(f"{i} (R$ {f_br(v_u)}/un)", 0.0, step=1.0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_d_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_d_{i}"))
 
-    st.markdown("<h2 style='text-align:center; font-weight:800; margin-top:30px;'>RESUMO DO INVESTIMENTO</h2>", unsafe_allow_html=True)
+    st.markdown("""<h2 style='text-align:center; font-weight:800; margin-top:30px;'>RESUMO DO INVESTIMENTO</h2>""", unsafe_allow_html=True)
     res_cols = st.columns(3) if perfil_venda == "Executivo (Rua)" else st.columns([1, 2, 2, 1])[1:3]
     
     t_setup, h_setup = 0.0, ""
@@ -402,7 +419,6 @@ elif tela == "Gerador de Proposta":
             t_setup += (q * v_u)
             h_setup += f"<li><span>{n}</span><span class='item-detalhe'>{int(q)}h x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_u)}</span></li>"
     
-    # Lista de Isencao de Setup/Adesao
     itens_isentos_setup = ["VR Mobile (Smartphone/Android)", "VR PDV Touchscreen", "VR PDV Self Checkout"]
 
     for n in st.session_state.sel_m:
