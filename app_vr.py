@@ -6,11 +6,11 @@ import os
 import json
 
 # ==========================================
-# CONFIGURAÇÕES INICIAIS E CONTROLE DE VERSÃO
+# CONFIGURACOES INICIAIS E CONTROLE DE VERSAO
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-APP_VERSION = "v1.6.6 - Architecture Gold (Diluicao)"
+APP_VERSION = "v1.6.7 - Architecture Gold (Combo Atualizado)"
 ADMIN_PASS_REQUIRED = "333666"
 CACHE_FILE = "cache_vr.json"
 
@@ -25,7 +25,7 @@ try:
 except Exception:
     CONN_STR = None
 
-# FUNÇÕES DE FORMATAÇÃO
+# FUNCOES DE FORMATACAO
 def f_br(valor):
     if pd.isna(valor) or valor == 0: return "0,00"
     return f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -37,11 +37,11 @@ def sync_state(key_permanente, key_widget):
     st.session_state[key_permanente] = st.session_state[key_widget]
 
 # ==========================================
-# DATA LAYER (COM CONTINGÊNCIA OFFLINE)
+# DATA LAYER (COM CONTINGENCIA OFFLINE)
 # ==========================================
 @st.cache_data(ttl=60)
 def carregar_dados_vendas():
-    status_msg, status_cor = "🔴 Desconectado", "#ef4444"
+    status_msg, status_cor = "Desconectado", "#ef4444"
     
     try:
         if CONN_STR:
@@ -58,7 +58,7 @@ def carregar_dados_vendas():
                     json.dump(cache_payload, f)
             except Exception: pass
 
-            status_msg, status_cor = "🟢 PostgreSQL (Online)", "#22c55e"
+            status_msg, status_cor = "PostgreSQL (Online)", "#22c55e"
             
     except Exception:
         if os.path.exists(CACHE_FILE):
@@ -67,9 +67,9 @@ def carregar_dados_vendas():
                     cache_payload = json.load(f)
                 df = pd.read_json(cache_payload['df_raw'], orient='records')
                 df_vinc = pd.read_json(cache_payload['df_vinc'], orient='records')
-                status_msg, status_cor = "🟡 Modo Offline (Cache Local)", "#facc15"
+                status_msg, status_cor = "Modo Offline (Cache Local)", "#facc15"
             except Exception:
-                return {}, {}, {}, {}, {}, {}, {}, "🔴 Erro de Cache", "#ef4444", pd.DataFrame(), pd.DataFrame()
+                return {}, {}, {}, {}, {}, {}, {}, "Erro de Cache", "#ef4444", pd.DataFrame(), pd.DataFrame()
         else:
             return {}, {}, {}, {}, {}, {}, {}, status_msg, status_cor, pd.DataFrame(), pd.DataFrame()
 
@@ -102,12 +102,12 @@ def carregar_dados_vendas():
             
         return sist, serv, desp, full, id_to_name, name_to_id, vinculos_db, status_msg, status_cor, df, df_vinc
     except Exception:
-        return {}, {}, {}, {}, {}, {}, {}, "🔴 Erro de Processamento", "#ef4444", pd.DataFrame(), pd.DataFrame()
+        return {}, {}, {}, {}, {}, {}, {}, "Erro de Processamento", "#ef4444", pd.DataFrame(), pd.DataFrame()
 
 sistemas_db, servicos_db, despesas_db, full_db, id_to_name, name_to_id, vinculos_db, db_status, db_cor, df_raw, df_vinc = carregar_dados_vendas()
 
 # ==========================================
-# ESTILIZAÇÃO CSS
+# ESTILIZACAO CSS
 # ==========================================
 st.markdown("""
     <style>
@@ -155,8 +155,26 @@ def limpar_tudo():
 
 def sync_combo():
     if st.session_state.tmp_combo == "Padrão Pequeno Porte":
-        st.session_state.m_pdv_conv, st.session_state.m_tef, st.session_state.m_semanas = 5.0, "SiTef Express", 3.0
-        st.session_state.m_migracao, st.session_state.m_escopo, st.session_state.m_erp_pro, st.session_state.m_xml, st.session_state.m_mobile = True, True, True, True, 1.0
+        st.session_state.m_pdv_touch = 0.0
+        st.session_state.m_pdv_self = 0.0
+        st.session_state.m_ecommerce = False
+        st.session_state.m_app = False
+        st.session_state.m_connect = False
+        st.session_state.m_controller = False
+        st.session_state.m_cartaz = False
+        st.session_state.m_masterfisco = False
+        st.session_state.m_backup = False
+        
+        st.session_state.m_semanas = 0.0
+
+        st.session_state.m_erp_pro = True
+        st.session_state.m_pdv_conv = 3.0
+        st.session_state.m_xml = True
+        st.session_state.m_mobile = 1.0
+        st.session_state.m_tef = "SiTef Express"
+        
+        st.session_state.m_migracao = True
+        st.session_state.m_escopo = True
 
 def processar_regras_colaterais():
     novos_auto = set()
@@ -186,30 +204,30 @@ def processar_regras_colaterais():
 # ==========================================
 with st.sidebar:
     if os.path.exists("logo_vr.png"): st.image("logo_vr.png", width=180)
-    tela = st.radio("Navegação:", ["Gerador de Proposta", "Consulta de Preço", "Painel Admin"])
+    tela = st.radio("Navegacao:", ["Gerador de Proposta", "Consulta de Preco", "Painel Admin"])
     if tela == "Gerador de Proposta":
         st.write("---")
         mapeamento_ativo = st.toggle("Mapeamento Inteligente", value=False)
-        modo_apresentacao = st.toggle("Modo Apresentação (Ocultar Menus)")
+        modo_apresentacao = st.toggle("Modo Apresentacao (Ocultar Menus)")
         perfil_venda = st.selectbox("Perfil do Cliente", ["Executivo (Rua)", "CS (Base)"])
         desc = st.number_input("Desconto Mensalidade (%)", 0.0, 30.0, 0.0, 0.5)
         exibir_detalhe_desc = st.toggle("Exibir Desconto na Tela", value=True)
-        exibir_media_loja = st.toggle("Exibir Média por Loja", value=False) # NOVA CHAVE DE CONTROLE
-        faturamento_sistema = st.selectbox("Início Mensalidade", ["Na assinatura", "30 dias", "60 dias", "Após implantação"])
+        exibir_media_loja = st.toggle("Exibir Media por Loja", value=False)
+        faturamento_sistema = st.selectbox("Inicio Mensalidade", ["Na assinatura", "30 dias", "60 dias", "Apos implantacao"])
         parcelas_setup = st.selectbox("Parcelas Setup", [1, 2, 3, 4, 5, 6, 10, 12], index=3)
-        regra_despesas = st.selectbox("Faturamento Despesas", ["Faturamento na assinatura", "Faturamento pós Implantação"])
-    st.markdown(f'''<hr><div style="font-size:0.8rem; color:{db_cor};">● {db_status}</div><div style="font-size:0.7rem; color:#888;">{APP_VERSION}</div>''', unsafe_allow_html=True)
+        regra_despesas = st.selectbox("Faturamento Despesas", ["Faturamento na assinatura", "Faturamento pos Implantacao"])
+    st.markdown(f'''<hr><div style="font-size:0.8rem; color:{db_cor};">{db_status}</div><div style="font-size:0.7rem; color:#888;">{APP_VERSION}</div>''', unsafe_allow_html=True)
 
 # ==========================================
 # TELA 1: PAINEL ADMIN
 # ==========================================
 if tela == "Painel Admin":
     st.markdown('<h1 class="hero-title">BACKOFFICE</h1>', unsafe_allow_html=True)
-    if st.text_input("Senha de Autenticação:", type="password") == ADMIN_PASS_REQUIRED:
+    if st.text_input("Senha de Autenticacao:", type="password") == ADMIN_PASS_REQUIRED:
         if "Offline" in db_status:
-            st.error("Você está no Modo Offline. O Painel Admin está bloqueado até a conexão com o banco ser reestabelecida.")
+            st.error("Voce esta no Modo Offline. O Painel Admin esta bloqueado ate a conexao com o banco ser reestabelecida.")
         else:
-            t_vinc, t_sql, t_cat = st.tabs(["🔗 Vínculos Relacionais", "💻 Terminal SQL Seguro", "🗄️ Catálogo Completo"])
+            t_vinc, t_sql, t_cat = st.tabs(["Vinculos Relacionais", "Terminal SQL Seguro", "Catalogo Completo"])
             with t_vinc:
                 with st.form("form_v"):
                     c1, c2, c3, c4 = st.columns([2,2,1,1])
@@ -217,13 +235,13 @@ if tela == "Painel Admin":
                     fil = c2.selectbox("Filho (ITEM):", sorted(list(full_db.keys())))
                     tip = c3.selectbox("Tipo:", ["projeto", "adesao", "incluso"])
                     qtd = c4.number_input("Qtd:", min_value=0.0, value=1.0)
-                    if st.form_submit_button("Salvar Vínculo"):
+                    if st.form_submit_button("Salvar Vinculo"):
                         try:
                             engine = create_engine(CONN_STR)
                             with engine.begin() as conn:
                                 conn.execute(text("INSERT INTO product_vinculo (id_produto_pai, id_produto_filho, tipo_vinculo, quantidade_padrao) VALUES (:p, :f, :t, :q)"), 
                                              {"p": name_to_id[pai], "f": name_to_id[fil], "t": tip, "q": qtd})
-                            st.success("Vínculo Criado com Sucesso!"); st.cache_data.clear()
+                            st.success("Vinculo Criado com Sucesso!"); st.cache_data.clear()
                         except Exception as e: st.error(e)
                 st.dataframe(df_vinc, use_container_width=True)
 
@@ -232,7 +250,7 @@ if tela == "Painel Admin":
                 query = st.text_area("Digite o comando SQL:")
                 if st.button("Executar SQL"):
                     q_l = query.lower()
-                    if any(p in q_l for p in ["drop ", "delete ", "truncate "]): st.error("Comando bloqueado por segurança.")
+                    if any(p in q_l for p in ["drop ", "delete ", "truncate "]): st.error("Comando bloqueado por seguranca.")
                     else:
                         try:
                             engine = create_engine(CONN_STR)
@@ -307,8 +325,8 @@ elif tela == "Gerador de Proposta":
     if not modo_apresentacao:
         st.markdown('<h1 class="hero-title">PROPOSTA COMERCIAL</h1>', unsafe_allow_html=True)
         if mapeamento_ativo:
-            st.markdown('<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">Mapeamento da Operação</h3></div>', unsafe_allow_html=True)
-            st.selectbox("Combo Rápido", ["Montar Manualmente", "Padrão Pequeno Porte"], key="tmp_combo", on_change=sync_combo)
+            st.markdown('<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">Mapeamento da Operacao</h3></div>', unsafe_allow_html=True)
+            st.selectbox("Combo Rapido", ["Montar Manualmente", "Padrão Pequeno Porte"], key="tmp_combo", on_change=sync_combo)
             c1, c2, c3 = st.columns(3)
             with c1:
                 st.number_input("PDV Convencional", 0.0, step=1.0, key="tmp_pdv_conv", value=st.session_state.m_pdv_conv, on_change=sync_state, args=("m_pdv_conv", "tmp_pdv_conv"))
@@ -317,7 +335,7 @@ elif tela == "Gerador de Proposta":
             with c2:
                 st.selectbox("TEF", ["Não utiliza", "SiTef Express", "VR TEF"], key="tmp_tef", index=["Não utiliza", "SiTef Express", "VR TEF"].index(st.session_state.m_tef), on_change=sync_state, args=("m_tef", "tmp_tef"))
                 st.number_input("Semanas", 0.0, step=1.0, key="tmp_semanas", value=st.session_state.m_semanas, on_change=sync_state, args=("m_semanas", "tmp_semanas"))
-                st.checkbox("Migração?", key="tmp_migracao", value=st.session_state.m_migracao, on_change=sync_state, args=("m_migracao", "tmp_migracao"))
+                st.checkbox("Migracao?", key="tmp_migracao", value=st.session_state.m_migracao, on_change=sync_state, args=("m_migracao", "tmp_migracao"))
                 st.checkbox("Escopo?", key="tmp_escopo", value=st.session_state.m_escopo, on_change=sync_state, args=("m_escopo", "tmp_escopo"))
             with c3:
                 st.number_input("VR Mobile", 0.0, step=1.0, key="tmp_mobile", value=st.session_state.m_mobile, on_change=sync_state, args=("m_mobile", "tmp_mobile"))
@@ -341,8 +359,8 @@ elif tela == "Gerador de Proposta":
     if not modo_apresentacao:
         c1, c2, c3 = st.columns(3) if perfil_venda == "Executivo (Rua)" else (*st.columns(2), None)
         with c1:
-            st.markdown('<div class="section-header"><span class="section-title">IMPLANTAÇÃO E SERVIÇOS</span></div>', unsafe_allow_html=True)
-            st.session_state.sel_i = st.multiselect("Serviços", list(servicos_db.keys()), default=st.session_state.sel_i)
+            st.markdown('<div class="section-header"><span class="section-title">IMPLANTACAO E SERVICOS</span></div>', unsafe_allow_html=True)
+            st.session_state.sel_i = st.multiselect("Servicos", list(servicos_db.keys()), default=st.session_state.sel_i)
             for i in st.session_state.sel_i:
                 v_u = servicos_db[i]['valor']
                 st.number_input(f"{i} (R$ {f_br(v_u)}/h)", 0.0, step=1.0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_i_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_i_{i}"))
@@ -379,12 +397,12 @@ elif tela == "Gerador de Proposta":
             if h > 0:
                 v_rate = (d.get('valor_hora_implantacao', 0.0) or v_h_base)
                 t_setup += (h * v_rate)
-                h_setup += f"<li><span>Implantação {n}</span><span class='item-detalhe'>{int(h)}h x R$ {f_br(v_rate)} | Total: R$ {f_br(h*v_rate)}</span></li>"
+                h_setup += f"<li><span>Implantacao {n}</span><span class='item-detalhe'>{int(h)}h x R$ {f_br(v_rate)} | Total: R$ {f_br(h*v_rate)}</span></li>"
             if ads > 0:
-                t_setup += ads; h_setup += f"<li><span>Taxa de Adesão {n}</span><span class='item-detalhe'>1 un x R$ {f_br(ads)} | Total: R$ {f_br(ads)}</span></li>"
+                t_setup += ads; h_setup += f"<li><span>Taxa de Adesao {n}</span><span class='item-detalhe'>1 un x R$ {f_br(ads)} | Total: R$ {f_br(ads)}</span></li>"
 
     with res_cols[0]:
-        st.markdown(f'''<div class="resumo-card"><span class="resumo-label">Investimento Implantação (Setup)</span><div class="resumo-valor">R$ {f_br(t_setup)}</div><div style="font-weight:bold;">{parcelas_setup}x de R$ {f_br(t_setup/parcelas_setup)}</div><div class="resumo-subtitulo">DETALHAMENTO SETUP</div><ul class="lista-itens">{h_setup if h_setup else "<li>Nenhum item</li>"}</ul></div>''', unsafe_allow_html=True)
+        st.markdown(f'''<div class="resumo-card"><span class="resumo-label">Investimento Implantacao (Setup)</span><div class="resumo-valor">R$ {f_br(t_setup)}</div><div style="font-weight:bold;">{parcelas_setup}x de R$ {f_br(t_setup/parcelas_setup)}</div><div class="resumo-subtitulo">DETALHAMENTO SETUP</div><ul class="lista-itens">{h_setup if h_setup else "<li>Nenhum item</li>"}</ul></div>''', unsafe_allow_html=True)
 
     t_mensal, h_m = 0.0, ""
     for n in sorted(st.session_state.sel_m):
@@ -400,7 +418,7 @@ elif tela == "Gerador de Proposta":
 
     with res_cols[1]:
         d_h = f'<div style="color:#2e7d32; font-weight:bold;">Desconto: {desc}%</div>' if (exibir_detalhe_desc and desc > 0) else '<div style="height:21px"></div>'
-        st.markdown(f'''<div class="resumo-card" style="border-top-color:#2e7d32;"><span class="resumo-label">Manutenção Mensal</span><div class="resumo-valor" style="color:#2e7d32;">R$ {f_br(t_mensal)}</div>{d_h}<div style="font-weight:bold;">Início: {faturamento_sistema}</div><div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{h_m if h_m else "<li>Nenhum</li>"}</ul></div>''', unsafe_allow_html=True)
+        st.markdown(f'''<div class="resumo-card" style="border-top-color:#2e7d32;"><span class="resumo-label">Manutencao Mensal</span><div class="resumo-valor" style="color:#2e7d32;">R$ {f_br(t_mensal)}</div>{d_h}<div style="font-weight:bold;">Inicio: {faturamento_sistema}</div><div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{h_m if h_m else "<li>Nenhum</li>"}</ul></div>''', unsafe_allow_html=True)
 
     if perfil_venda == "Executivo (Rua)":
         t_d, h_d = 0.0, ""
@@ -413,7 +431,7 @@ elif tela == "Gerador de Proposta":
             st.markdown(f'''<div class="resumo-card" style="border-top-color:#1976d2;"><span class="resumo-label">Despesas do Projeto</span><div class="resumo-valor" style="color:#1976d2;">R$ {f_br(t_d)}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.8rem;">{regra_despesas}</div><div class="resumo-subtitulo">DETALHAMENTO</div><ul class="lista-itens">{h_d if h_d else "<li>Sem despesas</li>"}</ul></div>''', unsafe_allow_html=True)
 
     # ==========================================
-    # NOVO BLOCO ISOLADO: MEDIA POR LOJA
+    # BLOCO ISOLADO: MEDIA POR LOJA
     # ==========================================
     if exibir_media_loja:
         qtd_lojas = st.session_state.get("perm_val_VR ERP PRO", 0.0)
@@ -450,9 +468,9 @@ elif tela == "Gerador de Proposta":
             st.warning("Para exibir a media por loja, e necessario incluir pelo menos 1 unidade do VR ERP PRO.")
 
 # ==========================================
-# TELA 3: CONSULTA DE PREÇO (SIMULADOR INTELIGENTE)
+# TELA 3: CONSULTA DE PRECO (SIMULADOR INTELIGENTE)
 # ==========================================
-elif tela == "Consulta de Preço":
+elif tela == "Consulta de Preco":
     st.markdown('<h1 class="hero-title">ANALISE TECNICA</h1>', unsafe_allow_html=True)
     st.markdown('<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">Simulador de Negociacao Individual</h3></div>', unsafe_allow_html=True)
     cb, cd = st.columns([2, 1])
@@ -482,8 +500,8 @@ elif tela == "Consulta de Preço":
             h_p, v_he, ads = d.get('horas_padrao', 0.0), d.get('valor_hora_implantacao', 0.0), d.get('adesao_vinculada', 0.0)
             rt = v_he if v_he > 0 else v_h_base
             t_s = (h_p * rt) + ads
-            if h_p > 0: h_s += f"<li><span>Implantação</span><span class='item-detalhe'>{h_p}h x R$ {f_br(rt)} | Total: R$ {f_br(h_p*rt)}</span></li>"
-            if ads > 0: h_s += f"<li><span>Taxa de Adesão</span><span class='item-detalhe'>1 un x R$ {f_br(ads)} | Total: R$ {f_br(ads)}</span></li>"
+            if h_p > 0: h_s += f"<li><span>Implantacao</span><span class='item-detalhe'>{h_p}h x R$ {f_br(rt)} | Total: R$ {f_br(h_p*rt)}</span></li>"
+            if ads > 0: h_s += f"<li><span>Taxa de Adesao</span><span class='item-detalhe'>1 un x R$ {f_br(ads)} | Total: R$ {f_br(ads)}</span></li>"
             
         if is_sistema:
             c1, c2, c3 = st.columns(3)
@@ -499,4 +517,4 @@ elif tela == "Consulta de Preço":
                 html_b = f'<span style="text-decoration: line-through; color: #777; font-size: 0.9rem;">R$ {f_br(v_b)}</span>' if desc_s > 0 else ""
                 st.markdown(f'<div class="resumo-card"><span>Setup / Servico Unico</span><div class="resumo-valor">R$ {f_br(v_l)}</div>{html_b}<div class="resumo-subtitulo">DETALHE</div><ul class="lista-itens"><li><span>Desconto Aplicado</span><span class="item-detalhe">{f_pct(desc_s)}%</span></li></ul></div>', unsafe_allow_html=True)
             with c2:
-                st.markdown(f'<div class="resumo-card" style="border-top-color:#262730; min-height: auto;"><span>Resumo do Desconto</span><div style="margin-top:15px;"><p><b>Economia Total Gerada:</b> R$ {f_br(v_b-v_l)}</p><p style="color:#777; font-size:0.85rem;">*Este item nao possui faturamento recorrente mensal.</p></div></div>', unsafe_allow_html=True)
+                st.markdown(f'
