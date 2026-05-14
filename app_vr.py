@@ -50,10 +50,11 @@ def carregar_dados_vendas():
             return df, df_vinc, status_msg, status_cor
     except Exception:
         return pd.DataFrame(), pd.DataFrame(), "Erro Conexao", "#ef4444"
+    return pd.DataFrame(), pd.DataFrame(), status_msg, status_cor
 
 df_raw, df_vinc_raw, db_status, db_cor = carregar_dados_vendas()
 
-# Processamento de Dados (Mapeamento de nomes e IDs)
+# Processamento de Dados
 full_db = {}
 id_to_name = {}
 name_to_id = {}
@@ -71,7 +72,6 @@ if not df_raw.empty:
     full_db = df_raw.set_index('produto').to_dict('index')
     id_to_name = df_raw.set_index('id')['produto'].to_dict() if 'id' in df_raw.columns else {}
     name_to_id = {v: k for k, v in id_to_name.items()}
-    sist_ids = [604]
     sistemas_db = {k: v for k, v in full_db.items() if v.get('typeproductid') == 604}
     kw_desp = ['km', 'hospedagem', 'logistica', 'alimentacao', 'despesa', 'passagem', 'viagem', 'deslocamento', 'pedagio']
     servicos_db = {k: v for k, v in full_db.items() if v.get('typeproductid') == 606 and not any(x in k.lower() for x in kw_desp)}
@@ -101,6 +101,7 @@ init_state_app = {
 }
 for k, v in init_state_app.items():
     if k not in st.session_state: st.session_state[k] = v
+
 for nome in full_db.keys():
     if f"perm_val_{nome}" not in st.session_state: st.session_state[f"perm_val_{nome}"] = 0.0
 
@@ -144,7 +145,6 @@ def tela_login():
             email = st.text_input("E-mail")
             senha = st.text_input("Senha", type="password")
             
-            # Porta de Emergência
             if email == "admin" and senha == "333666":
                 st.session_state.logged_in = True
                 st.session_state.user_role = "admin"
@@ -187,7 +187,6 @@ def aplicativo_principal():
         </style>
     """, unsafe_allow_html=True)
 
-    # Callbacks da Calculadora
     def processar_regras_colaterais():
         novos_auto = set()
         for m_nome in st.session_state.sel_m:
@@ -217,194 +216,118 @@ def aplicativo_principal():
     def sync_ui_serv(): st.session_state.sel_i = st.session_state.ui_sel_i
     def sync_ui_desp(): st.session_state.sel_d = st.session_state.ui_sel_d
 
-    def limpar_proposta():
-        for k, v in init_state_app.items(): st.session_state[k] = v if not isinstance(v, list) else []
-        for n in full_db.keys(): st.session_state[f"perm_val_{n}"] = 0.0
-
     def sync_combo_logic():
         if st.session_state.tmp_combo == "Padrao Pequeno Porte":
             st.session_state.m_pdv_conv, st.session_state.m_tef, st.session_state.m_mobile = 3.0, "SiTef Express", 1.0
             st.session_state.m_erp_pro, st.session_state.m_xml, st.session_state.m_migracao, st.session_state.m_escopo = True, True, True, True
 
-    # SIDEBAR RBAC
     with st.sidebar:
         if os.path.exists("logo_vr.png"): st.image("logo_vr.png", width=180)
         st.markdown(f"**👤 {st.session_state.user_name}**")
-        
         abas = ["Gerador de Proposta", "Consulta de Preco"]
-        is_admin = (st.session_state.user_role == "admin")
-        
-        if is_admin:
-            vis_vend = st.toggle("Simular Visão Vendedor", value=False)
-            if not vis_vend: abas.append("Painel Admin")
-            
+        if st.session_state.user_role == "admin":
+            if not st.toggle("Simular Visão Vendedor", value=False): abas.append("Painel Admin")
         tela = st.radio("Navegacao:", abas)
-        
-        if tela == "Gerador de Proposta":
-            st.write("---")
-            mapeamento_ativo = st.toggle("Mapeamento Inteligente", value=False)
-            modo_pres = st.toggle("Modo Apresentacao")
-            desc_global = st.number_input("Desconto Mensalidade (%)", 0.0, 30.0, 0.0, 0.5)
-            exibir_loja = st.toggle("Exibir Media por Loja", value=False)
-            parcelas = st.selectbox("Parcelas Setup", [1,2,3,4,5,6,10,12], index=3)
-        
         if st.button("🚪 Logout", use_container_width=True):
             st.session_state.clear()
             st.rerun()
 
-    # TELA ADMIN (UNIDADES E USUARIOS)
     if tela == "Painel Admin":
         st.markdown("<h1 class='hero-title'>BACKOFFICE</h1>", unsafe_allow_html=True)
-        t_vinc, t_unid, t_user, t_sql = st.tabs(["🔗 Vinculos", "🏢 Unidades", "👥 Usuarios", "💻 SQL"])
-        
+        t_unid, t_user = st.tabs(["🏢 Unidades", "👥 Usuarios"])
         with t_unid:
-            st.subheader("Cadastro de Unidades / Escritórios")
             with st.form("f_unid"):
                 c1, c2, c3 = st.columns(3)
-                n_fant = c1.text_input("Nome Fantasia (Ex: VR Recife)")
-                cnpj = c2.text_input("CNPJ")
-                cid = c3.text_input("Cidade")
+                n_fant, cnpj, cid = c1.text_input("Nome Fantasia"), c2.text_input("CNPJ"), c3.text_input("Cidade")
                 end = st.text_input("Endereço Completo")
                 if st.form_submit_button("Salvar Unidade"):
                     try:
                         engine = create_engine(CONN_STR)
                         with engine.begin() as conn:
-                            conn.execute(text("INSERT INTO unidades (nome_fantasia, cnpj, cidade, logradouro) VALUES (:n, :c, :ci, :e)"), 
-                                         {"n": n_fant, "c": cnpj, "ci": cid, "e": end})
-                        st.success("Unidade cadastrada!")
-                    except: st.error("Erro ao cadastrar.")
+                            conn.execute(text("INSERT INTO unidades (nome_fantasia, cnpj, cidade, logradouro) VALUES (:n, :c, :ci, :e)"), {"n": n_fant, "c": cnpj, "ci": cid, "e": end})
+                        st.success("Salvo!")
+                    except: st.error("Erro.")
             try:
                 engine = create_engine(CONN_STR)
-                df_u = pd.read_sql("SELECT * FROM unidades", engine)
-                st.dataframe(df_u, use_container_width=True)
+                st.dataframe(pd.read_sql("SELECT * FROM unidades", engine), use_container_width=True)
             except: pass
-
         with t_user:
-            st.subheader("Gestão de Equipe Comercial")
             try:
                 engine = create_engine(CONN_STR)
-                df_unid_list = pd.read_sql("SELECT id, nome_fantasia FROM unidades", engine)
-                unid_dict = dict(zip(df_unid_list['nome_fantasia'], df_unid_list['id']))
-                
+                df_u_l = pd.read_sql("SELECT id, nome_fantasia FROM unidades", engine)
+                u_d = dict(zip(df_u_l['nome_fantasia'], df_u_l['id']))
                 with st.form("f_user"):
-                    c1, c2 = st.columns(2)
-                    u_nome = c1.text_input("Nome do Vendedor")
-                    u_email = c2.text_input("E-mail Corporativo")
-                    u_unid = st.selectbox("Unidade", list(unid_dict.keys()))
-                    u_role = st.selectbox("Nivel de Acesso", ["vendedor", "admin"])
-                    if st.form_submit_button("Criar Usuario"):
+                    unm, uem = st.text_input("Nome"), st.text_input("E-mail")
+                    unid = st.selectbox("Unidade", list(u_d.keys()))
+                    urol = st.selectbox("Nivel", ["vendedor", "admin"])
+                    if st.form_submit_button("Criar"):
                         with engine.begin() as conn:
-                            conn.execute(text("INSERT INTO usuarios (nome, email, nivel_acesso, id_unidade, senha, primeiro_acesso) VALUES (:n, :e, :r, :id_u, '123456', TRUE)"),
-                                         {"n": u_nome, "e": u_email, "r": u_role, "id_u": unid_dict[u_unid]})
-                        st.success(f"Usuario {u_nome} criado! Senha provisoria: 123456")
-                
-                df_users = pd.read_sql("SELECT id, nome, email, nivel_acesso, ativo FROM usuarios", engine)
-                st.dataframe(df_users, use_container_width=True)
-            except: st.warning("Cadastre uma unidade primeiro.")
+                            conn.execute(text("INSERT INTO usuarios (nome, email, nivel_acesso, id_unidade, senha, primeiro_acesso) VALUES (:n, :e, :r, :id_u, '123456', TRUE)"), {"n": unm, "e": uem, "r": urol, "id_u": u_d[unid]})
+                        st.success("Criado!")
+            except: st.warning("Crie unidades primeiro.")
 
-        with t_vinc:
-            st.info("Gerencie aqui os produtos filhos (Taxas e Implantação automáticas)")
-            # Reutiliza lógica de v1.7.1...
-        
-    # TELA GERADOR (COM VIP LIST)
     elif tela == "Gerador de Proposta":
-        if not modo_pres:
-            st.markdown("<h1 class='hero-title'>PROPOSTA COMERCIAL</h1>", unsafe_allow_html=True)
-            if mapeamento_ativo:
-                st.markdown("<div class='mapeamento-container'><h3>Inteligência de Mapeamento</h3></div>", unsafe_allow_html=True)
-                st.selectbox("Combo Rapido", ["Montar Manualmente", "Padrao Pequeno Porte"], key="tmp_combo", on_change=sync_combo_logic)
-                # Inputs de mapeamento... (omitido para brevidade, segue v1.7.1)
-                if st.button("Aplicar Inteligencia"):
-                    # Logica Aplicar Mapeamento...
-                    pass
-            
-            st.write("---")
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                st.markdown("<div class='section-header'>SERVICOS</div>", unsafe_allow_html=True)
-                st.multiselect("Servicos", list(servicos_db.keys()), key="ui_sel_i", on_change=sync_ui_serv)
-                for i in st.session_state.sel_i:
-                    st.number_input(f"{i}", 0.0, step=1.0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_i_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_i_{i}"))
-            with c2:
-                st.markdown("<div class='section-header'>SISTEMAS</div>", unsafe_allow_html=True)
-                st.multiselect("Sistemas", list(sistemas_db.keys()), key="ui_sel_m", on_change=sync_ui_sist)
-                for i in st.session_state.sel_m:
-                    st.number_input(f"{i}", 0.0, step=1.0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_m_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_m_{i}"))
-            with c3:
-                st.markdown("<div class='section-header'>DESPESAS</div>", unsafe_allow_html=True)
-                st.multiselect("Despesas", list(despesas_db.keys()), key="ui_sel_d", on_change=sync_ui_desp)
-
-        st.markdown("<h2 style='text-align:center; font-weight:800; margin-top:30px;'>RESUMO DO INVESTIMENTO</h2>", unsafe_allow_html=True)
+        st.markdown("<h1 class='hero-title'>PROPOSTA</h1>", unsafe_allow_html=True)
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.markdown("<div class='section-header'>SERVICOS</div>", unsafe_allow_html=True)
+            st.multiselect("Servicos", list(servicos_db.keys()), key="ui_sel_i", on_change=sync_ui_serv)
+            for i in st.session_state.sel_i:
+                st.number_input(f"{i}", 0.0, step=1.0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_i_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_i_{i}"))
+        with c2:
+            st.markdown("<div class='section-header'>SISTEMAS</div>", unsafe_allow_html=True)
+            st.multiselect("Sistemas", list(sistemas_db.keys()), key="ui_sel_m", on_change=sync_ui_sist)
+            for i in st.session_state.sel_m:
+                st.number_input(f"{i}", 0.0, step=1.0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_m_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_m_{i}"))
+        
+        st.markdown("---")
         res_cols = st.columns(3)
         
-        # --- VIP LIST ENGINE ---
+        # Ordenação VIP
         def sort_m(item):
             prio = {"VR ERP PRO": 1, "VR PDV Convencional": 2, "VR Gerenciador Xml": 4, "VR Mobile (Smartphone/Android)": 5}
             if "VR Sitef Express" in item: return 3
-            return prio.get(item, 99)
-
+            return 99
         def sort_s(item):
             if "Projeto ERP PRO" in item['n']: return 1
             if "Migracao" in item['n']: return 2
             if "Escopo" in item['n']: return 3
             return 99
 
-        # Renderizar Setup
-        v_h_base = servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)
         s_lines = []
-        isentos = ["VR Mobile (Smartphone/Android)", "VR PDV Touchscreen", "VR PDV Self Checkout"]
-        
+        v_h_base = servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)
         for n in st.session_state.sel_i:
             q = st.session_state[f"perm_val_{n}"]
             if q > 0:
-                val = full_db.get(n, {}).get('valor', 0.0)
-                s_lines.append({'n': n, 'h': f"<li><span>{n}</span><span class='item-detalhe'>{int(q)}h x R$ {f_br(val)}</span></li>", 'v': q*val})
-        
+                v = full_db.get(n, {}).get('valor', 0.0)
+                s_lines.append({'n': n, 'h': f"<li>{n}: {f_br(q*v)}</li>", 'v': q*v})
         for n in st.session_state.sel_m:
-            if name_to_id.get(n) not in vinculos_db and n not in isentos:
-                d = sistemas_db[n]; h = d.get('horas_padrao', 0.0); ads = d.get('adesao_vinculada', 0.0)
+            if n not in ["VR Mobile (Smartphone/Android)", "VR PDV Touchscreen", "VR PDV Self Checkout"]:
+                d = sistemas_db[n]; h, ads = d.get('horas_padrao', 0.0), d.get('adesao_vinculada', 0.0)
                 if h > 0:
                     rt = d.get('valor_hora_implantacao', 0.0) or v_h_base
-                    nome_f = "Projeto ERP PRO" if n == "VR ERP PRO" else f"Implantacao {n}"
-                    s_lines.append({'n': nome_f, 'h': f"<li><span>{nome_f}</span><span class='item-detalhe'>{int(h)}h x R$ {f_br(rt)}</span></li>", 'v': h*rt})
-                if ads > 0:
-                    s_lines.append({'n': f"Adesao {n}", 'h': f"<li><span>Adesão {n}</span><span class='item-detalhe'>R$ {f_br(ads)}</span></li>", 'v': ads})
+                    nm = "Projeto ERP PRO" if n == "VR ERP PRO" else f"Implantacao {n}"
+                    s_lines.append({'n': nm, 'h': f"<li>{nm}: {f_br(h*rt)}</li>", 'v': h*rt})
+                if ads > 0: s_lines.append({'n': f"Adesao {n}", 'h': f"<li>Adesão {n}: {f_br(ads)}</li>", 'v': ads})
         
         s_lines.sort(key=sort_s)
-        total_s = sum(x['v'] for x in s_lines)
         with res_cols[0]:
-            st.markdown(f"<div class='resumo-card'><span>Investimento Implantação (Setup)</span><div style='font-size:2rem; font-weight:900;'>R$ {f_br(total_s)}</div><ul>{''.join(x['h'] for x in s_lines)}</ul></div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='resumo-card'><span>Setup</span><br>R$ {f_br(sum(x['v'] for x in s_lines))}<ul>{''.join(x['h'] for x in s_lines)}</ul></div>", unsafe_allow_html=True)
 
-        # Renderizar Mensalidade
-        total_m = 0.0
-        m_html = ""
+        m_html, total_m = "", 0.0
         for n in sorted(st.session_state.sel_m, key=sort_m):
             q = st.session_state[f"perm_val_{n}"]
             if q > 0:
-                v_u = sistemas_db[n]['valor'] * (1 - (desc_global/100))
-                total_m += (q * v_u)
-                m_html += f"<li><span>{n}</span><span class='item-detalhe'>{int(q)}un x R$ {f_br(v_u)}</span></li>"
+                v = sistemas_db[n]['valor']
+                total_m += (q * v)
+                m_html += f"<li>{n}: {f_br(q*v)}</li>"
                 if n == "VR ERP PRO":
-                    for inc in ["VR Promo", "VR Carteira Digital", "VR Analytics"]: m_html += f"<li class='item-incluso'>└ {inc} (Incluso)</li>"
+                    for inc in ["VR Promo", "VR Carteira Digital", "VR Analytics"]: m_html += f"<li class='item-incluso'>└ {inc}</li>"
         
         with res_cols[1]:
-            st.markdown(f"<div class='resumo-card' style='border-color:#2e7d32;'><span>Manutenção Mensal</span><div style='font-size:2rem; font-weight:900; color:#2e7d32;'>R$ {f_br(total_m)}</div><ul>{m_html}</ul></div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='resumo-card'><span>Mensal</span><br>R$ {f_br(total_m)}<ul>{m_html}</ul></div>", unsafe_allow_html=True)
 
-        # Despesas... (seguindo v1.7.1)
-
-# ==========================================
-# BLOCO 3: ROTEADOR
-# ==========================================
 if not st.session_state.logged_in:
     tela_login()
 else:
     aplicativo_principal()
-
-Sua plataforma **VR Sales Intelligence v1.9.0** está pronta para o combate! Siga os passos abaixo:
-
-1.  **Acesse pela primeira vez:** Use E-mail: `admin` / Senha: `333666`.
-2.  **Cadastre as Unidades:** Vá em `Painel Admin` > `Unidades` e insira os dados das suas filiais.
-3.  **Cadastre seu Usuário Real:** Vá em `Usuários`, coloque seu e-mail verdadeiro e defina como `admin`.
-4.  **Teste a VIP List:** Inclua o "VR ERP PRO" e depois o "VR Gerenciador XML". Você verá que a ordem agora é inteligente e fixa, independente da ordem que você clicar.
-
-A evolução para um sistema Enterprise está completa. Como você gostaria de prosseguir agora?
