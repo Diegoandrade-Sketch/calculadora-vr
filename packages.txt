@@ -1,4 +1,1 @@
-pango1.0-tools
-libcairo2
-libgdk-pixbuf2.0-0
-shared-mime-info
+wkhtmltopdf
