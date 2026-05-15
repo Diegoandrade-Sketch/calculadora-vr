@@ -6,11 +6,10 @@ import os
 import json
 import re
 import datetime
-import io
 
-# Tenta importar o motor nativo de PDF
+# Tenta importar o motor FPDF2 nativo e à prova de falhas
 try:
-    from xhtml2pdf import pisa
+    from fpdf import FPDF
     PDF_ENGINE_AVAILABLE = True
 except ImportError:
     PDF_ENGINE_AVAILABLE = False
@@ -20,7 +19,7 @@ except ImportError:
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-APP_VERSION = "v2.1.0 - Native PDF Engine"
+APP_VERSION = "v2.2.0 - Pure Python PDF Engine"
 CACHE_FILE = "cache_vr.json"
 
 try:
@@ -211,111 +210,154 @@ def tela_login():
                         except Exception: st.error("Ocorreu um erro ao validar os dados.")
 
 # ==========================================
-# BLOCO 2: MÓDULO GERADOR DE PDF (XHTML2PDF)
+# BLOCO 2: MÓDULO GERADOR DE PDF (FPDF2 - NATIVO E 100% BLINDADO)
 # ==========================================
 def gerar_pdf_proposta(dados):
-    cliente = dados.get('nome_cliente', "SUPERMERCADO PARCEIRO")
-    cnpj = dados.get('cnpj', "Não informado")
-    vendedor = st.session_state.user_name
-    unidade = st.session_state.unidade_nome
-    data_hoje = datetime.date.today().strftime("%d de %B de %Y")
-    
-    html_template = f"""
-    <!DOCTYPE html>
-    <html lang="pt-BR">
-    <head>
-        <meta charset="UTF-8">
-        <style>
-            @page {{ size: A4; margin: 0; background-color: #fcfcfc; }}
-            body {{ font-family: Helvetica, Arial, sans-serif; margin: 0; padding: 0; color: #333; }}
-            
-            /* CAPA */
-            .cover {{ background-color: #262730; color: #ffffff; padding: 80mm 20mm 20mm 35mm; height: 100%; }}
-            .cover-title {{ font-size: 38pt; font-weight: bold; color: #ffffff; margin: 0; }}
-            .cover-subtitle {{ font-size: 20pt; color: #ff6600; margin-bottom: 20mm; }}
-            
-            /* RESUMO */
-            .header-logo {{ font-size: 20pt; font-weight: bold; color: #ff6600; padding: 15mm 15mm 5mm 15mm; border-bottom: 2px solid #ff6600; background-color: #fcfcfc; }}
-            .content {{ padding: 10mm 15mm; background-color: #fcfcfc; }}
-            
-            td {{ padding: 10px; vertical-align: top; border: 1px solid #e0e0e0; background-color: #ffffff; }}
-            .card-title {{ font-size: 10pt; color: #777; font-weight: bold; text-transform: uppercase; margin-bottom: 5px; }}
-            .val {{ font-size: 16pt; font-weight: bold; margin-bottom: 5px; display: block; }}
-            .val-setup {{ color: #ff6600; }}
-            .val-mensal {{ color: #2e7d32; }}
-            .val-despesa {{ color: #1976d2; }}
-            .sub-val {{ font-size: 8.5pt; font-weight: bold; color: #333; margin-bottom: 15px; display: block; }}
-            
-            ul {{ padding-left: 15px; margin: 0; }}
-            li {{ font-size: 8.5pt; margin-bottom: 5px; color: #444; }}
-            
-            .footer {{ margin-top: 30mm; font-size: 9pt; color: #888; text-align: center; border-top: 1px solid #eee; padding-top: 5mm; }}
-        </style>
-    </head>
-    <body>
-        <div class="cover">
-            <div style="font-size: 24pt; color: #ff6600; font-weight: bold; margin-bottom: 10mm;">VR SOFTWARE</div>
-            <div class="cover-title">PROPOSTA COMERCIAL</div>
-            <div class="cover-subtitle">RESUMO DE INVESTIMENTO</div>
-            
-            <div style="margin-top: 40mm;">
-                <div style="font-size: 12pt; color: #aaaaaa; margin-bottom: 2mm;">Apresentado para:</div>
-                <div style="font-size: 18pt; font-weight: bold; color: #ffffff;">{cliente}</div>
-                <div style="font-size: 12pt; color: #dddddd; margin-bottom: 5mm;">CNPJ: {cnpj}</div>
-                <div style="font-size: 14pt; color: #aaaaaa;">{data_hoje}</div>
-            </div>
-            
-            <div style="margin-top: 15mm;">
-                <div style="font-size: 12pt; color: #aaaaaa; margin-bottom: 2mm;">Elaborado por:</div>
-                <div style="font-size: 14pt; color: #ffffff; font-weight: bold;">{vendedor}</div>
-                <div style="font-size: 12pt; color: #ff6600;">{unidade}</div>
-            </div>
-        </div>
-        
-        <pdf:nextpage />
-        
-        <div class="header-logo">VR SOFTWARE<br><span style="font-size: 12pt; color: #333;">RESUMO EXECUTIVO DE INVESTIMENTO</span></div>
-        <div class="content">
-            <table width="100%" cellpadding="8" cellspacing="5">
-                <tr>
-                    <td width="33%" style="border-top: 6px solid #ff6600;">
-                        <div class="card-title">Implantação (Setup)</div>
-                        <span class="val val-setup">R$ {dados.get('valor_setup', '0,00')}</span><br>
-                        <span class="sub-val">{dados.get('parcelas', '1')}x parcelas</span><br><br>
-                        <ul>{dados.get('html_setup', '')}</ul>
-                    </td>
-                    <td width="33%" style="border-top: 6px solid #2e7d32;">
-                        <div class="card-title">Manutenção Mensal</div>
-                        <span class="val val-mensal">R$ {dados.get('valor_mensal', '0,00')}</span><br>
-                        <span class="sub-val">Início: {dados.get('faturamento', 'Na assinatura')}</span><br><br>
-                        <ul>{dados.get('html_mensal', '')}</ul>
-                    </td>
-                    <td width="33%" style="border-top: 6px solid #1976d2;">
-                        <div class="card-title">Despesas Previstas</div>
-                        <span class="val val-despesa">R$ {dados.get('valor_despesa', '0,00')}</span><br>
-                        <span class="sub-val">{dados.get('regra_desp', '')}</span><br><br>
-                        <ul>{dados.get('html_despesa', '')}</ul>
-                    </td>
-                </tr>
-            </table>
-            
-            <div class="footer">
-                <p>Este documento é um resumo executivo da simulação. A contratação está sujeita à análise e assinatura do Contrato de Licenciamento.</p>
-                <table width="100%" style="margin-top: 20mm; text-align: center;">
-                    <tr>
-                        <td style="border: none;"><div style="border-top: 1px solid #333; width: 80%; margin: 0 auto; padding-top: 2mm;">Assinatura do Cliente</div></td>
-                        <td style="border: none;"><div style="border-top: 1px solid #333; width: 80%; margin: 0 auto; padding-top: 2mm;">VR Software - Autorizado</div></td>
-                    </tr>
-                </table>
-            </div>
-        </div>
-    </body>
-    </html>
-    """
-    pdf_file = io.BytesIO()
-    pisa.CreatePDF(io.StringIO(html_template), dest=pdf_file)
-    return pdf_file.getvalue()
+    class PDFReport(FPDF):
+        def footer(self):
+            self.set_y(-15)
+            self.set_font("Helvetica", "I", 8)
+            self.set_text_color(150, 150, 150)
+            self.cell(0, 10, "Este documento e um resumo executivo. A contratacao esta sujeita a assinatura de Contrato.", 0, 0, "C")
 
+    pdf = PDFReport()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    
+    # ------------------
+    # PÁGINA 1: CAPA
+    # ------------------
+    pdf.add_page()
+    # Fundo Cinza Escuro (Idêntico ao seu modelo original)
+    pdf.set_fill_color(38, 39, 48)
+    pdf.rect(0, 0, 210, 297, 'F')
+    # Faixa Lateral Laranja
+    pdf.set_fill_color(255, 102, 0)
+    pdf.rect(0, 0, 15, 297, 'F')
+    
+    # Títulos
+    pdf.set_font("Helvetica", "B", 24)
+    pdf.set_text_color(255, 102, 0)
+    pdf.set_xy(30, 80)
+    pdf.cell(0, 10, "VR SOFTWARE", ln=1)
+    
+    pdf.set_font("Helvetica", "B", 36)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_x(30)
+    pdf.cell(0, 15, "PROPOSTA COMERCIAL", ln=1)
+    
+    pdf.set_font("Helvetica", "", 18)
+    pdf.set_text_color(255, 102, 0)
+    pdf.set_x(30)
+    pdf.cell(0, 10, "RESUMO DE INVESTIMENTO", ln=1)
+    
+    # Bloco do Cliente
+    pdf.set_xy(30, 150)
+    pdf.set_font("Helvetica", "", 12)
+    pdf.set_text_color(150, 150, 150)
+    pdf.cell(0, 8, "Apresentado para:", ln=1)
+    
+    pdf.set_font("Helvetica", "B", 18)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_x(30)
+    # Removemos acentos das strings complexas para garantir fluidez na geração nativa
+    pdf.cell(0, 8, str(dados.get('nome_cliente', '')).upper(), ln=1)
+    
+    pdf.set_font("Helvetica", "", 12)
+    pdf.set_text_color(200, 200, 200)
+    pdf.set_x(30)
+    pdf.cell(0, 8, "CNPJ: " + str(dados.get('cnpj', '')), ln=1)
+    pdf.set_x(30)
+    pdf.cell(0, 8, "Data: " + datetime.date.today().strftime("%d/%m/%Y"), ln=1)
+    
+    # Bloco do Vendedor
+    pdf.set_xy(30, 195)
+    pdf.set_font("Helvetica", "", 12)
+    pdf.set_text_color(150, 150, 150)
+    pdf.cell(0, 8, "Elaborado por:", ln=1)
+    
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_x(30)
+    pdf.cell(0, 8, str(st.session_state.user_name), ln=1)
+    
+    pdf.set_font("Helvetica", "", 12)
+    pdf.set_text_color(255, 102, 0)
+    pdf.set_x(30)
+    pdf.cell(0, 8, str(st.session_state.unidade_nome), ln=1)
+    
+    # ------------------
+    # PÁGINA 2: RESUMO EXECUTIVO (OS CARDS EM TEXTO)
+    # ------------------
+    pdf.add_page()
+    pdf.set_fill_color(255, 255, 255)
+    pdf.rect(0, 0, 210, 297, 'F')
+    
+    # Header da Pagina 2
+    pdf.set_font("Helvetica", "B", 18)
+    pdf.set_text_color(255, 102, 0)
+    pdf.cell(0, 8, "VR SOFTWARE", ln=1)
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.set_text_color(38, 39, 48)
+    pdf.cell(0, 8, "RESUMO DE INVESTIMENTOS DA OPERACAO", ln=1)
+    pdf.set_draw_color(255, 102, 0)
+    pdf.line(10, 30, 200, 30)
+    pdf.ln(10)
+    
+    # Função interna para desenhar um "Card" em formato de texto limpo
+    def desenhar_bloco(titulo, valor, subtitulo, lista_itens, cor_r, cor_g, cor_b):
+        # Titulo do Bloco
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.set_text_color(100, 100, 100)
+        pdf.cell(0, 8, titulo.upper(), ln=1)
+        
+        # Valor Principal
+        pdf.set_font("Helvetica", "B", 18)
+        pdf.set_text_color(cor_r, cor_g, cor_b)
+        pdf.cell(0, 8, "R$ " + str(valor), ln=1)
+        
+        # Subtitulo (Ex: Parcelas)
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_text_color(50, 50, 50)
+        pdf.cell(0, 6, str(subtitulo), ln=1)
+        pdf.ln(2)
+        
+        # Lista de Itens do Bloco
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(60, 60, 60)
+        if not lista_itens:
+            pdf.cell(5)
+            pdf.cell(0, 6, "- Nenhum item selecionado", ln=1)
+        else:
+            for item in lista_itens:
+                pdf.cell(5)
+                # O multi_cell garante que textos longos pulem de linha sozinhos
+                pdf.multi_cell(0, 6, "- " + str(item))
+                
+        pdf.ln(4)
+        pdf.set_draw_color(220, 220, 220)
+        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+        pdf.ln(4)
+
+    # Chamando os 3 blocos
+    desenhar_bloco("1. Implantacao (Setup)", dados.get('valor_setup'), dados.get('parcelas') + "x parcelas", dados.get('lista_setup'), 255, 102, 0)
+    desenhar_bloco("2. Manutencao Mensal", dados.get('valor_mensal'), "Inicio: " + dados.get('faturamento'), dados.get('lista_mensal'), 46, 125, 50)
+    desenhar_bloco("3. Despesas Previstas", dados.get('valor_despesa'), dados.get('regra_desp'), dados.get('lista_despesa'), 25, 118, 210)
+    
+    # Área de Assinaturas
+    pdf.ln(15)
+    pdf.set_draw_color(100, 100, 100)
+    pdf.line(20, pdf.get_y(), 90, pdf.get_y())
+    pdf.line(120, pdf.get_y(), 190, pdf.get_y())
+    
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.set_text_color(100, 100, 100)
+    pdf.set_x(20)
+    pdf.cell(70, 5, "Assinatura do Cliente", 0, 0, 'C')
+    pdf.set_x(120)
+    pdf.cell(70, 5, "VR Software - Autorizado", 0, 1, 'C')
+
+    # Retorna o PDF construído diretamente em memória (bytes)
+    return bytes(pdf.output())
 
 # ==========================================
 # BLOCO 3: APLICATIVO PRINCIPAL (UI E LÓGICA)
@@ -536,7 +578,7 @@ def aplicativo_principal():
 
         st.markdown("""<h1 class="hero-title">PROPOSTA COMERCIAL</h1>""", unsafe_allow_html=True)
         
-        # --- NOVO BLOCO: DADOS DO CLIENTE PARA O PDF ---
+        # --- DADOS DO CLIENTE PARA O PDF ---
         st.markdown("""<div class="cliente-container"><h3 style="margin:0; color:#262730;">Dados do Cliente</h3></div>""", unsafe_allow_html=True)
         col_cli1, col_cli2 = st.columns([2, 1])
         nome_cliente_input = col_cli1.text_input("Razão Social / Nome Fantasia", placeholder="Ex: Supermercados Dois Irmãos")
@@ -619,14 +661,19 @@ def aplicativo_principal():
         t_setup = 0.0
         v_h_base = servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)
         lista_setup_pre_ordenacao = []
+        
+        # Array limpo criado especialmente para o motor nativo PDF
+        lista_setup_pdf = [] 
 
         for n in st.session_state.sel_i:
             q = st.session_state[f"perm_val_{n}"]
             if q > 0:
                 v_u = servicos_db.get(n, full_db.get(n, {'valor':0.0}))['valor']
                 t_setup += (q * v_u)
+                
                 html_linha = f"<li><span class='item-name'>{n}</span><br><span class='item-detail'>{int(q)}h x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_u)}</span></li>"
                 lista_setup_pre_ordenacao.append({'nome_exibicao': n, 'html': html_linha})
+                lista_setup_pdf.append(f"{n} ({int(q)}h x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_u)})")
         
         itens_isentos_setup = ["VR Mobile (Smartphone/Android)", "VR PDV Touchscreen", "VR PDV Self Checkout"]
 
@@ -640,10 +687,12 @@ def aplicativo_principal():
                     nome_exibicao = "Projeto ERP PRO" if n == "VR ERP PRO" else f"Implantacao {n}"
                     html_linha = f"<li><span class='item-name'>{nome_exibicao}</span><br><span class='item-detail'>{int(h)}h x R$ {f_br(v_rate)} | Total: R$ {f_br(h*v_rate)}</span></li>"
                     lista_setup_pre_ordenacao.append({'nome_exibicao': nome_exibicao, 'html': html_linha})
+                    lista_setup_pdf.append(f"{nome_exibicao} ({int(h)}h x R$ {f_br(v_rate)} | Total: R$ {f_br(h*v_rate)})")
                 if ads > 0:
                     t_setup += ads
                     html_linha = f"<li><span class='item-name'>Taxa de Adesao {n}</span><br><span class='item-detail'>1 un x R$ {f_br(ads)} | Total: R$ {f_br(ads)}</span></li>"
                     lista_setup_pre_ordenacao.append({'nome_exibicao': f"Taxa de Adesao {n}", 'html': html_linha})
+                    lista_setup_pdf.append(f"Taxa de Adesao {n} (1 un x R$ {f_br(ads)} | Total: R$ {f_br(ads)})")
 
         lista_setup_pre_ordenacao.sort(key=get_prioridade_setup)
         h_setup = "".join(item['html'] for item in lista_setup_pre_ordenacao)
@@ -653,6 +702,7 @@ def aplicativo_principal():
 
         t_mensal, h_m = 0.0, ""
         sistemas_ordenados = sorted(st.session_state.sel_m, key=get_prioridade_mensal)
+        lista_mensal_pdf = []
         
         for n in sistemas_ordenados:
             q = st.session_state[f"perm_val_{n}"]
@@ -660,22 +710,30 @@ def aplicativo_principal():
                 v_u = sistemas_db[n]['valor']; v_liq_u = v_u * (1 - (desc/100))
                 t_mensal += (q * v_liq_u)
                 h_m += f"<li><span class='item-name'>{n}</span><br><span class='item-detail'>{int(q)} un x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_liq_u)}</span></li>"
+                lista_mensal_pdf.append(f"{n} ({int(q)} un x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_liq_u)})")
+                
                 vincs = [id_to_name.get(v['id_filho']) for v in vinculos_db.get(name_to_id.get(n), []) if v['tipo'] == 'incluso']
-                for inc in vincs: h_m += f"<li><span style='color: #888; font-style: italic; font-size: 8pt;'>└ {inc} (Incluso)</span></li>"
+                for inc in vincs: 
+                    h_m += f"<li><span style='color: #888; font-style: italic; font-size: 8pt;'>└ {inc} (Incluso)</span></li>"
+                    lista_mensal_pdf.append(f"   > {inc} (Incluso)")
                 if n == "VR ERP PRO" and not vincs:
-                    for inc in ["VR Promo", "VR Carteira Digital", "VR Analytics"]: h_m += f"<li><span style='color: #888; font-style: italic; font-size: 8pt;'>└ {inc} (Incluso)</span></li>"
+                    for inc in ["VR Promo", "VR Carteira Digital", "VR Analytics"]: 
+                        h_m += f"<li><span style='color: #888; font-style: italic; font-size: 8pt;'>└ {inc} (Incluso)</span></li>"
+                        lista_mensal_pdf.append(f"   > {inc} (Incluso)")
 
         with res_cols[1]:
             d_h = f"""<div style="color:#2e7d32; font-weight:bold;">Desconto: {desc}%</div>""" if (exibir_detalhe_desc and desc > 0) else """<div style="height:21px"></div>"""
             st.markdown(f"""<div class="resumo-card" style="border-top-color:#2e7d32;"><span class="resumo-label">Manutencao Mensal</span><div class="resumo-valor" style="color:#2e7d32;">R$ {f_br(t_mensal)}</div>{d_h}<div style="font-weight:bold;">Inicio: {faturamento_sistema}</div><div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{h_m if h_m else "<li>Nenhum</li>"}</ul></div>""", unsafe_allow_html=True)
 
         t_d, h_d = 0.0, ""
+        lista_despesa_pdf = []
         if perfil_venda == "Executivo (Rua)":
             for n in st.session_state.sel_d:
                 q = st.session_state[f"perm_val_{n}"]
                 if q > 0:
                     v_u = despesas_db[n]['valor']; t_d += (q * v_u)
                     h_d += f"<li><span class='item-name'>{n}</span><br><span class='item-detail'>{int(q)} un x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_u)}</span></li>"
+                    lista_despesa_pdf.append(f"{n} ({int(q)} un x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_u)})")
             with res_cols[2]:
                 st.markdown(f"""<div class="resumo-card" style="border-top-color:#1976d2;"><span class="resumo-label">Despesas do Projeto</span><div class="resumo-valor" style="color:#1976d2;">R$ {f_br(t_d)}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.8rem;">{regra_despesas}</div><div class="resumo-subtitulo">DETALHAMENTO</div><ul class="lista-itens">{h_d if h_d else "<li>Sem despesas</li>"}</ul></div>""", unsafe_allow_html=True)
 
@@ -689,28 +747,28 @@ def aplicativo_principal():
                 if perfil_venda == "Executivo (Rua)":
                     with m_cols[2]: st.markdown(f"""<div style="background-color:#ffffff; border-left: 6px solid #1976d2; padding:15px; border-radius:5px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);"><span style="font-size:0.85rem; font-weight:bold; color:#777;">DESPESAS POR LOJA</span><br><span style="font-size:1.6rem; font-weight:900; color:#333;">R$ {f_br(t_d / qtd_lojas)}</span></div>""", unsafe_allow_html=True)
 
-        # --- BOTÃO DE EXPORTAÇÃO PDF ---
+        # --- BOTÃO EXPORTAÇÃO PDF COM MOTOR NATIVO ---
         st.write("---")
         st.markdown("<h3 style='text-align:center; color:#262730;'>Exportação e Formalização</h3>", unsafe_allow_html=True)
         col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
         
         with col_btn2:
             if not PDF_ENGINE_AVAILABLE:
-                st.warning("⚠️ O módulo xhtml2pdf não está instalado. Adicione 'xhtml2pdf' no arquivo requirements.txt do GitHub.")
+                st.warning("⚠️ Adicione 'fpdf2' no arquivo requirements.txt do seu repositório.")
             elif not nome_cliente_input:
                 st.info("👆 Preencha o campo 'Razão Social / Nome Fantasia' no topo da tela para liberar o download da proposta.")
             else:
                 dados_pdf = {
                     'nome_cliente': nome_cliente_input,
                     'cnpj': cnpj_formatado,
-                    'html_setup': h_setup,
+                    'lista_setup': lista_setup_pdf,
                     'valor_setup': f_br(t_setup),
-                    'parcelas': parcelas_setup,
-                    'html_mensal': h_m,
+                    'parcelas': str(parcelas_setup),
+                    'lista_mensal': lista_mensal_pdf,
                     'valor_mensal': f_br(t_mensal),
                     'faturamento': faturamento_sistema,
-                    'html_despesa': h_d if h_d else "<li>Sem despesas previstas</li>",
-                    'valor_despesa': f_br(t_d),
+                    'lista_despesa': lista_despesa_pdf,
+                    'valor_despesa': f_br(t_d) if 't_d' in locals() else "0,00",
                     'regra_desp': regra_despesas
                 }
                 
@@ -718,14 +776,14 @@ def aplicativo_principal():
                     pdf_bytes = gerar_pdf_proposta(dados_pdf)
                     nome_arquivo = f"Proposta_VR_{nome_cliente_input.replace(' ', '_')}.pdf"
                     st.download_button(
-                        label="📥 Baixar Proposta em PDF",
+                        label="📥 Baixar Proposta em PDF (Alta Qualidade)",
                         data=pdf_bytes,
                         file_name=nome_arquivo,
                         mime="application/pdf",
                         use_container_width=True
                     )
                 except Exception as e:
-                    st.error(f"Erro ao gerar o documento PDF: {str(e)}")
+                    st.error(f"Erro ao desenhar o PDF: {str(e)}")
 
     # TELA 3: CONSULTA DE PRECO
     elif tela == "Consulta de Preco":
