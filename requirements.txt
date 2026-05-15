@@ -1,8 +1,5 @@
 streamlit
 pandas
-openpyxl
-streamlit
-pandas
+sqlalchemy
 psycopg2-binary
-SQLAlchemy
-pdfkit
+xhtml2pdf
