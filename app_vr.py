@@ -331,9 +331,19 @@ def gerar_pdf_proposta(dados):
     </body>
     </html>
     """
-    pdf_file = io.BytesIO()
-    HTML(string=html_template).write_pdf(pdf_file)
-    return pdf_file.getvalue()
+   # Configuracoes da pagina (Remove as margens brancas padroes para a capa preencher tudo)
+    opcoes_pdf = {
+        'page-size': 'A4',
+        'margin-top': '0mm',
+        'margin-right': '0mm',
+        'margin-bottom': '0mm',
+        'margin-left': '0mm',
+        'encoding': "UTF-8",
+        'disable-smart-shrinking': ''
+    }
+    # Gera o PDF em bytes direto da memoria
+    pdf_bytes = pdfkit.from_string(html_template, False, options=opcoes_pdf)
+    return pdf_bytes
 
 # ==========================================
 # BLOCO 3: APLICATIVO PRINCIPAL (UI E LÓGICA)
@@ -713,7 +723,7 @@ def aplicativo_principal():
         col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
         
         with col_btn2:
-            if not WEASYPRINT_AVAILABLE:
+            if not PDF_ENGINE_AVAILABLE:
                 st.warning("⚠️ O módulo WeasyPrint não está instalado no servidor. O PDF não pode ser gerado. Execute: `pip install weasyprint`.")
             elif not nome_cliente_input:
                 st.info("👆 Preencha o campo 'Razão Social / Nome Fantasia' no topo da tela para liberar o download da proposta.")
