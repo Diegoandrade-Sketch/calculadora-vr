@@ -5,4 +5,4 @@ streamlit
 pandas
 psycopg2-binary
 SQLAlchemy
-weasyprint
+pdfkit
