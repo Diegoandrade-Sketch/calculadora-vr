@@ -8,8 +8,9 @@ import re
 import datetime
 import io
 
+# Tenta importar o motor nativo de PDF
 try:
-    import pdfkit
+    from xhtml2pdf import pisa
     PDF_ENGINE_AVAILABLE = True
 except ImportError:
     PDF_ENGINE_AVAILABLE = False
@@ -19,7 +20,7 @@ except ImportError:
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-APP_VERSION = "v2.1.0 - PDF Export Engine"
+APP_VERSION = "v2.1.0 - Native PDF Engine"
 CACHE_FILE = "cache_vr.json"
 
 try:
@@ -210,7 +211,7 @@ def tela_login():
                         except Exception: st.error("Ocorreu um erro ao validar os dados.")
 
 # ==========================================
-# BLOCO 2: MÓDULO GERADOR DE PDF (WEASYPRINT)
+# BLOCO 2: MÓDULO GERADOR DE PDF (XHTML2PDF)
 # ==========================================
 def gerar_pdf_proposta(dados):
     cliente = dados.get('nome_cliente', "SUPERMERCADO PARCEIRO")
@@ -226,124 +227,95 @@ def gerar_pdf_proposta(dados):
         <meta charset="UTF-8">
         <style>
             @page {{ size: A4; margin: 0; background-color: #fcfcfc; }}
-            *, *::before, *::after {{ box-sizing: border-box; }}
-            body {{ font-family: 'Helvetica', 'Arial', sans-serif; margin: 0; padding: 0; color: #333; }}
+            body {{ font-family: Helvetica, Arial, sans-serif; margin: 0; padding: 0; color: #333; }}
             
             /* CAPA */
-            .cover {{ width: 100%; height: 297mm; background-color: #262730; color: #ffffff; position: relative; page-break-after: always; }}
-            .cover-accent {{ position: absolute; top: 0; left: 0; width: 15mm; height: 297mm; background-color: #ff6600; }}
-            .cover-content {{ padding: 80mm 20mm 20mm 35mm; }}
-            .cover-title {{ font-size: 42pt; font-weight: bold; margin: 0 0 5mm 0; color: #ffffff; text-transform: uppercase; line-height: 1.1; }}
-            .cover-subtitle {{ font-size: 24pt; color: #ff6600; margin-bottom: 30mm; }}
-            .cover-client {{ font-size: 18pt; font-weight: bold; margin-bottom: 2mm; color: #ffffff; }}
-            .cover-date {{ font-size: 14pt; color: #aaaaaa; }}
+            .cover {{ background-color: #262730; color: #ffffff; padding: 80mm 20mm 20mm 35mm; height: 100%; }}
+            .cover-title {{ font-size: 38pt; font-weight: bold; color: #ffffff; margin: 0; }}
+            .cover-subtitle {{ font-size: 20pt; color: #ff6600; margin-bottom: 20mm; }}
             
             /* RESUMO */
-            .page-content {{ padding: 15mm 15mm; background-color: #fcfcfc; }}
-            .header {{ border-bottom: 2px solid #ff6600; padding-bottom: 5mm; margin-bottom: 10mm; }}
-            .header-logo {{ font-size: 20pt; font-weight: bold; color: #ff6600; }}
-            .header-title {{ font-size: 14pt; color: #262730; text-transform: uppercase; margin-top: 2mm; }}
+            .header-logo {{ font-size: 20pt; font-weight: bold; color: #ff6600; padding: 15mm 15mm 5mm 15mm; border-bottom: 2px solid #ff6600; background-color: #fcfcfc; }}
+            .content {{ padding: 10mm 15mm; background-color: #fcfcfc; }}
             
-            /* CARDS */
-            .cards-container {{ display: table; width: 100%; border-spacing: 4mm 0; }}
-            .card {{ display: table-cell; width: 33%; background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 6mm; vertical-align: top; }}
-            .card-setup {{ border-top: 6px solid #ff6600; }}
-            .card-mensal {{ border-top: 6px solid #2e7d32; }}
-            .card-despesa {{ border-top: 6px solid #1976d2; }}
+            td {{ padding: 10px; vertical-align: top; border: 1px solid #e0e0e0; background-color: #ffffff; }}
+            .card-title {{ font-size: 10pt; color: #777; font-weight: bold; text-transform: uppercase; margin-bottom: 5px; }}
+            .val {{ font-size: 16pt; font-weight: bold; margin-bottom: 5px; display: block; }}
+            .val-setup {{ color: #ff6600; }}
+            .val-mensal {{ color: #2e7d32; }}
+            .val-despesa {{ color: #1976d2; }}
+            .sub-val {{ font-size: 8.5pt; font-weight: bold; color: #333; margin-bottom: 15px; display: block; }}
             
-            .card-title {{ font-size: 9pt; color: #777; font-weight: bold; text-transform: uppercase; margin-bottom: 2mm; }}
-            .card-value {{ font-size: 16pt; font-weight: 900; margin-bottom: 2mm; }}
-            .val-setup {{ color: #ff6600; }} .val-mensal {{ color: #2e7d32; }} .val-despesa {{ color: #1976d2; }}
+            ul {{ padding-left: 15px; margin: 0; }}
+            li {{ font-size: 8.5pt; margin-bottom: 5px; color: #444; }}
             
-            .card-list {{ list-style-type: none; padding: 0; margin: 5mm 0 0 0; }}
-            .card-list li {{ font-size: 8.5pt; padding: 2mm 0; border-bottom: 1px dashed #eee; }}
-            .item-name {{ font-weight: bold; display: block; }}
-            .item-detail {{ font-size: 7.5pt; color: #666; display: block; margin-top: 1mm; background-color: #f9f9f9; padding: 2px 4px; border: 1px solid #eee; }}
-            .item-incluso {{ color: #888; font-style: italic; font-size: 8pt; padding-left: 5mm; border-bottom: none !important; }}
-            
-            .footer {{ margin-top: 20mm; font-size: 9pt; color: #888; text-align: center; border-top: 1px solid #eee; padding-top: 5mm; }}
-            .sig-box {{ display: table; width: 100%; margin-top: 20mm; }}
-            .sig-col {{ display: table-cell; width: 50%; text-align: center; }}
-            .sig-line {{ border-top: 1px solid #333; width: 70%; margin: 0 auto; padding-top: 2mm; }}
+            .footer {{ margin-top: 30mm; font-size: 9pt; color: #888; text-align: center; border-top: 1px solid #eee; padding-top: 5mm; }}
         </style>
     </head>
     <body>
         <div class="cover">
-            <div class="cover-accent"></div>
-            <div class="cover-content">
-                <div style="font-size: 24pt; color: #ff6600; font-weight: bold; margin-bottom: 10mm; letter-spacing: 2px;">VR SOFTWARE</div>
-                <div class="cover-title">PROPOSTA<br>COMERCIAL</div>
-                <div class="cover-subtitle">RESUMO DE INVESTIMENTO</div>
-                
-                <div style="margin-top: 30mm;">
-                    <div style="font-size: 12pt; color: #aaaaaa; margin-bottom: 2mm; text-transform: uppercase;">Apresentado para:</div>
-                    <div class="cover-client">{cliente}</div>
-                    <div style="font-size: 12pt; color: #dddddd; margin-bottom: 5mm;">CNPJ: {cnpj}</div>
-                    <div class="cover-date">{data_hoje}</div>
-                </div>
-                
-                <div style="margin-top: 15mm;">
-                    <div style="font-size: 12pt; color: #aaaaaa; margin-bottom: 2mm; text-transform: uppercase;">Elaborado por:</div>
-                    <div style="font-size: 14pt; color: #ffffff; font-weight: bold;">{vendedor}</div>
-                    <div style="font-size: 12pt; color: #ff6600;">{unidade}</div>
-                </div>
+            <div style="font-size: 24pt; color: #ff6600; font-weight: bold; margin-bottom: 10mm;">VR SOFTWARE</div>
+            <div class="cover-title">PROPOSTA COMERCIAL</div>
+            <div class="cover-subtitle">RESUMO DE INVESTIMENTO</div>
+            
+            <div style="margin-top: 40mm;">
+                <div style="font-size: 12pt; color: #aaaaaa; margin-bottom: 2mm;">Apresentado para:</div>
+                <div style="font-size: 18pt; font-weight: bold; color: #ffffff;">{cliente}</div>
+                <div style="font-size: 12pt; color: #dddddd; margin-bottom: 5mm;">CNPJ: {cnpj}</div>
+                <div style="font-size: 14pt; color: #aaaaaa;">{data_hoje}</div>
+            </div>
+            
+            <div style="margin-top: 15mm;">
+                <div style="font-size: 12pt; color: #aaaaaa; margin-bottom: 2mm;">Elaborado por:</div>
+                <div style="font-size: 14pt; color: #ffffff; font-weight: bold;">{vendedor}</div>
+                <div style="font-size: 12pt; color: #ff6600;">{unidade}</div>
             </div>
         </div>
-
-        <div class="page-content">
-            <div class="header">
-                <div class="header-logo">VR SOFTWARE</div>
-                <div class="header-title">RESUMO EXECUTIVO DE INVESTIMENTO</div>
-                <div style="font-size: 9pt; color: #777; margin-top: 2mm;">Cliente: {cliente} | Validade: 10 dias</div>
-            </div>
-
-            <div class="cards-container">
-                <div class="card card-setup">
-                    <div class="card-title">Implantação (Setup)</div>
-                    <div class="card-value val-setup">R$ {dados.get('valor_setup', '0,00')}</div>
-                    <div style="font-size: 9pt; font-weight: bold; color: #333;">{dados.get('parcelas', '1')}x parcelas</div>
-                    <ul class="card-list">{dados.get('html_setup', '')}</ul>
-                </div>
-
-                <div class="card card-mensal">
-                    <div class="card-title">Manutenção Mensal</div>
-                    <div class="card-value val-mensal">R$ {dados.get('valor_mensal', '0,00')}</div>
-                    <div style="font-size: 9pt; font-weight: bold; color: #333;">Início: {dados.get('faturamento', 'Na assinatura')}</div>
-                    <ul class="card-list">{dados.get('html_mensal', '')}</ul>
-                </div>
-
-                <div class="card card-despesa">
-                    <div class="card-title">Despesas do Projeto</div>
-                    <div class="card-value val-despesa">R$ {dados.get('valor_despesa', '0,00')}</div>
-                    <div style="font-size: 9pt; font-weight: bold; color: #d32f2f;">{dados.get('regra_desp', '')}</div>
-                    <ul class="card-list">{dados.get('html_despesa', '')}</ul>
-                </div>
-            </div>
+        
+        <pdf:nextpage />
+        
+        <div class="header-logo">VR SOFTWARE<br><span style="font-size: 12pt; color: #333;">RESUMO EXECUTIVO DE INVESTIMENTO</span></div>
+        <div class="content">
+            <table width="100%" cellpadding="8" cellspacing="5">
+                <tr>
+                    <td width="33%" style="border-top: 6px solid #ff6600;">
+                        <div class="card-title">Implantação (Setup)</div>
+                        <span class="val val-setup">R$ {dados.get('valor_setup', '0,00')}</span><br>
+                        <span class="sub-val">{dados.get('parcelas', '1')}x parcelas</span><br><br>
+                        <ul>{dados.get('html_setup', '')}</ul>
+                    </td>
+                    <td width="33%" style="border-top: 6px solid #2e7d32;">
+                        <div class="card-title">Manutenção Mensal</div>
+                        <span class="val val-mensal">R$ {dados.get('valor_mensal', '0,00')}</span><br>
+                        <span class="sub-val">Início: {dados.get('faturamento', 'Na assinatura')}</span><br><br>
+                        <ul>{dados.get('html_mensal', '')}</ul>
+                    </td>
+                    <td width="33%" style="border-top: 6px solid #1976d2;">
+                        <div class="card-title">Despesas Previstas</div>
+                        <span class="val val-despesa">R$ {dados.get('valor_despesa', '0,00')}</span><br>
+                        <span class="sub-val">{dados.get('regra_desp', '')}</span><br><br>
+                        <ul>{dados.get('html_despesa', '')}</ul>
+                    </td>
+                </tr>
+            </table>
             
             <div class="footer">
                 <p>Este documento é um resumo executivo da simulação. A contratação está sujeita à análise e assinatura do Contrato de Licenciamento.</p>
-                <div class="sig-box">
-                    <div class="sig-col"><div class="sig-line">Assinatura do Cliente</div></div>
-                    <div class="sig-col"><div class="sig-line">VR Software - Autorizado</div></div>
-                </div>
+                <table width="100%" style="margin-top: 20mm; text-align: center;">
+                    <tr>
+                        <td style="border: none;"><div style="border-top: 1px solid #333; width: 80%; margin: 0 auto; padding-top: 2mm;">Assinatura do Cliente</div></td>
+                        <td style="border: none;"><div style="border-top: 1px solid #333; width: 80%; margin: 0 auto; padding-top: 2mm;">VR Software - Autorizado</div></td>
+                    </tr>
+                </table>
             </div>
         </div>
     </body>
     </html>
     """
-   # Configuracoes da pagina (Remove as margens brancas padroes para a capa preencher tudo)
-    opcoes_pdf = {
-        'page-size': 'A4',
-        'margin-top': '0mm',
-        'margin-right': '0mm',
-        'margin-bottom': '0mm',
-        'margin-left': '0mm',
-        'encoding': "UTF-8",
-        'disable-smart-shrinking': ''
-    }
-    # Gera o PDF em bytes direto da memoria
-    pdf_bytes = pdfkit.from_string(html_template, False, options=opcoes_pdf)
-    return pdf_bytes
+    pdf_file = io.BytesIO()
+    pisa.CreatePDF(io.StringIO(html_template), dest=pdf_file)
+    return pdf_file.getvalue()
+
 
 # ==========================================
 # BLOCO 3: APLICATIVO PRINCIPAL (UI E LÓGICA)
@@ -435,7 +407,7 @@ def aplicativo_principal():
         if st.button("Sair (Logout)", use_container_width=True): st.session_state.clear(); st.rerun()
         st.markdown(f"""<hr><div style="font-size:0.8rem; color:{db_cor};">{db_status}</div><div style="font-size:0.7rem; color:#888;">{APP_VERSION}</div>""", unsafe_allow_html=True)
 
-    # TELA 1: PAINEL ADMIN (Mantida igual a v2.0)
+    # TELA 1: PAINEL ADMIN
     if tela == "Painel Admin":
         st.markdown("""<h1 class="hero-title">BACKOFFICE</h1>""", unsafe_allow_html=True)
         t_vinc, t_unid, t_user, t_sql, t_cat = st.tabs(["🔗 Vínculos Relacionais", "🏢 Unidades", "👥 Usuários", "💻 Terminal SQL", "📋 Catálogo"])
@@ -653,7 +625,7 @@ def aplicativo_principal():
             if q > 0:
                 v_u = servicos_db.get(n, full_db.get(n, {'valor':0.0}))['valor']
                 t_setup += (q * v_u)
-                html_linha = f"<li><span class='item-name'>{n}</span><span class='item-detail'>{int(q)}h x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_u)}</span></li>"
+                html_linha = f"<li><span class='item-name'>{n}</span><br><span class='item-detail'>{int(q)}h x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_u)}</span></li>"
                 lista_setup_pre_ordenacao.append({'nome_exibicao': n, 'html': html_linha})
         
         itens_isentos_setup = ["VR Mobile (Smartphone/Android)", "VR PDV Touchscreen", "VR PDV Self Checkout"]
@@ -666,11 +638,11 @@ def aplicativo_principal():
                     v_rate = (d.get('valor_hora_implantacao', 0.0) or v_h_base)
                     t_setup += (h * v_rate)
                     nome_exibicao = "Projeto ERP PRO" if n == "VR ERP PRO" else f"Implantacao {n}"
-                    html_linha = f"<li><span class='item-name'>{nome_exibicao}</span><span class='item-detail'>{int(h)}h x R$ {f_br(v_rate)} | Total: R$ {f_br(h*v_rate)}</span></li>"
+                    html_linha = f"<li><span class='item-name'>{nome_exibicao}</span><br><span class='item-detail'>{int(h)}h x R$ {f_br(v_rate)} | Total: R$ {f_br(h*v_rate)}</span></li>"
                     lista_setup_pre_ordenacao.append({'nome_exibicao': nome_exibicao, 'html': html_linha})
                 if ads > 0:
                     t_setup += ads
-                    html_linha = f"<li><span class='item-name'>Taxa de Adesao {n}</span><span class='item-detail'>1 un x R$ {f_br(ads)} | Total: R$ {f_br(ads)}</span></li>"
+                    html_linha = f"<li><span class='item-name'>Taxa de Adesao {n}</span><br><span class='item-detail'>1 un x R$ {f_br(ads)} | Total: R$ {f_br(ads)}</span></li>"
                     lista_setup_pre_ordenacao.append({'nome_exibicao': f"Taxa de Adesao {n}", 'html': html_linha})
 
         lista_setup_pre_ordenacao.sort(key=get_prioridade_setup)
@@ -687,11 +659,11 @@ def aplicativo_principal():
             if q > 0:
                 v_u = sistemas_db[n]['valor']; v_liq_u = v_u * (1 - (desc/100))
                 t_mensal += (q * v_liq_u)
-                h_m += f"<li><span class='item-name'>{n}</span><span class='item-detail'>{int(q)} un x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_liq_u)}</span></li>"
+                h_m += f"<li><span class='item-name'>{n}</span><br><span class='item-detail'>{int(q)} un x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_liq_u)}</span></li>"
                 vincs = [id_to_name.get(v['id_filho']) for v in vinculos_db.get(name_to_id.get(n), []) if v['tipo'] == 'incluso']
-                for inc in vincs: h_m += f"<li class='item-incluso'>└ {inc} (Incluso)</li>"
+                for inc in vincs: h_m += f"<li><span style='color: #888; font-style: italic; font-size: 8pt;'>└ {inc} (Incluso)</span></li>"
                 if n == "VR ERP PRO" and not vincs:
-                    for inc in ["VR Promo", "VR Carteira Digital", "VR Analytics"]: h_m += f"<li class='item-incluso'>└ {inc} (Incluso)</li>"
+                    for inc in ["VR Promo", "VR Carteira Digital", "VR Analytics"]: h_m += f"<li><span style='color: #888; font-style: italic; font-size: 8pt;'>└ {inc} (Incluso)</span></li>"
 
         with res_cols[1]:
             d_h = f"""<div style="color:#2e7d32; font-weight:bold;">Desconto: {desc}%</div>""" if (exibir_detalhe_desc and desc > 0) else """<div style="height:21px"></div>"""
@@ -703,7 +675,7 @@ def aplicativo_principal():
                 q = st.session_state[f"perm_val_{n}"]
                 if q > 0:
                     v_u = despesas_db[n]['valor']; t_d += (q * v_u)
-                    h_d += f"<li><span class='item-name'>{n}</span><span class='item-detail'>{int(q)} un x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_u)}</span></li>"
+                    h_d += f"<li><span class='item-name'>{n}</span><br><span class='item-detail'>{int(q)} un x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_u)}</span></li>"
             with res_cols[2]:
                 st.markdown(f"""<div class="resumo-card" style="border-top-color:#1976d2;"><span class="resumo-label">Despesas do Projeto</span><div class="resumo-valor" style="color:#1976d2;">R$ {f_br(t_d)}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.8rem;">{regra_despesas}</div><div class="resumo-subtitulo">DETALHAMENTO</div><ul class="lista-itens">{h_d if h_d else "<li>Sem despesas</li>"}</ul></div>""", unsafe_allow_html=True)
 
@@ -724,7 +696,7 @@ def aplicativo_principal():
         
         with col_btn2:
             if not PDF_ENGINE_AVAILABLE:
-                st.warning("⚠️ O módulo WeasyPrint não está instalado no servidor. O PDF não pode ser gerado. Execute: `pip install weasyprint`.")
+                st.warning("⚠️ O módulo xhtml2pdf não está instalado. Adicione 'xhtml2pdf' no arquivo requirements.txt do GitHub.")
             elif not nome_cliente_input:
                 st.info("👆 Preencha o campo 'Razão Social / Nome Fantasia' no topo da tela para liberar o download da proposta.")
             else:
@@ -737,7 +709,7 @@ def aplicativo_principal():
                     'html_mensal': h_m,
                     'valor_mensal': f_br(t_mensal),
                     'faturamento': faturamento_sistema,
-                    'html_despesa': h_d if h_d else "<li><span class='item-name'>Sem despesas previstas</span></li>",
+                    'html_despesa': h_d if h_d else "<li>Sem despesas previstas</li>",
                     'valor_despesa': f_br(t_d),
                     'regra_desp': regra_despesas
                 }
@@ -755,7 +727,7 @@ def aplicativo_principal():
                 except Exception as e:
                     st.error(f"Erro ao gerar o documento PDF: {str(e)}")
 
-    # TELA 3: CONSULTA DE PRECO (Omitida visualmente para economia de espaco, mas logica de v2.0 preservada)
+    # TELA 3: CONSULTA DE PRECO
     elif tela == "Consulta de Preco":
         st.markdown(f"""<h1 class="hero-title">ANALISE TECNICA</h1>""", unsafe_allow_html=True)
         st.markdown(f"""<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">Simulador de Negociacao Individual</h3></div>""", unsafe_allow_html=True)
