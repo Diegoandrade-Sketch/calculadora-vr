@@ -9,10 +9,10 @@ import datetime
 import io
 
 try:
-    from weasyprint import HTML
-    WEASYPRINT_AVAILABLE = True
+    import pdfkit
+    PDF_ENGINE_AVAILABLE = True
 except ImportError:
-    WEASYPRINT_AVAILABLE = False
+    PDF_ENGINE_AVAILABLE = False
 
 # ==========================================
 # CONFIGURACOES INICIAIS E CONTROLE DE VERSAO
