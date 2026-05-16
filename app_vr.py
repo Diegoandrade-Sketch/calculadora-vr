@@ -10,11 +10,11 @@ import datetime
 import base64
 
 # ==========================================
-# CONFIGURACOES INICIAIS E CONTROLE DE VERSAO
+# CONFIGURAÇÕES INICIAIS E CONTROLE DE VERSÃO
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-APP_VERSION = "v3.1.0 - Digital Proposal Master"
+APP_VERSION = "v3.1.1 - Form Shield & Persistence"
 CACHE_FILE = "cache_vr.json"
 
 try:
@@ -28,7 +28,9 @@ try:
 except Exception:
     CONN_STR = None
 
-# FUNCOES DE FORMATACAO E AUXILIARES
+# ==========================================
+# FUNÇÕES DE FORMATAÇÃO E BLINDAGEM DE DADOS
+# ==========================================
 def f_br(valor):
     if pd.isna(valor) or valor == 0: return "0,00"
     return f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -39,20 +41,32 @@ def f_pct(valor):
 def sync_state(key_permanente, key_widget):
     st.session_state[key_permanente] = st.session_state[key_widget]
 
-def formatar_cnpj(cnpj_raw):
-    cnpj = re.sub(r'\D', '', str(cnpj_raw))
-    if len(cnpj) == 14:
-        return f"{cnpj[:2]}.{cnpj[2:5]}.{cnpj[5:8]}/{cnpj[8:12]}-{cnpj[12:]}"
-    return cnpj
-
 def get_logo_base64():
     if os.path.exists("logo_vr.png"):
         with open("logo_vr.png", "rb") as img_file:
             return base64.b64encode(img_file.read()).decode("utf-8")
     return ""
 
+# Callbacks para blindar o formulário do Cliente
+def atualiza_nome_cliente():
+    st.session_state.in_nome_cliente = st.session_state.widget_nome
+
+def atualiza_cnpj_cliente():
+    raw = str(st.session_state.widget_cnpj)
+    # Remove letras e símbolos
+    apenas_numeros = re.sub(r'\D', '', raw)[:14]
+    
+    if len(apenas_numeros) == 14:
+        # Aplica a máscara matemática se tiver 14 dígitos
+        formatado = f"{apenas_numeros[:2]}.{apenas_numeros[2:5]}.{apenas_numeros[5:8]}/{apenas_numeros[8:12]}-{apenas_numeros[12:]}"
+        st.session_state.widget_cnpj = formatado
+        st.session_state.in_cnpj_cliente = formatado
+    else:
+        st.session_state.widget_cnpj = apenas_numeros
+        st.session_state.in_cnpj_cliente = apenas_numeros
+
 # ==========================================
-# DATA LAYER (CACHE DE 1 HORA E CONTINGENCIA)
+# DATA LAYER (CACHE DE 1 HORA E CONTINGÊNCIA)
 # ==========================================
 @st.cache_data(ttl=3600)
 def carregar_dados_vendas():
@@ -108,7 +122,7 @@ def carregar_dados_vendas():
 sistemas_db, servicos_db, despesas_db, full_db, id_to_name, name_to_id, vinculos_db, db_status, db_cor, df_raw, df_vinc = carregar_dados_vendas()
 
 # ==========================================
-# ESTADO GLOBAL E AUTENTICACAO
+# ESTADO GLOBAL E AUTENTICAÇÃO
 # ==========================================
 if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 if 'user_role' not in st.session_state: st.session_state.user_role = None
@@ -117,12 +131,16 @@ if 'user_email' not in st.session_state: st.session_state.user_email = ""
 if 'user_name' not in st.session_state: st.session_state.user_name = ""
 if 'unidade_nome' not in st.session_state: st.session_state.unidade_nome = "VR Software"
 
+# Variáveis do cofre (para não perder os dados na tela)
+if 'in_nome_cliente' not in st.session_state: st.session_state.in_nome_cliente = ""
+if 'in_cnpj_cliente' not in st.session_state: st.session_state.in_cnpj_cliente = ""
+
 init_state = {
     'm_combo': "Montar Manualmente", 'm_pdv_conv': 0.0, 'm_pdv_touch': 0.0, 'm_pdv_self': 0.0, 'm_semanas': 0.0, 'm_mobile': 0.0,
     'm_tef': "Nao utiliza", 'm_migracao': False, 'm_ecommerce': False, 'm_app': False, 'm_connect': False,
     'm_erp_pro': False, 'm_xml': False, 'm_escopo': False, 'm_controller': False, 'm_cartaz': False, 'm_masterfisco': False, 'm_backup': False,
     'auto_added': set(), 'sel_m': [], 'sel_i': [], 'sel_d': [], 'ui_sel_m': [], 'ui_sel_i': [], 'ui_sel_d': [],
-    'show_digital_proposal': False, 'in_nome_cliente': "", 'in_cnpj_cliente': ""
+    'show_digital_proposal': False 
 }
 
 for k, v in init_state.items():
@@ -212,7 +230,7 @@ def tela_login():
                         except Exception: st.error("Ocorreu um erro ao validar os dados.")
 
 # ==========================================
-# BLOCO 2: MÓDULO DA PROPOSTA DIGITAL (HTML VERTICAL)
+# BLOCO 2: MÓDULO DA PROPOSTA DIGITAL HTML
 # ==========================================
 def renderizar_proposta_digital(dados):
     validade_str = (datetime.date.today() + datetime.timedelta(days=15)).strftime("%d/%m/%Y")
@@ -228,24 +246,13 @@ def renderizar_proposta_digital(dados):
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
             body {{ font-family: 'Inter', sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; color: #333; }}
             .container {{ max-width: 900px; margin: 0 auto; background: #fff; box-shadow: 0 10px 30px rgba(0,0,0,0.1); border-radius: 12px; overflow: hidden; }}
-            
-            /* Área de Impressão */
             @media print {{
                 body {{ background: #fff; padding: 0; }}
                 .container {{ box-shadow: none; max-width: 100%; border-radius: 0; }}
                 .no-print {{ display: none !important; }}
                 .page-break {{ page-break-before: always; }}
             }}
-            
-            /* Botão Flutuante de Impressão */
-            .print-btn {{
-                background: #ff6600; color: white; border: none; padding: 12px 24px; font-size: 16px; font-weight: bold;
-                border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 8px; margin: 20px auto;
-                box-shadow: 0 4px 15px rgba(255,102,0,0.3); transition: 0.3s;
-            }}
-            .print-btn:hover {{ background: #e65c00; transform: translateY(-2px); }}
-            
-            /* Capa */
+            .print-btn {{ background: #ff6600; color: white; border: none; padding: 12px 24px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 8px; margin: 20px auto; box-shadow: 0 4px 15px rgba(255,102,0,0.3); transition: 0.3s; }}
             .cover {{ background: #262730; color: white; padding: 60px 40px; position: relative; border-left: 15px solid #ff6600; }}
             .cover h1 {{ font-size: 48px; margin: 0; font-weight: 900; letter-spacing: -1px; }}
             .cover h2 {{ color: #ff6600; font-weight: 400; font-size: 24px; margin-top: 10px; }}
@@ -254,52 +261,39 @@ def renderizar_proposta_digital(dados):
             .detail-label {{ font-size: 12px; color: #aaa; text-transform: uppercase; margin-bottom: 5px; }}
             .detail-value {{ font-size: 18px; font-weight: bold; color: #fff; }}
             .detail-sub {{ font-size: 14px; color: #ccc; }}
-            
-            /* Resumo */
             .content {{ padding: 40px; }}
             .header-content {{ border-bottom: 2px solid #ff6600; padding-bottom: 10px; margin-bottom: 30px; }}
             .header-content h3 {{ margin: 0; font-size: 22px; color: #262730; }}
-            
-            /* Cartões agora com disposição Vertical */
             .cards {{ display: flex; flex-direction: column; gap: 25px; }}
             .card {{ border: 1px solid #eee; border-radius: 8px; padding: 25px; background: #fafafa; }}
             .card.setup {{ border-top: 6px solid #ff6600; }}
             .card.mensal {{ border-top: 6px solid #2e7d32; }}
             .card.despesa {{ border-top: 6px solid #1976d2; }}
-            
             .card-title {{ font-size: 13px; color: #888; font-weight: bold; text-transform: uppercase; margin-bottom: 10px; }}
             .card-val {{ font-size: 28px; font-weight: 900; margin-bottom: 5px; }}
             .card.setup .card-val {{ color: #ff6600; }}
             .card.mensal .card-val {{ color: #2e7d32; }}
             .card.despesa .card-val {{ color: #1976d2; }}
             .card-sub {{ font-size: 14px; font-weight: bold; color: #444; margin-bottom: 20px; display: block; }}
-            
             .card-list {{ list-style: none; padding: 0; margin: 0; }}
             .card-list li {{ font-size: 14px; border-bottom: 1px dashed #ddd; padding: 10px 0; color: #444; }}
             .card-list li strong {{ display: block; font-size: 15px; color: #222; margin-bottom: 4px; }}
             .card-list li .detail {{ background: #eee; padding: 4px 8px; border-radius: 4px; display: inline-block; font-size: 12px; }}
             .item-incluso {{ color: #888; font-style: italic; border: none !important; padding-top: 4px !important; padding-left: 15px !important; }}
-            
             .footer {{ margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; color: #888; font-size: 12px; }}
             .signatures {{ display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 40px; }}
             .sig-line {{ border-top: 1px solid #333; padding-top: 10px; font-weight: bold; color: #333; }}
         </style>
     </head>
     <body>
-        
         <div class="no-print" style="text-align: center;">
-            <button class="print-btn" onclick="window.print()">
-                🖨️ Salvar como PDF / Imprimir
-            </button>
-            <p style="color: #666; font-size: 14px;">Dica: No destino da impressão, escolha "Salvar como PDF".</p>
+            <button class="print-btn" onclick="window.print()">🖨️ Salvar como PDF / Imprimir</button>
         </div>
-
         <div class="container">
             <div class="cover">
                 {logo_html}
                 <h1>PROPOSTA<br>COMERCIAL</h1>
                 <h2>RESUMO DE INVESTIMENTO</h2>
-                
                 <div class="cover-details">
                     <div>
                         <div class="detail-label">Apresentado para</div>
@@ -314,43 +308,29 @@ def renderizar_proposta_digital(dados):
                     </div>
                 </div>
             </div>
-
             <div class="page-break"></div>
-
             <div class="content">
-                <div class="header-content">
-                    <h3>RESUMO EXECUTIVO DE INVESTIMENTO</h3>
-                </div>
-                
+                <div class="header-content"><h3>RESUMO EXECUTIVO DE INVESTIMENTO</h3></div>
                 <div class="cards">
                     <div class="card setup">
                         <div class="card-title">Implantação (Setup)</div>
                         <div class="card-val">R$ {dados.get('valor_setup', '0,00')}</div>
                         <span class="card-sub">{dados.get('parcelas', '1')}x parcelas</span>
-                        <ul class="card-list">
-                            {dados.get('html_setup', '<li>Nenhum item</li>')}
-                        </ul>
+                        <ul class="card-list">{dados.get('html_setup', '<li>Nenhum item</li>')}</ul>
                     </div>
-                    
                     <div class="card mensal">
                         <div class="card-title">Manutenção Mensal</div>
                         <div class="card-val">R$ {dados.get('valor_mensal', '0,00')}</div>
                         <span class="card-sub">Início: {dados.get('faturamento', '')}</span>
-                        <ul class="card-list">
-                            {dados.get('html_mensal', '<li>Nenhum item</li>')}
-                        </ul>
+                        <ul class="card-list">{dados.get('html_mensal', '<li>Nenhum item</li>')}</ul>
                     </div>
-                    
                     <div class="card despesa">
                         <div class="card-title">Despesas Previstas</div>
                         <div class="card-val">R$ {dados.get('valor_despesa', '0,00')}</div>
                         <span class="card-sub">{dados.get('regra_desp', '')}</span>
-                        <ul class="card-list">
-                            {dados.get('html_despesa', '<li>Sem despesas</li>')}
-                        </ul>
+                        <ul class="card-list">{dados.get('html_despesa', '<li>Sem despesas</li>')}</ul>
                     </div>
                 </div>
-                
                 <div class="footer">
                     <p>Este documento é um resumo executivo da simulação. A contratação está sujeita à análise e aprovação. Condições comerciais válidas até {validade_str}.</p>
                     <div class="signatures">
@@ -423,9 +403,11 @@ def aplicativo_principal():
             if t in st.session_state: st.session_state[t] = False
         for nome in full_db.keys(): st.session_state[f"perm_val_{nome}"] = 0.0
         
-        # Limpar os dados do cliente também
+        # Limpar os dados do cliente e os widgets
         st.session_state.in_nome_cliente = ""
         st.session_state.in_cnpj_cliente = ""
+        if 'widget_nome' in st.session_state: st.session_state.widget_nome = ""
+        if 'widget_cnpj' in st.session_state: st.session_state.widget_cnpj = ""
         st.session_state.show_digital_proposal = False
 
     def sync_combo():
@@ -589,25 +571,24 @@ def aplicativo_principal():
 
         st.markdown("""<h1 class="hero-title">PROPOSTA COMERCIAL</h1>""", unsafe_allow_html=True)
         
-        # --- DADOS DO CLIENTE (Dinâmico para Modo Apresentação) ---
+        # --- DADOS DO CLIENTE (Com Blindagem e Máscara) ---
         if modo_apresentacao:
-            # Exibe os dados do cliente de forma limpa e oficial
+            # Apresentação do Cliente Fixa
             st.markdown(f"""
             <div style="background-color:#ffffff; border-left: 10px solid #262730; padding: 20px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
                 <span style="color:#ff6600; font-size:0.9rem; text-transform:uppercase; font-weight:bold;">Apresentação para o cliente:</span>
                 <h2 style="margin:5px 0; color:#262730;">{st.session_state.in_nome_cliente or "Cliente Não Informado"}</h2>
-                <span style="color:#777; font-size:1.1rem; font-weight:bold;">CNPJ: {formatar_cnpj(st.session_state.in_cnpj_cliente) if st.session_state.in_cnpj_cliente else "Não informado"}</span>
+                <span style="color:#777; font-size:1.1rem; font-weight:bold;">CNPJ: {st.session_state.in_cnpj_cliente if st.session_state.in_cnpj_cliente else "Não informado"}</span>
             </div>
             """, unsafe_allow_html=True)
-            nome_cliente_input = st.session_state.in_nome_cliente
-            cnpj_formatado = formatar_cnpj(st.session_state.in_cnpj_cliente) if st.session_state.in_cnpj_cliente else ""
         else:
-            # Mostra as caixas de texto para preenchimento
+            # Campos Editáveis
             st.markdown("""<div class="cliente-container"><h3 style="margin:0; color:#262730;">Dados do Cliente</h3></div>""", unsafe_allow_html=True)
             col_cli1, col_cli2 = st.columns([2, 1])
-            nome_cliente_input = col_cli1.text_input("Razão Social / Nome Fantasia", placeholder="Ex: Supermercados Dois Irmãos", key="in_nome_cliente")
-            cnpj_cliente_raw = col_cli2.text_input("CNPJ (Apenas números)", placeholder="00000000000000", key="in_cnpj_cliente")
-            cnpj_formatado = formatar_cnpj(cnpj_cliente_raw) if cnpj_cliente_raw else "Não informado"
+            with col_cli1:
+                st.text_input("Razão Social / Nome Fantasia", value=st.session_state.in_nome_cliente, key="widget_nome", on_change=atualiza_nome_cliente, placeholder="Ex: Supermercados Dois Irmãos")
+            with col_cli2:
+                st.text_input("CNPJ (Apenas números)", value=st.session_state.in_cnpj_cliente, key="widget_cnpj", on_change=atualiza_cnpj_cliente, placeholder="00.000.000/0000-00", max_chars=18)
             st.write("---")
 
         if mapeamento_ativo and not modo_apresentacao:
@@ -776,13 +757,13 @@ def aplicativo_principal():
             col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
             
             with col_btn2:
-                if not nome_cliente_input:
+                if not st.session_state.in_nome_cliente:
                     st.info("👆 Preencha o campo 'Razão Social / Nome Fantasia' no topo da ecrã para liberar a proposta digital.")
                 else:
                     if st.button("🌐 Gerar Proposta Digital (Pronta para PDF)", use_container_width=True):
                         dados_pdf = {
-                            'nome_cliente': nome_cliente_input,
-                            'cnpj': cnpj_formatado,
+                            'nome_cliente': st.session_state.in_nome_cliente,
+                            'cnpj': st.session_state.in_cnpj_cliente,
                             'html_setup': html_setup_digital,
                             'valor_setup': f_br(t_setup),
                             'parcelas': str(parcelas_setup),
@@ -802,7 +783,6 @@ def aplicativo_principal():
             st.markdown("---")
             st.markdown("<h2 style='text-align:center; color:#ff6600;'>📄 Visualização da Proposta Digital</h2>", unsafe_allow_html=True)
             st.info("Clique no botão laranja dentro do quadro abaixo para Imprimir ou Salvar como PDF.")
-            # O Componente HTML roda isolado, garantindo layout perfeito e ativando a impressora do navegador
             components.html(st.session_state.html_proposta, height=1200, scrolling=True)
             
             col_f1, col_f2, col_f3 = st.columns([1, 1, 1])
