@@ -10,12 +10,19 @@ import datetime
 import base64
 
 # ==========================================
-# CONFIGURAÇÕES INICIAIS E CONTROLE DE VERSÃO
+# CONFIGURAÇÕES INICIAIS E CONTROLE DE ESTADO
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-APP_VERSION = "v3.1.1 - Form Shield & Persistence"
+APP_VERSION = "v3.3.0 - Full CRM Master"
 CACHE_FILE = "cache_vr.json"
+
+# Inicialização de estados persistentes (O "Cofre" do CRM e da Tela)
+if 'perma_nome_cliente' not in st.session_state: st.session_state.perma_nome_cliente = ""
+if 'perma_cnpj_cliente' not in st.session_state: st.session_state.perma_cnpj_cliente = ""
+if 'aba_atual' not in st.session_state: st.session_state.aba_atual = "Gerador de Proposta"
+if 'proposta_carregada_id' not in st.session_state: st.session_state.proposta_carregada_id = None
+if 'show_digital_proposal' not in st.session_state: st.session_state.show_digital_proposal = False
 
 try:
     DB_USER = st.secrets["DB_USER"]
@@ -29,7 +36,7 @@ except Exception:
     CONN_STR = None
 
 # ==========================================
-# FUNÇÕES DE FORMATAÇÃO E BLINDAGEM DE DADOS
+# FUNÇÕES DE FORMATAÇÃO E BLINDAGEM (UX/UI)
 # ==========================================
 def f_br(valor):
     if pd.isna(valor) or valor == 0: return "0,00"
@@ -43,30 +50,64 @@ def sync_state(key_permanente, key_widget):
 
 def get_logo_base64():
     if os.path.exists("logo_vr.png"):
-        with open("logo_vr.png", "rb") as img_file:
-            return base64.b64encode(img_file.read()).decode("utf-8")
+        with open("logo_vr.png", "rb") as img_file: return base64.b64encode(img_file.read()).decode("utf-8")
     return ""
 
-# Callbacks para blindar o formulário do Cliente
-def atualiza_nome_cliente():
-    st.session_state.in_nome_cliente = st.session_state.widget_nome
+def atualiza_nome_cliente(): 
+    st.session_state.perma_nome_cliente = st.session_state.widget_nome
 
 def atualiza_cnpj_cliente():
     raw = str(st.session_state.widget_cnpj)
-    # Remove letras e símbolos
     apenas_numeros = re.sub(r'\D', '', raw)[:14]
-    
     if len(apenas_numeros) == 14:
-        # Aplica a máscara matemática se tiver 14 dígitos
         formatado = f"{apenas_numeros[:2]}.{apenas_numeros[2:5]}.{apenas_numeros[5:8]}/{apenas_numeros[8:12]}-{apenas_numeros[12:]}"
-        st.session_state.widget_cnpj = formatado
-        st.session_state.in_cnpj_cliente = formatado
+        st.session_state.perma_cnpj_cliente = formatado
     else:
-        st.session_state.widget_cnpj = apenas_numeros
-        st.session_state.in_cnpj_cliente = apenas_numeros
+        st.session_state.perma_cnpj_cliente = apenas_numeros
 
 # ==========================================
-# DATA LAYER (CACHE DE 1 HORA E CONTINGÊNCIA)
+# MÓDULOS DO CRM (EMPACOTAMENTO JSON)
+# ==========================================
+def empacotar_simulacao():
+    payload = {
+        'perma_nome_cliente': st.session_state.perma_nome_cliente,
+        'perma_cnpj_cliente': st.session_state.perma_cnpj_cliente,
+        'g_desc_mensalidade': st.session_state.g_desc_mensalidade,
+        'g_parcelas_setup': st.session_state.g_parcelas_setup,
+        'g_faturamento': st.session_state.g_faturamento,
+        'g_regra_desp': st.session_state.g_regra_desp,
+        'sel_m': st.session_state.sel_m,
+        'sel_i': st.session_state.sel_i,
+        'sel_d': st.session_state.sel_d,
+        'mapeamento': {k: st.session_state[k] for k in st.session_state.keys() if k.startswith('m_')},
+        'quantidades': {k: st.session_state[k] for k in st.session_state.keys() if k.startswith('perm_val_')}
+    }
+    return json.dumps(payload)
+
+def desempacotar_simulacao(json_data, prop_id):
+    try:
+        dados = json.loads(json_data)
+        st.session_state.perma_nome_cliente = dados.get('perma_nome_cliente', '')
+        st.session_state.perma_cnpj_cliente = dados.get('perma_cnpj_cliente', '')
+        st.session_state.g_desc_mensalidade = dados.get('g_desc_mensalidade', 0.0)
+        st.session_state.g_parcelas_setup = dados.get('g_parcelas_setup', 4)
+        st.session_state.g_faturamento = dados.get('g_faturamento', "Na assinatura")
+        st.session_state.g_regra_desp = dados.get('g_regra_desp', "Faturamento na assinatura")
+        st.session_state.sel_m = dados.get('sel_m', [])
+        st.session_state.sel_i = dados.get('sel_i', [])
+        st.session_state.sel_d = dados.get('sel_d', [])
+        
+        for k, v in dados.get('mapeamento', {}).items(): st.session_state[k] = v
+        for k, v in dados.get('quantidades', {}).items(): st.session_state[k] = v
+        
+        st.session_state.proposta_carregada_id = prop_id
+        st.session_state.aba_atual = "Gerador de Proposta"
+        st.session_state.show_digital_proposal = False
+    except Exception as e:
+        st.error(f"Erro ao ler histórico: {e}")
+
+# ==========================================
+# DATA LAYER (CARREGAMENTO DO BANCO)
 # ==========================================
 @st.cache_data(ttl=3600)
 def carregar_dados_vendas():
@@ -122,7 +163,7 @@ def carregar_dados_vendas():
 sistemas_db, servicos_db, despesas_db, full_db, id_to_name, name_to_id, vinculos_db, db_status, db_cor, df_raw, df_vinc = carregar_dados_vendas()
 
 # ==========================================
-# ESTADO GLOBAL E AUTENTICAÇÃO
+# ESTADO GLOBAL (Calculadora e Usuário)
 # ==========================================
 if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 if 'user_role' not in st.session_state: st.session_state.user_role = None
@@ -131,16 +172,12 @@ if 'user_email' not in st.session_state: st.session_state.user_email = ""
 if 'user_name' not in st.session_state: st.session_state.user_name = ""
 if 'unidade_nome' not in st.session_state: st.session_state.unidade_nome = "VR Software"
 
-# Variáveis do cofre (para não perder os dados na tela)
-if 'in_nome_cliente' not in st.session_state: st.session_state.in_nome_cliente = ""
-if 'in_cnpj_cliente' not in st.session_state: st.session_state.in_cnpj_cliente = ""
-
 init_state = {
     'm_combo': "Montar Manualmente", 'm_pdv_conv': 0.0, 'm_pdv_touch': 0.0, 'm_pdv_self': 0.0, 'm_semanas': 0.0, 'm_mobile': 0.0,
     'm_tef': "Nao utiliza", 'm_migracao': False, 'm_ecommerce': False, 'm_app': False, 'm_connect': False,
     'm_erp_pro': False, 'm_xml': False, 'm_escopo': False, 'm_controller': False, 'm_cartaz': False, 'm_masterfisco': False, 'm_backup': False,
     'auto_added': set(), 'sel_m': [], 'sel_i': [], 'sel_d': [], 'ui_sel_m': [], 'ui_sel_i': [], 'ui_sel_d': [],
-    'show_digital_proposal': False 
+    'g_desc_mensalidade': 0.0, 'g_parcelas_setup': 4, 'g_faturamento': "Na assinatura", 'g_regra_desp': "Faturamento na assinatura"
 }
 
 for k, v in init_state.items():
@@ -150,50 +187,26 @@ for nome in full_db.keys():
     if f"perm_val_{nome}" not in st.session_state: st.session_state[f"perm_val_{nome}"] = 0.0
 
 # ==========================================
-# BLOCO 1: MÓDULO DE LOGIN
+# BLOCO 1: LOGIN
 # ==========================================
 def tela_login():
-    st.markdown("""
-        <style>
-        .stApp { background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%); }
-        div[data-testid="stForm"] {
-            background-color: #ffffff; border-radius: 16px; padding: 40px 30px;
-            border: none; box-shadow: 0 15px 35px rgba(0, 0, 0, 0.05), 0 5px 15px rgba(0, 0, 0, 0.03);
-        }
-        div[data-testid="stForm"] button {
-            background: linear-gradient(90deg, #ff6600 0%, #ff8533 100%); color: white;
-            border: none; border-radius: 8px; font-weight: 600; padding: 0.5rem 1rem;
-            transition: all 0.3s ease; margin-top: 15px;
-        }
-        div[data-testid="stForm"] button:hover {
-            background: linear-gradient(90deg, #e65c00 0%, #ff6600 100%); box-shadow: 0 4px 15px rgba(255, 102, 0, 0.4); color: white;
-        }
-        div[data-testid="stTextInput"] input { border-radius: 8px; border: 1px solid #e0e0e0; padding: 12px 15px; background-color: #fcfcfc; }
-        div[data-testid="stTextInput"] input:focus { border-color: #ff6600; box-shadow: 0 0 0 1px #ff6600; background-color: #ffffff; }
-        </style>
-    """, unsafe_allow_html=True)
-    
+    st.markdown("""<style>.stApp { background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%); } div[data-testid="stForm"] { background-color: #ffffff; border-radius: 16px; padding: 40px 30px; border: none; box-shadow: 0 15px 35px rgba(0, 0, 0, 0.05), 0 5px 15px rgba(0, 0, 0, 0.03); } div[data-testid="stForm"] button { background: linear-gradient(90deg, #ff6600 0%, #ff8533 100%); color: white; border: none; border-radius: 8px; font-weight: 600; padding: 0.5rem 1rem; transition: all 0.3s ease; margin-top: 15px; } div[data-testid="stForm"] button:hover { background: linear-gradient(90deg, #e65c00 0%, #ff6600 100%); box-shadow: 0 4px 15px rgba(255, 102, 0, 0.4); color: white; } div[data-testid="stTextInput"] input { border-radius: 8px; border: 1px solid #e0e0e0; padding: 12px 15px; background-color: #fcfcfc; } div[data-testid="stTextInput"] input:focus { border-color: #ff6600; box-shadow: 0 0 0 1px #ff6600; background-color: #ffffff; }</style>""", unsafe_allow_html=True)
     c1, c2, c3 = st.columns([1, 1.2, 1])
     with c2:
         st.write(""); st.write("")
         with st.form("login_form", clear_on_submit=False):
-            col_img1, col_img2, col_img3 = st.columns([1, 2, 1])
-            with col_img2:
-                if os.path.exists("logo_vr.png"): st.image("logo_vr.png", use_container_width=True)
-                else: st.markdown("<h2 style='text-align:center; color:#262730; margin-bottom:0;'>VR Software</h2>", unsafe_allow_html=True)
-            
+            if os.path.exists("logo_vr.png"): st.image("logo_vr.png", use_container_width=True)
+            else: st.markdown("<h2 style='text-align:center; color:#262730; margin-bottom:0;'>VR Software</h2>", unsafe_allow_html=True)
             st.markdown("<p style='text-align:center; color:#777; font-size:0.95rem; margin-bottom:25px;'>Acesso Restrito</p>", unsafe_allow_html=True)
             
             if st.session_state.primeiro_acesso:
-                st.info("Identificamos seu primeiro acesso. Por favor, crie uma senha definitiva.")
                 nova_senha = st.text_input("Nova Senha", type="password")
                 confirma_senha = st.text_input("Confirme a Senha", type="password")
                 if st.form_submit_button("Salvar e Acessar", use_container_width=True):
                     if nova_senha and nova_senha == confirma_senha:
                         try:
                             engine = create_engine(CONN_STR)
-                            with engine.begin() as conn:
-                                conn.execute(text("UPDATE usuarios SET senha = :s, primeiro_acesso = FALSE WHERE email = :e"), {"s": nova_senha, "e": st.session_state.user_email})
+                            with engine.begin() as conn: conn.execute(text("UPDATE usuarios SET senha = :s, primeiro_acesso = FALSE WHERE email = :e"), {"s": nova_senha, "e": st.session_state.user_email})
                             st.session_state.primeiro_acesso = False; st.session_state.logged_in = True; st.rerun()
                         except Exception: st.error("Erro de comunicação com o banco de dados.")
                     else: st.error("As senhas informadas não conferem.")
@@ -202,26 +215,17 @@ def tela_login():
                 senha = st.text_input("Senha", type="password")
                 if st.form_submit_button("Autenticar", use_container_width=True):
                     if email == "admin" and senha == "333666":
-                        st.session_state.logged_in = True; st.session_state.user_role = "admin"; st.session_state.user_name = "Administrador Master"; st.session_state.unidade_nome = "Matriz"
-                        st.rerun()
+                        st.session_state.logged_in = True; st.session_state.user_role = "admin"; st.session_state.user_name = "Administrador Master"; st.session_state.unidade_nome = "Matriz"; st.rerun()
                     elif not CONN_STR: st.error("Conexão com o servidor falhou.")
                     else:
                         try:
                             engine = create_engine(CONN_STR)
                             with engine.connect() as conn:
-                                sql = """
-                                    SELECT u.*, un.nome_fantasia as nome_unidade 
-                                    FROM usuarios u 
-                                    LEFT JOIN unidades un ON u.id_unidade = un.id 
-                                    WHERE u.email = :e AND u.ativo = TRUE
-                                """
-                                resultado = pd.read_sql(text(sql), conn, params={"e": email})
+                                resultado = pd.read_sql(text("SELECT u.*, un.nome_fantasia as nome_unidade FROM usuarios u LEFT JOIN unidades un ON u.id_unidade = un.id WHERE u.email = :e AND u.ativo = TRUE"), conn, params={"e": email})
                             if not resultado.empty:
                                 user = resultado.iloc[0]
                                 if user['senha'] == senha or user['primeiro_acesso']:
-                                    st.session_state.user_email = email
-                                    st.session_state.user_role = user['nivel_acesso']
-                                    st.session_state.user_name = user['nome']
+                                    st.session_state.user_email = email; st.session_state.user_role = user['nivel_acesso']; st.session_state.user_name = user['nome']
                                     st.session_state.unidade_nome = user['nome_unidade'] if pd.notna(user['nome_unidade']) else "VR Software"
                                     if user['primeiro_acesso']: st.session_state.primeiro_acesso = True; st.rerun()
                                     else: st.session_state.logged_in = True; st.rerun()
@@ -230,7 +234,7 @@ def tela_login():
                         except Exception: st.error("Ocorreu um erro ao validar os dados.")
 
 # ==========================================
-# BLOCO 2: MÓDULO DA PROPOSTA DIGITAL HTML
+# BLOCO 2: RENDERIZADOR HTML (PROPOSTA DIGITAL)
 # ==========================================
 def renderizar_proposta_digital(dados):
     validade_str = (datetime.date.today() + datetime.timedelta(days=15)).strftime("%d/%m/%Y")
@@ -246,17 +250,11 @@ def renderizar_proposta_digital(dados):
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
             body {{ font-family: 'Inter', sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; color: #333; }}
             .container {{ max-width: 900px; margin: 0 auto; background: #fff; box-shadow: 0 10px 30px rgba(0,0,0,0.1); border-radius: 12px; overflow: hidden; }}
-            @media print {{
-                body {{ background: #fff; padding: 0; }}
-                .container {{ box-shadow: none; max-width: 100%; border-radius: 0; }}
-                .no-print {{ display: none !important; }}
-                .page-break {{ page-break-before: always; }}
-            }}
+            @media print {{ body {{ background: #fff; padding: 0; }} .container {{ box-shadow: none; max-width: 100%; border-radius: 0; }} .no-print {{ display: none !important; }} .page-break {{ page-break-before: always; }} }}
             .print-btn {{ background: #ff6600; color: white; border: none; padding: 12px 24px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 8px; margin: 20px auto; box-shadow: 0 4px 15px rgba(255,102,0,0.3); transition: 0.3s; }}
             .cover {{ background: #262730; color: white; padding: 60px 40px; position: relative; border-left: 15px solid #ff6600; }}
             .cover h1 {{ font-size: 48px; margin: 0; font-weight: 900; letter-spacing: -1px; }}
             .cover h2 {{ color: #ff6600; font-weight: 400; font-size: 24px; margin-top: 10px; }}
-            .brand {{ font-size: 20px; font-weight: bold; color: #ff6600; margin-bottom: 40px; letter-spacing: 2px; }}
             .cover-details {{ margin-top: 60px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }}
             .detail-label {{ font-size: 12px; color: #aaa; text-transform: uppercase; margin-bottom: 5px; }}
             .detail-value {{ font-size: 18px; font-weight: bold; color: #fff; }}
@@ -375,15 +373,12 @@ def aplicativo_principal():
                 for r in vinculos_db[p_id]:
                     if r['tipo'] in ['projeto', 'adesao']:
                         f_nome = id_to_name.get(r['id_filho'])
-                        if f_nome:
-                            novos_auto.add(f_nome)
-                            st.session_state[f"perm_val_{f_nome}"] = float(r['qtd'])
+                        if f_nome: novos_auto.add(f_nome); st.session_state[f"perm_val_{f_nome}"] = float(r['qtd'])
 
         lista_servicos_atual = list(st.session_state.ui_sel_i)
         for item in st.session_state.auto_added - novos_auto:
             if item in lista_servicos_atual:
-                lista_servicos_atual.remove(item)
-                st.session_state[f"perm_val_{item}"] = 0.0
+                lista_servicos_atual.remove(item); st.session_state[f"perm_val_{item}"] = 0.0
         for item in novos_auto:
             if item not in lista_servicos_atual: lista_servicos_atual.append(item)
         st.session_state.auto_added = novos_auto; st.session_state.ui_sel_i = lista_servicos_atual; st.session_state.sel_i = lista_servicos_atual
@@ -393,56 +388,52 @@ def aplicativo_principal():
     def atualiza_despesas_ui(): st.session_state.sel_d = st.session_state.ui_sel_d
 
     def limpar_tudo():
-        for k, v in init_state.items(): 
-            st.session_state[k] = v if not isinstance(v, list) else []
-            if isinstance(v, set): st.session_state[k] = set()
-        if 'tmp_combo' in st.session_state: st.session_state.tmp_combo = "Montar Manualmente"
-        for t in ['tmp_pdv_conv', 'tmp_pdv_touch', 'tmp_pdv_self', 'tmp_semanas', 'tmp_mobile']:
-            if t in st.session_state: st.session_state[t] = 0.0
-        for t in ['tmp_erp_pro', 'tmp_xml', 'tmp_connect', 'tmp_backup', 'tmp_cartaz', 'tmp_ecommerce', 'tmp_controller', 'tmp_masterfisco', 'tmp_app', 'tmp_migracao', 'tmp_escopo']:
-            if t in st.session_state: st.session_state[t] = False
+        for k, v in init_state.items(): st.session_state[k] = v if not isinstance(v, list) else []
         for nome in full_db.keys(): st.session_state[f"perm_val_{nome}"] = 0.0
-        
-        # Limpar os dados do cliente e os widgets
-        st.session_state.in_nome_cliente = ""
-        st.session_state.in_cnpj_cliente = ""
+        st.session_state.perma_nome_cliente = ""; st.session_state.perma_cnpj_cliente = ""; st.session_state.proposta_carregada_id = None
         if 'widget_nome' in st.session_state: st.session_state.widget_nome = ""
         if 'widget_cnpj' in st.session_state: st.session_state.widget_cnpj = ""
         st.session_state.show_digital_proposal = False
 
     def sync_combo():
         if st.session_state.tmp_combo == "Padrao Pequeno Porte":
-            st.session_state.m_pdv_touch = 0.0; st.session_state.m_pdv_self = 0.0
-            st.session_state.m_ecommerce = False; st.session_state.m_app = False; st.session_state.m_connect = False
-            st.session_state.m_controller = False; st.session_state.m_cartaz = False; st.session_state.m_masterfisco = False; st.session_state.m_backup = False
-            st.session_state.m_semanas = 0.0
-            st.session_state.m_erp_pro = True; st.session_state.m_pdv_conv = 3.0; st.session_state.m_xml = True; st.session_state.m_mobile = 1.0
-            st.session_state.m_tef = "SiTef Express"; st.session_state.m_migracao = True; st.session_state.m_escopo = True
+            st.session_state.m_pdv_touch = 0.0; st.session_state.m_pdv_self = 0.0; st.session_state.m_ecommerce = False; st.session_state.m_app = False; st.session_state.m_connect = False; st.session_state.m_controller = False; st.session_state.m_cartaz = False; st.session_state.m_masterfisco = False; st.session_state.m_backup = False; st.session_state.m_semanas = 0.0
+            st.session_state.m_erp_pro = True; st.session_state.m_pdv_conv = 3.0; st.session_state.m_xml = True; st.session_state.m_mobile = 1.0; st.session_state.m_tef = "SiTef Express"; st.session_state.m_migracao = True; st.session_state.m_escopo = True
 
+    # ==========================================
     # SIDEBAR
+    # ==========================================
     with st.sidebar:
         if os.path.exists("logo_vr.png"): st.image("logo_vr.png", width=180)
         st.markdown(f"<div style='background-color:#f0f0f0; padding:10px; border-radius:5px; margin-bottom:15px; border-left:4px solid #ff6600;'><span style='font-weight:bold; color:#333;'>👤 {st.session_state.user_name}</span></div>", unsafe_allow_html=True)
-        abas_navegacao = ["Gerador de Proposta", "Consulta de Preco"]
-        if st.session_state.user_role == "admin":
-            if not st.toggle("Simular Visão Vendedor", value=False): abas_navegacao.append("Painel Admin")
-        tela = st.radio("Navegação:", abas_navegacao)
+        
+        abas = ["Gerador de Proposta", "Minhas Propostas", "Consulta de Preco"]
+        if st.session_state.user_role == "admin" and not st.toggle("Simular Visão Vendedor"): abas.append("Painel Admin")
+        
+        tela = st.radio("Navegação:", abas, index=abas.index(st.session_state.aba_atual) if st.session_state.aba_atual in abas else 0)
+        st.session_state.aba_atual = tela
+
         if tela == "Gerador de Proposta":
             st.write("---")
             mapeamento_ativo = st.toggle("Mapeamento Inteligente", value=False)
             modo_apresentacao = st.toggle("Modo Apresentação (Ocultar Menus)")
-            perfil_venda = st.selectbox("Perfil do Cliente", ["Executivo (Rua)", "CS (Base)"])
-            desc = st.number_input("Desconto Mensalidade (%)", 0.0, 30.0, 0.0, 0.5)
+            
+            # ALTERAÇÃO DE NOMENCLATURA AQUI
+            perfil_venda = st.selectbox("Perfil do Cliente", ["Com Despesas", "Sem Despesas"])
+            
+            st.session_state.g_desc_mensalidade = st.number_input("Desconto Mensalidade (%)", 0.0, 30.0, st.session_state.g_desc_mensalidade, 0.5)
             exibir_detalhe_desc = st.toggle("Exibir Desconto na Tela", value=True)
             exibir_media_loja = st.toggle("Exibir Media por Loja", value=False)
-            faturamento_sistema = st.selectbox("Início Mensalidade", ["Na assinatura", "30 dias", "60 dias", "Após implantação"])
-            parcelas_setup = st.selectbox("Parcelas Setup", [1, 2, 3, 4, 5, 6, 10, 12], index=3)
-            regra_despesas = st.selectbox("Faturamento Despesas", ["Faturamento na assinatura", "Faturamento pós Implantação"])
+            st.session_state.g_faturamento = st.selectbox("Início Mensalidade", ["Na assinatura", "30 dias", "60 dias", "Após implantação"], index=["Na assinatura", "30 dias", "60 dias", "Após implantação"].index(st.session_state.g_faturamento))
+            st.session_state.g_parcelas_setup = st.selectbox("Parcelas Setup", [1, 2, 3, 4, 5, 6, 10, 12], index=[1, 2, 3, 4, 5, 6, 10, 12].index(st.session_state.g_parcelas_setup))
+            st.session_state.g_regra_desp = st.selectbox("Faturamento Despesas", ["Faturamento na assinatura", "Faturamento pós Implantação"], index=["Faturamento na assinatura", "Faturamento pós Implantação"].index(st.session_state.g_regra_desp))
         st.write("---")
         if st.button("Sair (Logout)", use_container_width=True): st.session_state.clear(); st.rerun()
         st.markdown(f"""<hr><div style="font-size:0.8rem; color:{db_cor};">{db_status}</div><div style="font-size:0.7rem; color:#888;">{APP_VERSION}</div>""", unsafe_allow_html=True)
 
+    # ==========================================
     # TELA 1: PAINEL ADMIN
+    # ==========================================
     if tela == "Painel Admin":
         st.markdown("""<h1 class="hero-title">BACKOFFICE</h1>""", unsafe_allow_html=True)
         t_vinc, t_unid, t_user, t_sql, t_cat = st.tabs(["🔗 Vínculos Relacionais", "🏢 Unidades", "👥 Usuários", "💻 Terminal SQL", "📋 Catálogo"])
@@ -457,8 +448,7 @@ def aplicativo_principal():
                 if st.form_submit_button("Salvar Nova Unidade"):
                     try:
                         engine = create_engine(CONN_STR)
-                        with engine.begin() as conn:
-                            conn.execute(text("INSERT INTO unidades (nome_fantasia, cnpj, cidade, logradouro) VALUES (:n, :c, :ci, :e)"), {"n": n_fantasia, "c": v_cnpj, "ci": v_cidade, "e": v_end})
+                        with engine.begin() as conn: conn.execute(text("INSERT INTO unidades (nome_fantasia, cnpj, cidade, logradouro) VALUES (:n, :c, :ci, :e)"), {"n": n_fantasia, "c": v_cnpj, "ci": v_cidade, "e": v_end})
                         st.success("Unidade cadastrada com sucesso!")
                     except Exception as e: st.error(f"Erro: {e}")
             try:
@@ -479,8 +469,7 @@ def aplicativo_principal():
                         c3, c4 = st.columns(2)
                         u_unid, u_role = c3.selectbox("Unidade Vinculada", list(unid_dict.keys())), c4.selectbox("Nível de Acesso", ["vendedor", "admin"])
                         if st.form_submit_button("Criar Usuário"):
-                            with engine.begin() as conn:
-                                conn.execute(text("INSERT INTO usuarios (nome, email, nivel_acesso, id_unidade, senha, primeiro_acesso) VALUES (:n, :e, :r, :id_u, '123456', TRUE)"), {"n": u_nome, "e": u_email, "r": u_role, "id_u": unid_dict[u_unid]})
+                            with engine.begin() as conn: conn.execute(text("INSERT INTO usuarios (nome, email, nivel_acesso, id_unidade, senha, primeiro_acesso) VALUES (:n, :e, :r, :id_u, '123456', TRUE)"), {"n": u_nome, "e": u_email, "r": u_role, "id_u": unid_dict[u_unid]})
                             st.success(f"Usuário {u_nome} criado! Senha provisória: 123456")
                     st.dataframe(pd.read_sql("SELECT u.id, u.nome, u.email, u.nivel_acesso, un.nome_fantasia as unidade, u.ativo FROM usuarios u LEFT JOIN unidades un ON u.id_unidade = un.id", engine), use_container_width=True)
             except Exception as e: st.error(f"Erro ao carregar dados: {e}")
@@ -492,8 +481,7 @@ def aplicativo_principal():
                 if st.form_submit_button("Salvar Vínculo"):
                     try:
                         engine = create_engine(CONN_STR)
-                        with engine.begin() as conn:
-                            conn.execute(text("INSERT INTO product_vinculo (id_produto_pai, id_produto_filho, tipo_vinculo, quantidade_padrao) VALUES (:p, :f, :t, :q)"), {"p": name_to_id[pai], "f": name_to_id[fil], "t": tip, "q": qtd})
+                        with engine.begin() as conn: conn.execute(text("INSERT INTO product_vinculo (id_produto_pai, id_produto_filho, tipo_vinculo, quantidade_padrao) VALUES (:p, :f, :t, :q)"), {"p": name_to_id[pai], "f": name_to_id[fil], "t": tip, "q": qtd})
                         st.success("Vínculo Criado com Sucesso!"); st.cache_data.clear()
                     except Exception as e: st.error(e)
             st.dataframe(df_vinc, use_container_width=True)
@@ -514,7 +502,103 @@ def aplicativo_principal():
                     except Exception as e: st.error(e)
         with t_cat: st.dataframe(df_raw, use_container_width=True)
 
-    # TELA 2: GERADOR DE PROPOSTA
+    # ==========================================
+    # TELA 2: MINHAS PROPOSTAS (CRM)
+    # ==========================================
+    elif tela == "Minhas Propostas":
+        st.markdown("""<h1 class="hero-title">MEU HISTÓRICO</h1>""", unsafe_allow_html=True)
+        try:
+            engine = create_engine(CONN_STR)
+            filtro_sql = "WHERE vendedor_email = :email" if st.session_state.user_role != "admin" else ""
+            query_hist = text(f"SELECT id, nome_cliente, cnpj_cliente, valor_setup, valor_mensal, status, TO_CHAR(data_atualizacao, 'DD/MM/YYYY HH24:MI') as data_fmt, dados_simulacao FROM propostas {filtro_sql} ORDER BY data_atualizacao DESC")
+            with engine.connect() as conn:
+                df_hist = pd.read_sql(query_hist, conn, params={"email": st.session_state.user_email})
+            
+            if df_hist.empty:
+                st.info("Ainda não tem nenhuma proposta guardada no seu histórico.")
+            else:
+                for _, row in df_hist.iterrows():
+                    cor_status = "#22c55e" if row['status'] == "Contrato Assinado" else "#ef4444" if row['status'] == "Perdida" else "#facc15"
+                    with st.container():
+                        st.markdown(f"""
+                        <div style="background:#fff; padding:15px; border-radius:8px; border-left:6px solid {cor_status}; margin-bottom:10px; box-shadow:0 2px 5px rgba(0,0,0,0.05);">
+                            <div style="display:flex; justify-content:space-between;">
+                                <div>
+                                    <strong style="font-size:1.1rem; color:#262730;">{row['nome_cliente']}</strong><br>
+                                    <span style="color:#777; font-size:0.85rem;">Proposta #{row['id']} | CNPJ: {row['cnpj_cliente']} | Data: {row['data_fmt']}</span>
+                                </div>
+                                <div style="text-align:right;">
+                                    <span style="background:{cor_status}22; color:{cor_status}; padding:3px 8px; border-radius:4px; font-size:0.8rem; font-weight:bold;">{row['status']}</span><br>
+                                    <strong style="color:#333; font-size:0.9rem;">Setup: R$ {f_br(row['valor_setup'])} | Mensal: R$ {f_br(row['valor_mensal'])}</strong>
+                                </div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        col_btn1, col_btn2, col_btn3 = st.columns([2, 2, 6])
+                        with col_btn1:
+                            if st.button(f"▶️ Carregar", key=f"load_{row['id']}", use_container_width=True):
+                                desempacotar_simulacao(row['dados_simulacao'], row['id'])
+                                st.rerun()
+                        with col_btn2:
+                            novo_status = st.selectbox("Mudar Status", ["Em Negociação", "Contrato Assinado", "Perdida"], index=["Em Negociação", "Contrato Assinado", "Perdida"].index(row['status']), key=f"stat_{row['id']}", label_visibility="collapsed")
+                            if novo_status != row['status']:
+                                with engine.begin() as conn:
+                                    conn.execute(text("UPDATE propostas SET status = :s, data_atualizacao = CURRENT_TIMESTAMP WHERE id = :id"), {"s": novo_status, "id": row['id']})
+                                st.rerun()
+        except Exception as e: st.error(f"Erro ao ligar ao CRM: {e}")
+
+    # ==========================================
+    # TELA 3: CONSULTA DE PREÇO
+    # ==========================================
+    elif tela == "Consulta de Preco":
+        st.markdown(f"""<h1 class="hero-title">ANÁLISE TÉCNICA</h1>""", unsafe_allow_html=True)
+        st.markdown(f"""<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">Simulador de Negociação Individual</h3></div>""", unsafe_allow_html=True)
+        cb, cd = st.columns([2, 1])
+        p_sel = cb.selectbox("Selecione o produto:", sorted(list(full_db.keys())))
+        desc_s = cd.number_input("Simular Desconto (%)", 0.0, 30.0, 0.0, 0.5)
+        
+        v_h_base = servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)
+        
+        if p_sel:
+            d = full_db[p_sel]; v_b = d.get('valor', 0.0); v_l = v_b * (1 - (desc_s/100))
+            p_id = name_to_id.get(p_sel)
+            is_sistema = (d.get('typeproductid') == 604)
+            
+            t_s = 0.0
+            h_s = ""
+            
+            if p_id in vinculos_db and any(v['tipo'] in ['projeto', 'adesao'] for v in vinculos_db[p_id]):
+                for r in vinculos_db[p_id]:
+                    if r['tipo'] in ['projeto', 'adesao']:
+                        f_nm = id_to_name.get(r['id_filho']); f_val = full_db.get(f_nm, {}).get('valor', 0.0); f_q = r['qtd']
+                        t_s += (f_q * f_val); uni = "h" if r['tipo'] == 'projeto' else "un"
+                        h_s += f"<li><span class='item-name'>{f_nm}</span><span class='item-detalhe'>{int(f_q)}{uni} x R$ {f_br(f_val)} | Total: R$ {f_br(f_q*f_val)}</span></li>"
+            else:
+                h_p, v_he, ads = d.get('horas_padrao', 0.0), d.get('valor_hora_implantacao', 0.0), d.get('adesao_vinculada', 0.0)
+                rt = v_he if v_he > 0 else v_h_base
+                t_s = (h_p * rt) + ads
+                if h_p > 0: h_s += f"<li><span class='item-name'>Implantação</span><span class='item-detalhe'>{h_p}h x R$ {f_br(rt)} | Total: R$ {f_br(h_p*rt)}</span></li>"
+                if ads > 0: h_s += f"<li><span class='item-name'>Taxa de Adesão</span><span class='item-detalhe'>1 un x R$ {f_br(ads)} | Total: R$ {f_br(ads)}</span></li>"
+                
+            if is_sistema:
+                c1, c2, c3 = st.columns(3)
+                with c1: st.markdown(f"""<div class="resumo-card"><span class="resumo-label">Investimento de Setup</span><div class="resumo-valor">R$ {f_br(t_s)}</div><div class="resumo-subtitulo">COMPOSIÇÃO</div><ul class="lista-itens">{h_s if h_s else "<li>Isento</li>"}</ul></div>""", unsafe_allow_html=True)
+                with c2:
+                    html_b = f"""<span style="text-decoration: line-through; color: #777; font-size: 0.9rem;">R$ {f_br(v_b)}</span>""" if desc_s > 0 else ""
+                    st.markdown(f"""<div class="resumo-card" style="border-top-color:#2e7d32;"><span class="resumo-label">Investimento Mensal</span><div class="resumo-valor" style="color:#2e7d32;">R$ {f_br(v_l)}</div>{html_b}<div class="resumo-subtitulo">DETALHE</div><ul class="lista-itens"><li><span class='item-name'>Desconto Aplicado</span><span class="item-detalhe">{f_pct(desc_s)}%</span></li></ul></div>""", unsafe_allow_html=True)
+                with c3:
+                    st.markdown(f"""<div class="resumo-card" style="border-top-color:#262730; min-height: auto;"><span class="resumo-label">Resumo Anual</span><div style="margin-top:15px;"><p><b>Economia Mensal:</b> R$ {f_br(v_b-v_l)}</p><p><b>Economia Anual:</b> R$ {f_br((v_b-v_l)*12)}</p></div></div>""", unsafe_allow_html=True)
+            else:
+                c1, c2 = st.columns(2)
+                with c1:
+                    html_b = f"""<span style="text-decoration: line-through; color: #777; font-size: 0.9rem;">R$ {f_br(v_b)}</span>""" if desc_s > 0 else ""
+                    st.markdown(f"""<div class="resumo-card"><span class="resumo-label">Setup / Serviço Único</span><div class="resumo-valor">R$ {f_br(v_l)}</div>{html_b}<div class="resumo-subtitulo">DETALHE</div><ul class="lista-itens"><li><span class='item-name'>Desconto Aplicado</span><span class="item-detalhe">{f_pct(desc_s)}%</span></li></ul></div>""", unsafe_allow_html=True)
+                with c2:
+                    st.markdown(f"""<div class="resumo-card" style="border-top-color:#262730; min-height: auto;"><span class="resumo-label">Resumo do Desconto</span><div style="margin-top:15px;"><p><b>Economia Total Gerada:</b> R$ {f_br(v_b-v_l)}</p><p style="color:#777; font-size:0.85rem;">*Este item não possui faturamento recorrente mensal.</p></div></div>""", unsafe_allow_html=True)
+
+    # ==========================================
+    # TELA 4: GERADOR DE PROPOSTA
+    # ==========================================
     elif tela == "Gerador de Proposta":
         
         def aplicar_mapeamento():
@@ -569,26 +653,25 @@ def aplicativo_principal():
             st.session_state.ui_sel_d = _sel_d; st.session_state.sel_d = _sel_d
             processar_regras_colaterais()
 
+        if st.session_state.proposta_carregada_id:
+            st.warning(f"🔄 A editar Proposta do Histórico: #{st.session_state.proposta_carregada_id}")
+
         st.markdown("""<h1 class="hero-title">PROPOSTA COMERCIAL</h1>""", unsafe_allow_html=True)
         
-        # --- DADOS DO CLIENTE (Com Blindagem e Máscara) ---
+        # BLINDAGEM CLIENTE
         if modo_apresentacao:
-            # Apresentação do Cliente Fixa
             st.markdown(f"""
             <div style="background-color:#ffffff; border-left: 10px solid #262730; padding: 20px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
                 <span style="color:#ff6600; font-size:0.9rem; text-transform:uppercase; font-weight:bold;">Apresentação para o cliente:</span>
-                <h2 style="margin:5px 0; color:#262730;">{st.session_state.in_nome_cliente or "Cliente Não Informado"}</h2>
-                <span style="color:#777; font-size:1.1rem; font-weight:bold;">CNPJ: {st.session_state.in_cnpj_cliente if st.session_state.in_cnpj_cliente else "Não informado"}</span>
+                <h2 style="margin:5px 0; color:#262730;">{st.session_state.perma_nome_cliente or "Cliente Não Informado"}</h2>
+                <span style="color:#777; font-size:1.1rem; font-weight:bold;">CNPJ: {st.session_state.perma_cnpj_cliente if st.session_state.perma_cnpj_cliente else "Não informado"}</span>
             </div>
             """, unsafe_allow_html=True)
         else:
-            # Campos Editáveis
             st.markdown("""<div class="cliente-container"><h3 style="margin:0; color:#262730;">Dados do Cliente</h3></div>""", unsafe_allow_html=True)
             col_cli1, col_cli2 = st.columns([2, 1])
-            with col_cli1:
-                st.text_input("Razão Social / Nome Fantasia", value=st.session_state.in_nome_cliente, key="widget_nome", on_change=atualiza_nome_cliente, placeholder="Ex: Supermercados Dois Irmãos")
-            with col_cli2:
-                st.text_input("CNPJ (Apenas números)", value=st.session_state.in_cnpj_cliente, key="widget_cnpj", on_change=atualiza_cnpj_cliente, placeholder="00.000.000/0000-00", max_chars=18)
+            with col_cli1: st.text_input("Razão Social / Nome Fantasia", value=st.session_state.perma_nome_cliente, key="widget_nome", on_change=atualiza_nome_cliente, placeholder="Ex: Supermercados Dois Irmãos")
+            with col_cli2: st.text_input("CNPJ", value=st.session_state.perma_cnpj_cliente, key="widget_cnpj", on_change=atualiza_cnpj_cliente, placeholder="Apenas números", max_chars=18)
             st.write("---")
 
         if mapeamento_ativo and not modo_apresentacao:
@@ -624,29 +707,31 @@ def aplicativo_principal():
         processar_regras_colaterais()
 
         if not modo_apresentacao:
-            c1, c2, c3 = st.columns(3) if perfil_venda == "Executivo (Rua)" else (*st.columns(2), None)
+            # MUDANÇA DE NOMENCLATURA APLICADA AQUI
+            c1, c2, c3 = st.columns(3) if perfil_venda == "Com Despesas" else (*st.columns(2), None)
+            
             with c1:
                 st.markdown("""<div class="section-header"><span class="section-title">IMPLANTAÇÃO E SERVIÇOS</span></div>""", unsafe_allow_html=True)
-                st.multiselect("Serviços", list(servicos_db.keys()), key="ui_sel_i", on_change=atualiza_servicos_ui)
+                st.multiselect("Serviços", list(servicos_db.keys()), default=st.session_state.sel_i, key="ui_sel_i", on_change=atualiza_servicos_ui)
                 for i in st.session_state.sel_i:
                     v_u = servicos_db[i]['valor']
-                    st.number_input(f"{i} (R$ {f_br(v_u)}/h)", 0.0, step=1.0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_i_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_i_{i}"))
+                    st.number_input(f"{i} (R$ {f_br(v_u)}/h)", 0.0, step=1.0, value=float(st.session_state.get(f"perm_val_{i}", 0.0)), key=f"tmp_i_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_i_{i}"))
             with c2:
                 st.markdown("""<div class="section-header"><span class="section-title">MENSALIDADES SISTEMAS</span></div>""", unsafe_allow_html=True)
-                st.multiselect("Sistemas", list(sistemas_db.keys()), key="ui_sel_m", on_change=atualiza_sistemas_ui)
+                st.multiselect("Sistemas", list(sistemas_db.keys()), default=st.session_state.sel_m, key="ui_sel_m", on_change=atualiza_sistemas_ui)
                 for i in st.session_state.sel_m:
                     v_u = sistemas_db[i]['valor']
-                    st.number_input(f"{i} (R$ {f_br(v_u)}/un)", 0.0, step=1.0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_m_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_m_{i}"))
+                    st.number_input(f"{i} (R$ {f_br(v_u)}/un)", 0.0, step=1.0, value=float(st.session_state.get(f"perm_val_{i}", 0.0)), key=f"tmp_m_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_m_{i}"))
             if c3:
                 with c3:
                     st.markdown("""<div class="section-header"><span class="section-title">DESPESAS DO PROJETO</span></div>""", unsafe_allow_html=True)
-                    st.multiselect("Despesas", list(despesas_db.keys()), key="ui_sel_d", on_change=atualiza_despesas_ui)
+                    st.multiselect("Despesas", list(despesas_db.keys()), default=st.session_state.sel_d, key="ui_sel_d", on_change=atualiza_despesas_ui)
                     for i in st.session_state.sel_d:
                         v_u = despesas_db[i]['valor']
-                        st.number_input(f"{i} (R$ {f_br(v_u)}/un)", 0.0, step=1.0, value=st.session_state[f"perm_val_{i}"], key=f"tmp_d_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_d_{i}"))
+                        st.number_input(f"{i} (R$ {f_br(v_u)}/un)", 0.0, step=1.0, value=float(st.session_state.get(f"perm_val_{i}", 0.0)), key=f"tmp_d_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_d_{i}"))
 
         st.markdown("""<h2 style='text-align:center; font-weight:800; margin-top:30px;'>RESUMO DO INVESTIMENTO</h2>""", unsafe_allow_html=True)
-        res_cols = st.columns(3) if perfil_venda == "Executivo (Rua)" else st.columns([1, 2, 2, 1])[1:3]
+        res_cols = st.columns(3) if perfil_venda == "Com Despesas" else st.columns([1, 2, 2, 1])[1:3]
         
         def get_prioridade_mensal(item_name):
             if item_name == "VR ERP PRO": return 1
@@ -669,7 +754,7 @@ def aplicativo_principal():
         html_setup_digital = ""
 
         for n in st.session_state.sel_i:
-            q = st.session_state[f"perm_val_{n}"]
+            q = st.session_state.get(f"perm_val_{n}", 0.0)
             if q > 0:
                 v_u = servicos_db.get(n, full_db.get(n, {'valor':0.0}))['valor']
                 t_setup += (q * v_u)
@@ -701,16 +786,16 @@ def aplicativo_principal():
         html_setup_digital = "".join(item['html_dig'] for item in lista_setup_pre_ordenacao)
 
         with res_cols[0]:
-            st.markdown(f"""<div class="resumo-card"><span class="resumo-label">Investimento Implantação (Setup)</span><div class="resumo-valor">R$ {f_br(t_setup)}</div><div style="font-weight:bold;">{parcelas_setup}x de R$ {f_br(t_setup/parcelas_setup)}</div><div class="resumo-subtitulo">DETALHAMENTO SETUP</div><ul class="lista-itens">{h_setup if h_setup else "<li>Nenhum item</li>"}</ul></div>""", unsafe_allow_html=True)
+            st.markdown(f"""<div class="resumo-card"><span class="resumo-label">Investimento Implantação (Setup)</span><div class="resumo-valor">R$ {f_br(t_setup)}</div><div style="font-weight:bold;">{st.session_state.g_parcelas_setup}x de R$ {f_br(t_setup/st.session_state.g_parcelas_setup)}</div><div class="resumo-subtitulo">DETALHAMENTO SETUP</div><ul class="lista-itens">{h_setup if h_setup else "<li>Nenhum item</li>"}</ul></div>""", unsafe_allow_html=True)
 
         t_mensal, h_m = 0.0, ""
         html_mensal_digital = ""
         sistemas_ordenados = sorted(st.session_state.sel_m, key=get_prioridade_mensal)
         
         for n in sistemas_ordenados:
-            q = st.session_state[f"perm_val_{n}"]
+            q = st.session_state.get(f"perm_val_{n}", 0.0)
             if q > 0:
-                v_u = sistemas_db[n]['valor']; v_liq_u = v_u * (1 - (desc/100))
+                v_u = sistemas_db[n]['valor']; v_liq_u = v_u * (1 - (st.session_state.g_desc_mensalidade/100))
                 t_mensal += (q * v_liq_u)
                 h_m += f"<li><span class='item-name'>{n}</span><span class='item-detalhe'>{int(q)} un x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_liq_u)}</span></li>"
                 html_mensal_digital += f"<li><strong>{n}</strong><span class='detail'>{int(q)} un x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_liq_u)}</span></li>"
@@ -725,125 +810,90 @@ def aplicativo_principal():
                         html_mensal_digital += f"<li class='item-incluso'>└ {inc} (Incluso)</li>"
 
         with res_cols[1]:
-            d_h = f"""<div style="color:#2e7d32; font-weight:bold;">Desconto: {desc}%</div>""" if (exibir_detalhe_desc and desc > 0) else """<div style="height:21px"></div>"""
-            st.markdown(f"""<div class="resumo-card" style="border-top-color:#2e7d32;"><span class="resumo-label">Manutenção Mensal</span><div class="resumo-valor" style="color:#2e7d32;">R$ {f_br(t_mensal)}</div>{d_h}<div style="font-weight:bold;">Início: {faturamento_sistema}</div><div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{h_m if h_m else "<li>Nenhum</li>"}</ul></div>""", unsafe_allow_html=True)
+            d_h = f"""<div style="color:#2e7d32; font-weight:bold;">Desconto: {st.session_state.g_desc_mensalidade}%</div>""" if (exibir_detalhe_desc and st.session_state.g_desc_mensalidade > 0) else """<div style="height:21px"></div>"""
+            st.markdown(f"""<div class="resumo-card" style="border-top-color:#2e7d32;"><span class="resumo-label">Manutenção Mensal</span><div class="resumo-valor" style="color:#2e7d32;">R$ {f_br(t_mensal)}</div>{d_h}<div style="font-weight:bold;">Início: {st.session_state.g_faturamento}</div><div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{h_m if h_m else "<li>Nenhum</li>"}</ul></div>""", unsafe_allow_html=True)
 
         t_d, h_d = 0.0, ""
         html_desp_digital = ""
-        if perfil_venda == "Executivo (Rua)":
+        if perfil_venda == "Com Despesas":
             for n in st.session_state.sel_d:
-                q = st.session_state[f"perm_val_{n}"]
+                q = st.session_state.get(f"perm_val_{n}", 0.0)
                 if q > 0:
                     v_u = despesas_db[n]['valor']; t_d += (q * v_u)
                     h_d += f"<li><span class='item-name'>{n}</span><span class='item-detalhe'>{int(q)} un x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_u)}</span></li>"
                     html_desp_digital += f"<li><strong>{n}</strong><span class='detail'>{int(q)} un x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_u)}</span></li>"
             with res_cols[2]:
-                st.markdown(f"""<div class="resumo-card" style="border-top-color:#1976d2;"><span class="resumo-label">Despesas do Projeto</span><div class="resumo-valor" style="color:#1976d2;">R$ {f_br(t_d)}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.8rem;">{regra_despesas}</div><div class="resumo-subtitulo">DETALHAMENTO</div><ul class="lista-itens">{h_d if h_d else "<li>Sem despesas</li>"}</ul></div>""", unsafe_allow_html=True)
+                st.markdown(f"""<div class="resumo-card" style="border-top-color:#1976d2;"><span class="resumo-label">Despesas do Projeto</span><div class="resumo-valor" style="color:#1976d2;">R$ {f_br(t_d)}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.8rem;">{st.session_state.g_regra_desp}</div><div class="resumo-subtitulo">DETALHAMENTO</div><ul class="lista-itens">{h_d if h_d else "<li>Sem despesas</li>"}</ul></div>""", unsafe_allow_html=True)
 
         if exibir_media_loja:
             qtd_lojas = st.session_state.get("perm_val_VR ERP PRO", 0.0)
             if qtd_lojas > 0:
                 st.markdown(f"""<h3 style='text-align:center; font-weight:800; margin-top:40px; color:#262730;'>DILUIÇÃO DO INVESTIMENTO ({int(qtd_lojas)} LOJAS)</h3>""", unsafe_allow_html=True)
-                m_cols = st.columns(3) if perfil_venda == "Executivo (Rua)" else st.columns([1, 2, 2, 1])[1:3]
+                m_cols = st.columns(3) if perfil_venda == "Com Despesas" else st.columns([1, 2, 2, 1])[1:3]
                 with m_cols[0]: st.markdown(f"""<div style="background-color:#ffffff; border-left: 6px solid #ff6600; padding:15px; border-radius:5px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);"><span style="font-size:0.85rem; font-weight:bold; color:#777;">SETUP POR LOJA</span><br><span style="font-size:1.6rem; font-weight:900; color:#333;">R$ {f_br(t_setup / qtd_lojas)}</span></div>""", unsafe_allow_html=True)
                 with m_cols[1]: st.markdown(f"""<div style="background-color:#ffffff; border-left: 6px solid #2e7d32; padding:15px; border-radius:5px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);"><span style="font-size:0.85rem; font-weight:bold; color:#777;">MENSALIDADE POR LOJA</span><br><span style="font-size:1.6rem; font-weight:900; color:#333;">R$ {f_br(t_mensal / qtd_lojas)}</span></div>""", unsafe_allow_html=True)
-                if perfil_venda == "Executivo (Rua)":
+                if perfil_venda == "Com Despesas":
                     with m_cols[2]: st.markdown(f"""<div style="background-color:#ffffff; border-left: 6px solid #1976d2; padding:15px; border-radius:5px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);"><span style="font-size:0.85rem; font-weight:bold; color:#777;">DESPESAS POR LOJA</span><br><span style="font-size:1.6rem; font-weight:900; color:#333;">R$ {f_br(t_d / qtd_lojas)}</span></div>""", unsafe_allow_html=True)
 
-        # --- BOTÃO EXPORTAÇÃO WEB / DIGITAL (Escondido no Modo Apresentação) ---
+        # ==========================================
+        # BOTÕES FINAIS: CRM E EXPORTAÇÃO WEB
+        # ==========================================
         if not modo_apresentacao:
             st.write("---")
-            st.markdown("<h3 style='text-align:center; color:#262730;'>Exportação e Formalização</h3>", unsafe_allow_html=True)
-            col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
+            st.markdown("<h3 style='text-align:center; color:#262730;'>Formalização de Negócio</h3>", unsafe_allow_html=True)
+            col_btn1, col_btn2 = st.columns(2)
             
+            with col_btn1:
+                if st.button("💾 Guardar no Histórico (CRM)", use_container_width=True):
+                    if not st.session_state.perma_nome_cliente:
+                        st.error("Preencha o Nome do Cliente antes de guardar.")
+                    else:
+                        try:
+                            payload_json = empacotar_simulacao()
+                            engine = create_engine(CONN_STR)
+                            with engine.begin() as conn:
+                                if st.session_state.proposta_carregada_id:
+                                    conn.execute(text("UPDATE propostas SET nome_cliente = :n, cnpj_cliente = :c, valor_setup = :vs, valor_mensal = :vm, dados_simulacao = :ds, data_atualizacao = CURRENT_TIMESTAMP WHERE id = :id"), {"n": st.session_state.perma_nome_cliente, "c": st.session_state.perma_cnpj_cliente, "vs": t_setup, "vm": t_mensal, "ds": payload_json, "id": st.session_state.proposta_carregada_id})
+                                    st.success(f"Proposta #{st.session_state.proposta_carregada_id} atualizada com sucesso no CRM!")
+                                else:
+                                    res = conn.execute(text("INSERT INTO propostas (vendedor_email, nome_cliente, cnpj_cliente, valor_setup, valor_mensal, dados_simulacao) VALUES (:e, :n, :c, :vs, :vm, :ds) RETURNING id"), {"e": st.session_state.user_email, "n": st.session_state.perma_nome_cliente, "c": st.session_state.perma_cnpj_cliente, "vs": t_setup, "vm": t_mensal, "ds": payload_json})
+                                    novo_id = res.scalar()
+                                    st.session_state.proposta_carregada_id = novo_id
+                                    st.success(f"Nova proposta guardada no CRM! (ID: #{novo_id})")
+                        except Exception as e: st.error(f"Erro ao guardar na base de dados: {e}")
+
             with col_btn2:
-                if not st.session_state.in_nome_cliente:
-                    st.info("👆 Preencha o campo 'Razão Social / Nome Fantasia' no topo da ecrã para liberar a proposta digital.")
+                if not st.session_state.perma_nome_cliente:
+                    st.info("👆 Preencha o nome do cliente para liberar a proposta digital.")
                 else:
                     if st.button("🌐 Gerar Proposta Digital (Pronta para PDF)", use_container_width=True):
                         dados_pdf = {
-                            'nome_cliente': st.session_state.in_nome_cliente,
-                            'cnpj': st.session_state.in_cnpj_cliente,
+                            'nome_cliente': st.session_state.perma_nome_cliente,
+                            'cnpj': st.session_state.perma_cnpj_cliente,
                             'html_setup': html_setup_digital,
                             'valor_setup': f_br(t_setup),
-                            'parcelas': str(parcelas_setup),
+                            'parcelas': str(st.session_state.g_parcelas_setup),
                             'html_mensal': html_mensal_digital,
                             'valor_mensal': f_br(t_mensal),
-                            'faturamento': faturamento_sistema,
+                            'faturamento': st.session_state.g_faturamento,
                             'html_despesa': html_desp_digital if html_desp_digital else "<li>Sem despesas</li>",
                             'valor_despesa': f_br(t_d) if 't_d' in locals() else "0,00",
-                            'regra_desp': regra_despesas
+                            'regra_desp': st.session_state.g_regra_desp
                         }
                         st.session_state.html_proposta = renderizar_proposta_digital(dados_pdf)
                         st.session_state.show_digital_proposal = True
                         st.rerun()
                         
-        # Exibidor da Proposta Digital
         if st.session_state.get('show_digital_proposal', False) and not modo_apresentacao:
             st.markdown("---")
             st.markdown("<h2 style='text-align:center; color:#ff6600;'>📄 Visualização da Proposta Digital</h2>", unsafe_allow_html=True)
             st.info("Clique no botão laranja dentro do quadro abaixo para Imprimir ou Salvar como PDF.")
             components.html(st.session_state.html_proposta, height=1200, scrolling=True)
-            
             col_f1, col_f2, col_f3 = st.columns([1, 1, 1])
-            if col_f2.button("Fechar Visualização", use_container_width=True):
-                st.session_state.show_digital_proposal = False
-                st.rerun()
-
-    # TELA 3: CONSULTA DE PRECO 
-    elif tela == "Consulta de Preco":
-        st.markdown(f"""<h1 class="hero-title">ANÁLISE TÉCNICA</h1>""", unsafe_allow_html=True)
-        st.markdown(f"""<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">Simulador de Negociação Individual</h3></div>""", unsafe_allow_html=True)
-        cb, cd = st.columns([2, 1])
-        p_sel = cb.selectbox("Selecione o produto:", sorted(list(full_db.keys())))
-        desc_s = cd.number_input("Simular Desconto (%)", 0.0, 30.0, 0.0, 0.5)
-        
-        v_h_base = servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)
-        
-        if p_sel:
-            d = full_db[p_sel]; v_b = d.get('valor', 0.0); v_l = v_b * (1 - (desc_s/100))
-            p_id = name_to_id.get(p_sel)
-            is_sistema = (d.get('typeproductid') == 604)
-            
-            t_s = 0.0
-            h_s = ""
-            
-            if p_id in vinculos_db and any(v['tipo'] in ['projeto', 'adesao'] for v in vinculos_db[p_id]):
-                for r in vinculos_db[p_id]:
-                    if r['tipo'] in ['projeto', 'adesao']:
-                        f_nm = id_to_name.get(r['id_filho'])
-                        f_val = full_db.get(f_nm, {}).get('valor', 0.0)
-                        f_q = r['qtd']
-                        t_s += (f_q * f_val)
-                        uni = "h" if r['tipo'] == 'projeto' else "un"
-                        h_s += f"<li><span>{f_nm}</span><span class='item-detalhe'>{int(f_q)}{uni} x R$ {f_br(f_val)} | Total: R$ {f_br(f_q*f_val)}</span></li>"
-            else:
-                h_p, v_he, ads = d.get('horas_padrao', 0.0), d.get('valor_hora_implantacao', 0.0), d.get('adesao_vinculada', 0.0)
-                rt = v_he if v_he > 0 else v_h_base
-                t_s = (h_p * rt) + ads
-                if h_p > 0: h_s += f"<li><span>Implantação</span><span class='item-detalhe'>{h_p}h x R$ {f_br(rt)} | Total: R$ {f_br(h_p*rt)}</span></li>"
-                if ads > 0: h_s += f"<li><span>Taxa de Adesão</span><span class='item-detalhe'>1 un x R$ {f_br(ads)} | Total: R$ {f_br(ads)}</span></li>"
-                
-            if is_sistema:
-                c1, c2, c3 = st.columns(3)
-                with c1: st.markdown(f"""<div class="resumo-card"><span>Investimento de Setup</span><div class="resumo-valor">R$ {f_br(t_s)}</div><div class="resumo-subtitulo">COMPOSIÇÃO</div><ul class="lista-itens">{h_s if h_s else "<li>Isento</li>"}</ul></div>""", unsafe_allow_html=True)
-                with c2:
-                    html_b = f"""<span style="text-decoration: line-through; color: #777; font-size: 0.9rem;">R$ {f_br(v_b)}</span>""" if desc_s > 0 else ""
-                    st.markdown(f"""<div class="resumo-card" style="border-top-color:#2e7d32;"><span>Investimento Mensal</span><div class="resumo-valor" style="color:#2e7d32;">R$ {f_br(v_l)}</div>{html_b}<div class="resumo-subtitulo">DETALHE</div><ul class="lista-itens"><li><span>Desconto Aplicado</span><span class="item-detalhe">{f_pct(desc_s)}%</span></li></ul></div>""", unsafe_allow_html=True)
-                with c3:
-                    st.markdown(f"""<div class="resumo-card" style="border-top-color:#262730; min-height: auto;"><span>Resumo Anual</span><div style="margin-top:15px;"><p><b>Economia Mensal:</b> R$ {f_br(v_b-v_l)}</p><p><b>Economia Anual:</b> R$ {f_br((v_b-v_l)*12)}</p></div></div>""", unsafe_allow_html=True)
-            else:
-                c1, c2 = st.columns(2)
-                with c1:
-                    html_b = f"""<span style="text-decoration: line-through; color: #777; font-size: 0.9rem;">R$ {f_br(v_b)}</span>""" if desc_s > 0 else ""
-                    st.markdown(f"""<div class="resumo-card"><span>Setup / Serviço Único</span><div class="resumo-valor">R$ {f_br(v_l)}</div>{html_b}<div class="resumo-subtitulo">DETALHE</div><ul class="lista-itens"><li><span>Desconto Aplicado</span><span class="item-detalhe">{f_pct(desc_s)}%</span></li></ul></div>""", unsafe_allow_html=True)
-                with c2:
-                    st.markdown(f"""<div class="resumo-card" style="border-top-color:#262730; min-height: auto;"><span>Resumo do Desconto</span><div style="margin-top:15px;"><p><b>Economia Total Gerada:</b> R$ {f_br(v_b-v_l)}</p><p style="color:#777; font-size:0.85rem;">*Este item não possui faturamento recorrente mensal.</p></div></div>""", unsafe_allow_html=True)
+            if col_f2.button("Fechar Visualização", use_container_width=True): st.session_state.show_digital_proposal = False; st.rerun()
 
 # ==========================================
 # ROTEADOR DE SEGURANÇA
 # ==========================================
-if not st.session_state.logged_in:
-    tela_login()
-else:
-    aplicativo_principal()
+if not st.session_state.logged_in: tela_login()
+else: aplicativo_principal()
