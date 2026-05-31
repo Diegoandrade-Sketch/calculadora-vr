@@ -10,19 +10,19 @@ import datetime
 import base64
 
 # ==========================================
-# CONFIGURAÇÕES INICIAIS E CONTROLE DE ESTADO
+# CONFIGURAÇÕES INICIAIS E CONTROLO DE ESTADO
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-APP_VERSION = "v3.3.0 - Full CRM Master"
+APP_VERSION = "v3.5.0 - CRM Pro & Clean UI"
 CACHE_FILE = "cache_vr.json"
 
 # Inicialização de estados persistentes (O "Cofre" do CRM e da Tela)
 if 'perma_nome_cliente' not in st.session_state: st.session_state.perma_nome_cliente = ""
 if 'perma_cnpj_cliente' not in st.session_state: st.session_state.perma_cnpj_cliente = ""
-if 'aba_atual' not in st.session_state: st.session_state.aba_atual = "Gerador de Proposta"
 if 'proposta_carregada_id' not in st.session_state: st.session_state.proposta_carregada_id = None
 if 'show_digital_proposal' not in st.session_state: st.session_state.show_digital_proposal = False
+if 'menu_nav' not in st.session_state: st.session_state.menu_nav = "Gerador de Proposta"
 
 try:
     DB_USER = st.secrets["DB_USER"]
@@ -86,11 +86,13 @@ def empacotar_simulacao():
 
 def desempacotar_simulacao(json_data, prop_id):
     try:
-        dados = json.loads(json_data)
+        # Correção Definitiva do Erro de JSON (Trava de Tipagem)
+        dados = json.loads(json_data) if isinstance(json_data, str) else json_data
+        
         st.session_state.perma_nome_cliente = dados.get('perma_nome_cliente', '')
         st.session_state.perma_cnpj_cliente = dados.get('perma_cnpj_cliente', '')
-        st.session_state.g_desc_mensalidade = dados.get('g_desc_mensalidade', 0.0)
-        st.session_state.g_parcelas_setup = dados.get('g_parcelas_setup', 4)
+        st.session_state.g_desc_mensalidade = float(dados.get('g_desc_mensalidade', 0.0))
+        st.session_state.g_parcelas_setup = int(dados.get('g_parcelas_setup', 4))
         st.session_state.g_faturamento = dados.get('g_faturamento', "Na assinatura")
         st.session_state.g_regra_desp = dados.get('g_regra_desp', "Faturamento na assinatura")
         st.session_state.sel_m = dados.get('sel_m', [])
@@ -98,16 +100,18 @@ def desempacotar_simulacao(json_data, prop_id):
         st.session_state.sel_d = dados.get('sel_d', [])
         
         for k, v in dados.get('mapeamento', {}).items(): st.session_state[k] = v
-        for k, v in dados.get('quantidades', {}).items(): st.session_state[k] = v
+        for k, v in dados.get('quantidades', {}).items(): st.session_state[k] = float(v)
         
         st.session_state.proposta_carregada_id = prop_id
-        st.session_state.aba_atual = "Gerador de Proposta"
         st.session_state.show_digital_proposal = False
+        
+        # Redirecionamento Automático
+        st.session_state.menu_nav = "Gerador de Proposta"
     except Exception as e:
         st.error(f"Erro ao ler histórico: {e}")
 
 # ==========================================
-# DATA LAYER (CARREGAMENTO DO BANCO)
+# DATA LAYER (CARREGAMENTO DA BASE DE DADOS)
 # ==========================================
 @st.cache_data(ttl=3600)
 def carregar_dados_vendas():
@@ -163,7 +167,7 @@ def carregar_dados_vendas():
 sistemas_db, servicos_db, despesas_db, full_db, id_to_name, name_to_id, vinculos_db, db_status, db_cor, df_raw, df_vinc = carregar_dados_vendas()
 
 # ==========================================
-# ESTADO GLOBAL (Calculadora e Usuário)
+# ESTADO GLOBAL (Calculadora e Utilizador)
 # ==========================================
 if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 if 'user_role' not in st.session_state: st.session_state.user_role = None
@@ -187,10 +191,10 @@ for nome in full_db.keys():
     if f"perm_val_{nome}" not in st.session_state: st.session_state[f"perm_val_{nome}"] = 0.0
 
 # ==========================================
-# BLOCO 1: LOGIN
+# BLOCO 1: LOGIN (Visual Limpo e Profissional)
 # ==========================================
 def tela_login():
-    st.markdown("""<style>.stApp { background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%); } div[data-testid="stForm"] { background-color: #ffffff; border-radius: 16px; padding: 40px 30px; border: none; box-shadow: 0 15px 35px rgba(0, 0, 0, 0.05), 0 5px 15px rgba(0, 0, 0, 0.03); } div[data-testid="stForm"] button { background: linear-gradient(90deg, #ff6600 0%, #ff8533 100%); color: white; border: none; border-radius: 8px; font-weight: 600; padding: 0.5rem 1rem; transition: all 0.3s ease; margin-top: 15px; } div[data-testid="stForm"] button:hover { background: linear-gradient(90deg, #e65c00 0%, #ff6600 100%); box-shadow: 0 4px 15px rgba(255, 102, 0, 0.4); color: white; } div[data-testid="stTextInput"] input { border-radius: 8px; border: 1px solid #e0e0e0; padding: 12px 15px; background-color: #fcfcfc; } div[data-testid="stTextInput"] input:focus { border-color: #ff6600; box-shadow: 0 0 0 1px #ff6600; background-color: #ffffff; }</style>""", unsafe_allow_html=True)
+    st.markdown("""<style>.stApp { background: #f4f6f9; } div[data-testid="stForm"] { background-color: #ffffff; border-radius: 8px; padding: 40px; border: 1px solid #e0e0e0; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05); } div[data-testid="stForm"] button { background: #262730; color: white; border: none; border-radius: 4px; font-weight: 600; padding: 0.5rem 1rem; margin-top: 15px; } div[data-testid="stForm"] button:hover { background: #444; color: white; } div[data-testid="stTextInput"] input { border-radius: 4px; border: 1px solid #ccc; padding: 10px; }</style>""", unsafe_allow_html=True)
     c1, c2, c3 = st.columns([1, 1.2, 1])
     with c2:
         st.write(""); st.write("")
@@ -208,7 +212,7 @@ def tela_login():
                             engine = create_engine(CONN_STR)
                             with engine.begin() as conn: conn.execute(text("UPDATE usuarios SET senha = :s, primeiro_acesso = FALSE WHERE email = :e"), {"s": nova_senha, "e": st.session_state.user_email})
                             st.session_state.primeiro_acesso = False; st.session_state.logged_in = True; st.rerun()
-                        except Exception: st.error("Erro de comunicação com o banco de dados.")
+                        except Exception: st.error("Erro de comunicação com a base de dados.")
                     else: st.error("As senhas informadas não conferem.")
             else:
                 email = st.text_input("E-mail corporativo")
@@ -230,7 +234,7 @@ def tela_login():
                                     if user['primeiro_acesso']: st.session_state.primeiro_acesso = True; st.rerun()
                                     else: st.session_state.logged_in = True; st.rerun()
                                 else: st.error("Senha incorreta.")
-                            else: st.error("Usuário não cadastrado ou bloqueado.")
+                            else: st.error("Utilizador não cadastrado ou bloqueado.")
                         except Exception: st.error("Ocorreu um erro ao validar os dados.")
 
 # ==========================================
@@ -249,10 +253,10 @@ def renderizar_proposta_digital(dados):
         <style>
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
             body {{ font-family: 'Inter', sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; color: #333; }}
-            .container {{ max-width: 900px; margin: 0 auto; background: #fff; box-shadow: 0 10px 30px rgba(0,0,0,0.1); border-radius: 12px; overflow: hidden; }}
+            .container {{ max-width: 900px; margin: 0 auto; background: #fff; box-shadow: 0 10px 30px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden; }}
             @media print {{ body {{ background: #fff; padding: 0; }} .container {{ box-shadow: none; max-width: 100%; border-radius: 0; }} .no-print {{ display: none !important; }} .page-break {{ page-break-before: always; }} }}
-            .print-btn {{ background: #ff6600; color: white; border: none; padding: 12px 24px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 8px; margin: 20px auto; box-shadow: 0 4px 15px rgba(255,102,0,0.3); transition: 0.3s; }}
-            .cover {{ background: #262730; color: white; padding: 60px 40px; position: relative; border-left: 15px solid #ff6600; }}
+            .print-btn {{ background: #262730; color: white; border: none; padding: 12px 24px; font-size: 16px; font-weight: bold; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; margin: 20px auto; transition: 0.3s; }}
+            .cover {{ background: #262730; color: white; padding: 60px 40px; position: relative; border-left: 10px solid #ff6600; }}
             .cover h1 {{ font-size: 48px; margin: 0; font-weight: 900; letter-spacing: -1px; }}
             .cover h2 {{ color: #ff6600; font-weight: 400; font-size: 24px; margin-top: 10px; }}
             .cover-details {{ margin-top: 60px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }}
@@ -260,13 +264,13 @@ def renderizar_proposta_digital(dados):
             .detail-value {{ font-size: 18px; font-weight: bold; color: #fff; }}
             .detail-sub {{ font-size: 14px; color: #ccc; }}
             .content {{ padding: 40px; }}
-            .header-content {{ border-bottom: 2px solid #ff6600; padding-bottom: 10px; margin-bottom: 30px; }}
+            .header-content {{ border-bottom: 2px solid #262730; padding-bottom: 10px; margin-bottom: 30px; }}
             .header-content h3 {{ margin: 0; font-size: 22px; color: #262730; }}
             .cards {{ display: flex; flex-direction: column; gap: 25px; }}
-            .card {{ border: 1px solid #eee; border-radius: 8px; padding: 25px; background: #fafafa; }}
-            .card.setup {{ border-top: 6px solid #ff6600; }}
-            .card.mensal {{ border-top: 6px solid #2e7d32; }}
-            .card.despesa {{ border-top: 6px solid #1976d2; }}
+            .card {{ border: 1px solid #eee; border-radius: 6px; padding: 25px; background: #fafafa; }}
+            .card.setup {{ border-top: 4px solid #ff6600; }}
+            .card.mensal {{ border-top: 4px solid #2e7d32; }}
+            .card.despesa {{ border-top: 4px solid #1976d2; }}
             .card-title {{ font-size: 13px; color: #888; font-weight: bold; text-transform: uppercase; margin-bottom: 10px; }}
             .card-val {{ font-size: 28px; font-weight: 900; margin-bottom: 5px; }}
             .card.setup .card-val {{ color: #ff6600; }}
@@ -285,7 +289,7 @@ def renderizar_proposta_digital(dados):
     </head>
     <body>
         <div class="no-print" style="text-align: center;">
-            <button class="print-btn" onclick="window.print()">🖨️ Salvar como PDF / Imprimir</button>
+            <button class="print-btn" onclick="window.print()">Salvar como PDF / Imprimir</button>
         </div>
         <div class="container">
             <div class="cover">
@@ -347,21 +351,22 @@ def renderizar_proposta_digital(dados):
 # BLOCO 3: APLICATIVO PRINCIPAL (UI E LÓGICA)
 # ==========================================
 def aplicativo_principal():
+    # CSS Corporativo Clean (Fundo branco/cinza, sem gradientes intensos)
     st.markdown("""
         <style>
-        .stApp { background: linear-gradient(135deg, #ffffff 0%, #fff5ed 100%); }
-        .hero-title { color: #262730; font-size: 4.5rem; font-weight: 900; margin: 0; line-height: 1; text-transform: uppercase; letter-spacing: -3px; }
-        .mapeamento-container { background-color: #ffffff; border-left: 10px solid #ff6600; padding: 20px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
-        .cliente-container { background-color: #ffffff; border-left: 10px solid #262730; padding: 20px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
-        .resumo-card { background-color: #ffffff; border: 1px solid #f0f0f0; border-top: 8px solid #ff6600; padding: 25px; border-radius: 8px; min-height: 450px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
-        .resumo-valor { color: #ff6600; font-size: 2.3rem; font-weight: 900; margin-bottom: 5px; }
-        .item-detalhe { color: #333; font-size: 0.82rem; font-weight: 600; background-color: #fcfcfc; padding: 2px 8px; border-radius: 4px; border: 1px solid #eee; white-space: nowrap; }
-        .section-header { background: linear-gradient(90deg, #ff6600 0%, #ff944d 100%); padding: 8px 15px; border-radius: 5px; margin-bottom: 15px; margin-top: 20px; }
-        .section-title { color: #ffffff; font-size: 1.1rem; font-weight: bold; margin: 0; }
+        .stApp { background-color: #f4f6f9; }
+        .hero-title { color: #262730; font-size: 2.5rem; font-weight: 800; margin: 0; line-height: 1; text-transform: uppercase; letter-spacing: -1px; }
+        .mapeamento-container { background-color: #ffffff; border-left: 6px solid #262730; padding: 20px; border-radius: 4px; margin-bottom: 15px; border: 1px solid #e0e0e0; box-shadow: 0 2px 5px rgba(0,0,0,0.02); }
+        .cliente-container { background-color: #ffffff; border-left: 6px solid #262730; padding: 20px; border-radius: 4px; margin-bottom: 15px; border: 1px solid #e0e0e0; box-shadow: 0 2px 5px rgba(0,0,0,0.02); }
+        .resumo-card { background-color: #ffffff; border: 1px solid #e0e0e0; border-top: 4px solid #262730; padding: 20px; border-radius: 4px; min-height: 450px; box-shadow: 0 4px 10px rgba(0,0,0,0.03); display: flex; flex-direction: column; }
+        .resumo-valor { color: #262730; font-size: 2.2rem; font-weight: 800; margin-bottom: 5px; }
+        .item-detalhe { color: #555; font-size: 0.82rem; font-weight: 600; background-color: #f9f9f9; padding: 2px 8px; border-radius: 4px; border: 1px solid #eee; white-space: nowrap; }
+        .section-header { background-color: #262730; padding: 8px 15px; border-radius: 4px; margin-bottom: 15px; margin-top: 20px; }
+        .section-title { color: #ffffff; font-size: 1.05rem; font-weight: bold; margin: 0; }
         .lista-itens { list-style-type: none; padding-left: 0; margin-top: 10px; flex-grow: 1; }
         .lista-itens li { padding: 8px 0; border-bottom: 1px dashed #e0e0e0; display: flex; justify-content: space-between; align-items: center; gap: 15px; }
-        .lista-itens li span:first-child { font-weight: bold; font-size: 0.88rem; color: #444; }
-        .item-incluso { padding-left: 20px !important; color: #777; font-size: 0.85rem; font-style: italic; border-bottom: none !important; }
+        .lista-itens li span:first-child { font-weight: 600; font-size: 0.88rem; color: #444; }
+        .item-incluso { padding-left: 20px !important; color: #888; font-size: 0.85rem; font-style: italic; border-bottom: none !important; }
         </style>
     """, unsafe_allow_html=True)
 
@@ -396,39 +401,39 @@ def aplicativo_principal():
         st.session_state.show_digital_proposal = False
 
     def sync_combo():
-        if st.session_state.tmp_combo == "Padrao Pequeno Porte":
+        if st.session_state.tmp_combo == "Padrão Pequeno Porte":
             st.session_state.m_pdv_touch = 0.0; st.session_state.m_pdv_self = 0.0; st.session_state.m_ecommerce = False; st.session_state.m_app = False; st.session_state.m_connect = False; st.session_state.m_controller = False; st.session_state.m_cartaz = False; st.session_state.m_masterfisco = False; st.session_state.m_backup = False; st.session_state.m_semanas = 0.0
             st.session_state.m_erp_pro = True; st.session_state.m_pdv_conv = 3.0; st.session_state.m_xml = True; st.session_state.m_mobile = 1.0; st.session_state.m_tef = "SiTef Express"; st.session_state.m_migracao = True; st.session_state.m_escopo = True
 
     # ==========================================
-    # SIDEBAR
+    # SIDEBAR (Sincronizada sem cliques fantasmas)
     # ==========================================
     with st.sidebar:
         if os.path.exists("logo_vr.png"): st.image("logo_vr.png", width=180)
-        st.markdown(f"<div style='background-color:#f0f0f0; padding:10px; border-radius:5px; margin-bottom:15px; border-left:4px solid #ff6600;'><span style='font-weight:bold; color:#333;'>👤 {st.session_state.user_name}</span></div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='background-color:#fff; border: 1px solid #e0e0e0; padding:10px; border-radius:4px; margin-bottom:15px; border-left:4px solid #262730;'><span style='font-weight:bold; color:#333;'>{st.session_state.user_name}</span></div>", unsafe_allow_html=True)
         
-        abas = ["Gerador de Proposta", "Minhas Propostas", "Consulta de Preco"]
+        abas = ["Gerador de Proposta", "Minhas Propostas", "Consulta de Preço"]
         if st.session_state.user_role == "admin" and not st.toggle("Simular Visão Vendedor"): abas.append("Painel Admin")
         
-        tela = st.radio("Navegação:", abas, index=abas.index(st.session_state.aba_atual) if st.session_state.aba_atual in abas else 0)
-        st.session_state.aba_atual = tela
+        # O core da correção do duplo clique (ligado nativamente)
+        tela = st.radio("Navegação:", abas, key="menu_nav")
 
         if tela == "Gerador de Proposta":
             st.write("---")
             mapeamento_ativo = st.toggle("Mapeamento Inteligente", value=False)
             modo_apresentacao = st.toggle("Modo Apresentação (Ocultar Menus)")
             
-            # ALTERAÇÃO DE NOMENCLATURA AQUI
             perfil_venda = st.selectbox("Perfil do Cliente", ["Com Despesas", "Sem Despesas"])
             
             st.session_state.g_desc_mensalidade = st.number_input("Desconto Mensalidade (%)", 0.0, 30.0, st.session_state.g_desc_mensalidade, 0.5)
             exibir_detalhe_desc = st.toggle("Exibir Desconto na Tela", value=True)
-            exibir_media_loja = st.toggle("Exibir Media por Loja", value=False)
+            exibir_media_loja = st.toggle("Exibir Média por Loja", value=False)
             st.session_state.g_faturamento = st.selectbox("Início Mensalidade", ["Na assinatura", "30 dias", "60 dias", "Após implantação"], index=["Na assinatura", "30 dias", "60 dias", "Após implantação"].index(st.session_state.g_faturamento))
             st.session_state.g_parcelas_setup = st.selectbox("Parcelas Setup", [1, 2, 3, 4, 5, 6, 10, 12], index=[1, 2, 3, 4, 5, 6, 10, 12].index(st.session_state.g_parcelas_setup))
             st.session_state.g_regra_desp = st.selectbox("Faturamento Despesas", ["Faturamento na assinatura", "Faturamento pós Implantação"], index=["Faturamento na assinatura", "Faturamento pós Implantação"].index(st.session_state.g_regra_desp))
+        
         st.write("---")
-        if st.button("Sair (Logout)", use_container_width=True): st.session_state.clear(); st.rerun()
+        if st.button("Sair da Sessão", use_container_width=True): st.session_state.clear(); st.rerun()
         st.markdown(f"""<hr><div style="font-size:0.8rem; color:{db_cor};">{db_status}</div><div style="font-size:0.7rem; color:#888;">{APP_VERSION}</div>""", unsafe_allow_html=True)
 
     # ==========================================
@@ -436,7 +441,8 @@ def aplicativo_principal():
     # ==========================================
     if tela == "Painel Admin":
         st.markdown("""<h1 class="hero-title">BACKOFFICE</h1>""", unsafe_allow_html=True)
-        t_vinc, t_unid, t_user, t_sql, t_cat = st.tabs(["🔗 Vínculos Relacionais", "🏢 Unidades", "👥 Usuários", "💻 Terminal SQL", "📋 Catálogo"])
+        t_vinc, t_unid, t_user, t_sql, t_cat = st.tabs(["Vínculos Relacionais", "Unidades", "Usuários", "Terminal SQL", "Catálogo"])
+        
         with t_unid:
             st.markdown("<div class='section-header'><span class='section-title'>Cadastro de Escritórios e Unidades</span></div>", unsafe_allow_html=True)
             with st.form("form_unidades"):
@@ -455,6 +461,7 @@ def aplicativo_principal():
                 engine = create_engine(CONN_STR)
                 st.dataframe(pd.read_sql("SELECT id, nome_fantasia, cnpj, cidade, ativo FROM unidades", engine), use_container_width=True)
             except Exception: pass
+            
         with t_user:
             st.markdown("<div class='section-header'><span class='section-title'>Gestão da Equipe Comercial</span></div>", unsafe_allow_html=True)
             try:
@@ -473,6 +480,7 @@ def aplicativo_principal():
                             st.success(f"Usuário {u_nome} criado! Senha provisória: 123456")
                     st.dataframe(pd.read_sql("SELECT u.id, u.nome, u.email, u.nivel_acesso, un.nome_fantasia as unidade, u.ativo FROM usuarios u LEFT JOIN unidades un ON u.id_unidade = un.id", engine), use_container_width=True)
             except Exception as e: st.error(f"Erro ao carregar dados: {e}")
+            
         with t_vinc:
             with st.form("form_v"):
                 c1, c2, c3, c4 = st.columns([2,2,1,1])
@@ -485,415 +493,9 @@ def aplicativo_principal():
                         st.success("Vínculo Criado com Sucesso!"); st.cache_data.clear()
                     except Exception as e: st.error(e)
             st.dataframe(df_vinc, use_container_width=True)
+            
         with t_sql:
-            st.warning("Terminal Blindado")
+            st.warning("Terminal Administrativo Restrito")
             query = st.text_area("Digite o comando SQL:")
             if st.button("Executar SQL"):
-                if any(p in query.lower() for p in ["drop ", "delete ", "truncate "]): st.error("Comando bloqueado.")
-                else:
-                    try:
-                        engine = create_engine(CONN_STR)
-                        if query.lower().strip().startswith("select"):
-                            with engine.connect() as conn: res = pd.read_sql(text(query), conn)
-                            st.success(f"{len(res)} linhas retornadas."); st.dataframe(res, use_container_width=True)
-                        else:
-                            with engine.begin() as conn: r = conn.execute(text(query))
-                            st.success(f"Linhas afetadas: {r.rowcount}"); st.cache_data.clear()
-                    except Exception as e: st.error(e)
-        with t_cat: st.dataframe(df_raw, use_container_width=True)
-
-    # ==========================================
-    # TELA 2: MINHAS PROPOSTAS (CRM)
-    # ==========================================
-    elif tela == "Minhas Propostas":
-        st.markdown("""<h1 class="hero-title">MEU HISTÓRICO</h1>""", unsafe_allow_html=True)
-        try:
-            engine = create_engine(CONN_STR)
-            filtro_sql = "WHERE vendedor_email = :email" if st.session_state.user_role != "admin" else ""
-            query_hist = text(f"SELECT id, nome_cliente, cnpj_cliente, valor_setup, valor_mensal, status, TO_CHAR(data_atualizacao, 'DD/MM/YYYY HH24:MI') as data_fmt, dados_simulacao FROM propostas {filtro_sql} ORDER BY data_atualizacao DESC")
-            with engine.connect() as conn:
-                df_hist = pd.read_sql(query_hist, conn, params={"email": st.session_state.user_email})
-            
-            if df_hist.empty:
-                st.info("Ainda não tem nenhuma proposta guardada no seu histórico.")
-            else:
-                for _, row in df_hist.iterrows():
-                    cor_status = "#22c55e" if row['status'] == "Contrato Assinado" else "#ef4444" if row['status'] == "Perdida" else "#facc15"
-                    with st.container():
-                        st.markdown(f"""
-                        <div style="background:#fff; padding:15px; border-radius:8px; border-left:6px solid {cor_status}; margin-bottom:10px; box-shadow:0 2px 5px rgba(0,0,0,0.05);">
-                            <div style="display:flex; justify-content:space-between;">
-                                <div>
-                                    <strong style="font-size:1.1rem; color:#262730;">{row['nome_cliente']}</strong><br>
-                                    <span style="color:#777; font-size:0.85rem;">Proposta #{row['id']} | CNPJ: {row['cnpj_cliente']} | Data: {row['data_fmt']}</span>
-                                </div>
-                                <div style="text-align:right;">
-                                    <span style="background:{cor_status}22; color:{cor_status}; padding:3px 8px; border-radius:4px; font-size:0.8rem; font-weight:bold;">{row['status']}</span><br>
-                                    <strong style="color:#333; font-size:0.9rem;">Setup: R$ {f_br(row['valor_setup'])} | Mensal: R$ {f_br(row['valor_mensal'])}</strong>
-                                </div>
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        col_btn1, col_btn2, col_btn3 = st.columns([2, 2, 6])
-                        with col_btn1:
-                            if st.button(f"▶️ Carregar", key=f"load_{row['id']}", use_container_width=True):
-                                desempacotar_simulacao(row['dados_simulacao'], row['id'])
-                                st.rerun()
-                        with col_btn2:
-                            novo_status = st.selectbox("Mudar Status", ["Em Negociação", "Contrato Assinado", "Perdida"], index=["Em Negociação", "Contrato Assinado", "Perdida"].index(row['status']), key=f"stat_{row['id']}", label_visibility="collapsed")
-                            if novo_status != row['status']:
-                                with engine.begin() as conn:
-                                    conn.execute(text("UPDATE propostas SET status = :s, data_atualizacao = CURRENT_TIMESTAMP WHERE id = :id"), {"s": novo_status, "id": row['id']})
-                                st.rerun()
-        except Exception as e: st.error(f"Erro ao ligar ao CRM: {e}")
-
-    # ==========================================
-    # TELA 3: CONSULTA DE PREÇO
-    # ==========================================
-    elif tela == "Consulta de Preco":
-        st.markdown(f"""<h1 class="hero-title">ANÁLISE TÉCNICA</h1>""", unsafe_allow_html=True)
-        st.markdown(f"""<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">Simulador de Negociação Individual</h3></div>""", unsafe_allow_html=True)
-        cb, cd = st.columns([2, 1])
-        p_sel = cb.selectbox("Selecione o produto:", sorted(list(full_db.keys())))
-        desc_s = cd.number_input("Simular Desconto (%)", 0.0, 30.0, 0.0, 0.5)
-        
-        v_h_base = servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)
-        
-        if p_sel:
-            d = full_db[p_sel]; v_b = d.get('valor', 0.0); v_l = v_b * (1 - (desc_s/100))
-            p_id = name_to_id.get(p_sel)
-            is_sistema = (d.get('typeproductid') == 604)
-            
-            t_s = 0.0
-            h_s = ""
-            
-            if p_id in vinculos_db and any(v['tipo'] in ['projeto', 'adesao'] for v in vinculos_db[p_id]):
-                for r in vinculos_db[p_id]:
-                    if r['tipo'] in ['projeto', 'adesao']:
-                        f_nm = id_to_name.get(r['id_filho']); f_val = full_db.get(f_nm, {}).get('valor', 0.0); f_q = r['qtd']
-                        t_s += (f_q * f_val); uni = "h" if r['tipo'] == 'projeto' else "un"
-                        h_s += f"<li><span class='item-name'>{f_nm}</span><span class='item-detalhe'>{int(f_q)}{uni} x R$ {f_br(f_val)} | Total: R$ {f_br(f_q*f_val)}</span></li>"
-            else:
-                h_p, v_he, ads = d.get('horas_padrao', 0.0), d.get('valor_hora_implantacao', 0.0), d.get('adesao_vinculada', 0.0)
-                rt = v_he if v_he > 0 else v_h_base
-                t_s = (h_p * rt) + ads
-                if h_p > 0: h_s += f"<li><span class='item-name'>Implantação</span><span class='item-detalhe'>{h_p}h x R$ {f_br(rt)} | Total: R$ {f_br(h_p*rt)}</span></li>"
-                if ads > 0: h_s += f"<li><span class='item-name'>Taxa de Adesão</span><span class='item-detalhe'>1 un x R$ {f_br(ads)} | Total: R$ {f_br(ads)}</span></li>"
-                
-            if is_sistema:
-                c1, c2, c3 = st.columns(3)
-                with c1: st.markdown(f"""<div class="resumo-card"><span class="resumo-label">Investimento de Setup</span><div class="resumo-valor">R$ {f_br(t_s)}</div><div class="resumo-subtitulo">COMPOSIÇÃO</div><ul class="lista-itens">{h_s if h_s else "<li>Isento</li>"}</ul></div>""", unsafe_allow_html=True)
-                with c2:
-                    html_b = f"""<span style="text-decoration: line-through; color: #777; font-size: 0.9rem;">R$ {f_br(v_b)}</span>""" if desc_s > 0 else ""
-                    st.markdown(f"""<div class="resumo-card" style="border-top-color:#2e7d32;"><span class="resumo-label">Investimento Mensal</span><div class="resumo-valor" style="color:#2e7d32;">R$ {f_br(v_l)}</div>{html_b}<div class="resumo-subtitulo">DETALHE</div><ul class="lista-itens"><li><span class='item-name'>Desconto Aplicado</span><span class="item-detalhe">{f_pct(desc_s)}%</span></li></ul></div>""", unsafe_allow_html=True)
-                with c3:
-                    st.markdown(f"""<div class="resumo-card" style="border-top-color:#262730; min-height: auto;"><span class="resumo-label">Resumo Anual</span><div style="margin-top:15px;"><p><b>Economia Mensal:</b> R$ {f_br(v_b-v_l)}</p><p><b>Economia Anual:</b> R$ {f_br((v_b-v_l)*12)}</p></div></div>""", unsafe_allow_html=True)
-            else:
-                c1, c2 = st.columns(2)
-                with c1:
-                    html_b = f"""<span style="text-decoration: line-through; color: #777; font-size: 0.9rem;">R$ {f_br(v_b)}</span>""" if desc_s > 0 else ""
-                    st.markdown(f"""<div class="resumo-card"><span class="resumo-label">Setup / Serviço Único</span><div class="resumo-valor">R$ {f_br(v_l)}</div>{html_b}<div class="resumo-subtitulo">DETALHE</div><ul class="lista-itens"><li><span class='item-name'>Desconto Aplicado</span><span class="item-detalhe">{f_pct(desc_s)}%</span></li></ul></div>""", unsafe_allow_html=True)
-                with c2:
-                    st.markdown(f"""<div class="resumo-card" style="border-top-color:#262730; min-height: auto;"><span class="resumo-label">Resumo do Desconto</span><div style="margin-top:15px;"><p><b>Economia Total Gerada:</b> R$ {f_br(v_b-v_l)}</p><p style="color:#777; font-size:0.85rem;">*Este item não possui faturamento recorrente mensal.</p></div></div>""", unsafe_allow_html=True)
-
-    # ==========================================
-    # TELA 4: GERADOR DE PROPOSTA
-    # ==========================================
-    elif tela == "Gerador de Proposta":
-        
-        def aplicar_mapeamento():
-            _sel_m, _sel_i, _sel_d = [], [], []
-            for k in full_db.keys(): st.session_state[f"perm_val_{k}"] = 0.0
-
-            for p_name in sistemas_db.keys():
-                qtd = 0.0
-                if p_name == "VR PDV Convencional": qtd = st.session_state.m_pdv_conv
-                elif p_name == "VR PDV Touchscreen": qtd = st.session_state.m_pdv_touch
-                elif p_name == "VR PDV Self Checkout": qtd = st.session_state.m_pdv_self
-                elif p_name == "VR ERP PRO" and st.session_state.m_erp_pro: qtd = 1.0
-                elif p_name == "VR Gerenciador Xml" and st.session_state.m_xml: qtd = 1.0
-                elif p_name == "VR Connect (Android/IOS)" and st.session_state.m_connect: qtd = 1.0
-                elif p_name == "VR Backup 050 Gb" and st.session_state.m_backup: qtd = 1.0
-                elif p_name == "VR Cartaz" and st.session_state.m_cartaz: qtd = 1.0
-                elif p_name == "VR E-Commerce" and st.session_state.m_ecommerce: qtd = 1.0
-                elif p_name == "VR Controller 360 ( 1 CNPJ )" and st.session_state.m_controller: qtd = 1.0
-                elif p_name == "VR Masterfisco Brasil" and st.session_state.m_masterfisco: qtd = 1.0
-                elif p_name == "VR M-Commerce" and st.session_state.m_app: qtd = 1.0
-                elif p_name == "VR Mobile (Smartphone/Android)": qtd = float(st.session_state.m_mobile)
-
-                if st.session_state.m_tef == "SiTef Express":
-                    tot = st.session_state.m_pdv_conv + st.session_state.m_pdv_touch + st.session_state.m_pdv_self
-                    if tot <= 3 and p_name == "VR Sitef Express ate 3 PDVs": qtd = 1.0
-                    elif 3 < tot <= 6 and p_name == "VR Sitef Express ate 6 PDVs": qtd = 1.0
-                    elif 6 < tot <= 8 and p_name == "VR Sitef Express ate 8 PDVs": qtd = 1.0
-                    elif tot > 8 and p_name == "VR Sitef Express a partir 9 PDVs": qtd = 1.0
-                elif st.session_state.m_tef == "VR TEF" and p_name.lower() == "vr tef": qtd = 1.0
-
-                if qtd > 0: st.session_state[f"perm_val_{p_name}"] = qtd; _sel_m.append(p_name)
-
-            sem = st.session_state.m_semanas
-            for s_name in servicos_db.keys():
-                s_low = s_name.lower()
-                qtd = 0.0
-                if "implanta" in s_low and "treinamento" in s_low: qtd = sem * 44.0
-                elif st.session_state.m_escopo and "escopo" in s_low: qtd = 8.0
-                elif st.session_state.m_migracao and s_name == "Migracao de Dados Padrao": qtd = 8.0
-                if qtd > 0: st.session_state[f"perm_val_{s_name}"] = qtd; _sel_i.append(s_name)
-
-            if sem > 0:
-                for d_name in despesas_db.keys():
-                    d_low = d_name.lower()
-                    qtd = 0.0
-                    if "alimenta" in d_low: qtd = sem * 10.0
-                    elif "hospedagem" in d_low: qtd = sem * 4.0
-                    if qtd > 0: st.session_state[f"perm_val_{d_name}"] = qtd; _sel_d.append(d_name)
-                        
-            st.session_state.ui_sel_m = _sel_m; st.session_state.sel_m = _sel_m
-            st.session_state.ui_sel_i = _sel_i; st.session_state.sel_i = _sel_i
-            st.session_state.ui_sel_d = _sel_d; st.session_state.sel_d = _sel_d
-            processar_regras_colaterais()
-
-        if st.session_state.proposta_carregada_id:
-            st.warning(f"🔄 A editar Proposta do Histórico: #{st.session_state.proposta_carregada_id}")
-
-        st.markdown("""<h1 class="hero-title">PROPOSTA COMERCIAL</h1>""", unsafe_allow_html=True)
-        
-        # BLINDAGEM CLIENTE
-        if modo_apresentacao:
-            st.markdown(f"""
-            <div style="background-color:#ffffff; border-left: 10px solid #262730; padding: 20px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
-                <span style="color:#ff6600; font-size:0.9rem; text-transform:uppercase; font-weight:bold;">Apresentação para o cliente:</span>
-                <h2 style="margin:5px 0; color:#262730;">{st.session_state.perma_nome_cliente or "Cliente Não Informado"}</h2>
-                <span style="color:#777; font-size:1.1rem; font-weight:bold;">CNPJ: {st.session_state.perma_cnpj_cliente if st.session_state.perma_cnpj_cliente else "Não informado"}</span>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            st.markdown("""<div class="cliente-container"><h3 style="margin:0; color:#262730;">Dados do Cliente</h3></div>""", unsafe_allow_html=True)
-            col_cli1, col_cli2 = st.columns([2, 1])
-            with col_cli1: st.text_input("Razão Social / Nome Fantasia", value=st.session_state.perma_nome_cliente, key="widget_nome", on_change=atualiza_nome_cliente, placeholder="Ex: Supermercados Dois Irmãos")
-            with col_cli2: st.text_input("CNPJ", value=st.session_state.perma_cnpj_cliente, key="widget_cnpj", on_change=atualiza_cnpj_cliente, placeholder="Apenas números", max_chars=18)
-            st.write("---")
-
-        if mapeamento_ativo and not modo_apresentacao:
-            st.markdown("""<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">Mapeamento da Operacao</h3></div>""", unsafe_allow_html=True)
-            st.selectbox("Combo Rápido", ["Montar Manualmente", "Padrao Pequeno Porte"], key="tmp_combo", on_change=sync_combo)
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                st.number_input("PDV Convencional", 0.0, step=1.0, key="tmp_pdv_conv", value=st.session_state.m_pdv_conv, on_change=sync_state, args=("m_pdv_conv", "tmp_pdv_conv"))
-                st.number_input("PDV Touch", 0.0, step=1.0, key="tmp_pdv_touch", value=st.session_state.m_pdv_touch, on_change=sync_state, args=("m_pdv_touch", "tmp_pdv_touch"))
-                st.number_input("PDV Selfcheckout", 0.0, step=1.0, key="tmp_pdv_self", value=st.session_state.m_pdv_self, on_change=sync_state, args=("m_pdv_self", "tmp_pdv_self"))
-            with c2:
-                st.selectbox("TEF", ["Nao utiliza", "SiTef Express", "VR TEF"], key="tmp_tef", index=["Nao utiliza", "SiTef Express", "VR TEF"].index(st.session_state.m_tef), on_change=sync_state, args=("m_tef", "tmp_tef"))
-                st.number_input("Semanas", 0.0, step=1.0, key="tmp_semanas", value=st.session_state.m_semanas, on_change=sync_state, args=("m_semanas", "tmp_semanas"))
-                st.checkbox("Migração?", key="tmp_migracao", value=st.session_state.m_migracao, on_change=sync_state, args=("m_migracao", "tmp_migracao"))
-                st.checkbox("Escopo?", key="tmp_escopo", value=st.session_state.m_escopo, on_change=sync_state, args=("m_escopo", "tmp_escopo"))
-            with c3:
-                st.number_input("VR Mobile", 0.0, step=1.0, key="tmp_mobile", value=st.session_state.m_mobile, on_change=sync_state, args=("m_mobile", "tmp_mobile"))
-                sc1, sc2, sc3 = st.columns(3)
-                sc1.toggle("VR ERP PRO", key="tmp_erp_pro", value=st.session_state.m_erp_pro, on_change=sync_state, args=("m_erp_pro", "tmp_erp_pro"))
-                sc1.toggle("G. XML", key="tmp_xml", value=st.session_state.m_xml, on_change=sync_state, args=("m_xml", "tmp_xml"))
-                sc1.toggle("Connect", key="tmp_connect", value=st.session_state.m_connect, on_change=sync_state, args=("m_connect", "tmp_connect"))
-                sc2.toggle("VR Backup", key="tmp_backup", value=st.session_state.m_backup, on_change=sync_state, args=("m_backup", "tmp_backup"))
-                sc2.toggle("VR Cartaz", key="tmp_cartaz", value=st.session_state.m_cartaz, on_change=sync_state, args=("m_cartaz", "tmp_cartaz"))
-                sc2.toggle("E-Commerce", key="tmp_ecommerce", value=st.session_state.m_ecommerce, on_change=sync_state, args=("m_ecommerce", "tmp_ecommerce"))
-                sc3.toggle("C. 360", key="tmp_controller", value=st.session_state.m_controller, on_change=sync_state, args=("m_controller", "tmp_controller"))
-                sc3.toggle("MasterFisco", key="tmp_masterfisco", value=st.session_state.m_masterfisco, on_change=sync_state, args=("m_masterfisco", "tmp_masterfisco"))
-                sc3.toggle("M-Commerce", key="tmp_app", value=st.session_state.m_app, on_change=sync_state, args=("m_app", "tmp_app"))
-                b1, b2 = st.columns(2)
-                b1.button("Aplicar Inteligência", on_click=aplicar_mapeamento, use_container_width=True)
-                b2.button("Limpar Tudo", on_click=limpar_tudo, use_container_width=True)
-            st.write("---")
-
-        processar_regras_colaterais()
-
-        if not modo_apresentacao:
-            # MUDANÇA DE NOMENCLATURA APLICADA AQUI
-            c1, c2, c3 = st.columns(3) if perfil_venda == "Com Despesas" else (*st.columns(2), None)
-            
-            with c1:
-                st.markdown("""<div class="section-header"><span class="section-title">IMPLANTAÇÃO E SERVIÇOS</span></div>""", unsafe_allow_html=True)
-                st.multiselect("Serviços", list(servicos_db.keys()), default=st.session_state.sel_i, key="ui_sel_i", on_change=atualiza_servicos_ui)
-                for i in st.session_state.sel_i:
-                    v_u = servicos_db[i]['valor']
-                    st.number_input(f"{i} (R$ {f_br(v_u)}/h)", 0.0, step=1.0, value=float(st.session_state.get(f"perm_val_{i}", 0.0)), key=f"tmp_i_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_i_{i}"))
-            with c2:
-                st.markdown("""<div class="section-header"><span class="section-title">MENSALIDADES SISTEMAS</span></div>""", unsafe_allow_html=True)
-                st.multiselect("Sistemas", list(sistemas_db.keys()), default=st.session_state.sel_m, key="ui_sel_m", on_change=atualiza_sistemas_ui)
-                for i in st.session_state.sel_m:
-                    v_u = sistemas_db[i]['valor']
-                    st.number_input(f"{i} (R$ {f_br(v_u)}/un)", 0.0, step=1.0, value=float(st.session_state.get(f"perm_val_{i}", 0.0)), key=f"tmp_m_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_m_{i}"))
-            if c3:
-                with c3:
-                    st.markdown("""<div class="section-header"><span class="section-title">DESPESAS DO PROJETO</span></div>""", unsafe_allow_html=True)
-                    st.multiselect("Despesas", list(despesas_db.keys()), default=st.session_state.sel_d, key="ui_sel_d", on_change=atualiza_despesas_ui)
-                    for i in st.session_state.sel_d:
-                        v_u = despesas_db[i]['valor']
-                        st.number_input(f"{i} (R$ {f_br(v_u)}/un)", 0.0, step=1.0, value=float(st.session_state.get(f"perm_val_{i}", 0.0)), key=f"tmp_d_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_d_{i}"))
-
-        st.markdown("""<h2 style='text-align:center; font-weight:800; margin-top:30px;'>RESUMO DO INVESTIMENTO</h2>""", unsafe_allow_html=True)
-        res_cols = st.columns(3) if perfil_venda == "Com Despesas" else st.columns([1, 2, 2, 1])[1:3]
-        
-        def get_prioridade_mensal(item_name):
-            if item_name == "VR ERP PRO": return 1
-            if item_name == "VR PDV Convencional": return 2
-            if "VR Sitef Express" in item_name: return 3
-            if item_name == "VR Gerenciador Xml": return 4
-            if "VR Mobile" in item_name: return 5
-            return 99
-
-        def get_prioridade_setup(obj_item):
-            nome = obj_item['nome_exibicao']
-            if "Projeto ERP PRO" in nome: return 1
-            if "Migracao" in nome: return 2
-            if "Escopo" in nome: return 3
-            return 99
-
-        t_setup = 0.0
-        v_h_base = servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)
-        lista_setup_pre_ordenacao = []
-        html_setup_digital = ""
-
-        for n in st.session_state.sel_i:
-            q = st.session_state.get(f"perm_val_{n}", 0.0)
-            if q > 0:
-                v_u = servicos_db.get(n, full_db.get(n, {'valor':0.0}))['valor']
-                t_setup += (q * v_u)
-                html_linha = f"<li><span class='item-name'>{n}</span><span class='item-detalhe'>{int(q)}h x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_u)}</span></li>"
-                html_digital = f"<li><strong>{n}</strong><span class='detail'>{int(q)}h x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_u)}</span></li>"
-                lista_setup_pre_ordenacao.append({'nome_exibicao': n, 'html': html_linha, 'html_dig': html_digital})
-        
-        itens_isentos_setup = ["VR Mobile (Smartphone/Android)", "VR PDV Touchscreen", "VR PDV Self Checkout"]
-
-        for n in st.session_state.sel_m:
-            if name_to_id.get(n) not in vinculos_db:
-                if n in itens_isentos_setup: continue
-                d = sistemas_db[n]; h = d.get('horas_padrao', 0.0); ads = d.get('adesao_vinculada', 0.0)
-                if h > 0:
-                    v_rate = (d.get('valor_hora_implantacao', 0.0) or v_h_base)
-                    t_setup += (h * v_rate)
-                    nome_exibicao = "Projeto ERP PRO" if n == "VR ERP PRO" else f"Implantacao {n}"
-                    html_linha = f"<li><span class='item-name'>{nome_exibicao}</span><span class='item-detalhe'>{int(h)}h x R$ {f_br(v_rate)} | Total: R$ {f_br(h*v_rate)}</span></li>"
-                    html_digital = f"<li><strong>{nome_exibicao}</strong><span class='detail'>{int(h)}h x R$ {f_br(v_rate)} | Total: R$ {f_br(h*v_rate)}</span></li>"
-                    lista_setup_pre_ordenacao.append({'nome_exibicao': nome_exibicao, 'html': html_linha, 'html_dig': html_digital})
-                if ads > 0:
-                    t_setup += ads
-                    html_linha = f"<li><span class='item-name'>Taxa de Adesao {n}</span><span class='item-detalhe'>1 un x R$ {f_br(ads)} | Total: R$ {f_br(ads)}</span></li>"
-                    html_digital = f"<li><strong>Taxa de Adesao {n}</strong><span class='detail'>1 un x R$ {f_br(ads)} | Total: R$ {f_br(ads)}</span></li>"
-                    lista_setup_pre_ordenacao.append({'nome_exibicao': f"Taxa de Adesao {n}", 'html': html_linha, 'html_dig': html_digital})
-
-        lista_setup_pre_ordenacao.sort(key=get_prioridade_setup)
-        h_setup = "".join(item['html'] for item in lista_setup_pre_ordenacao)
-        html_setup_digital = "".join(item['html_dig'] for item in lista_setup_pre_ordenacao)
-
-        with res_cols[0]:
-            st.markdown(f"""<div class="resumo-card"><span class="resumo-label">Investimento Implantação (Setup)</span><div class="resumo-valor">R$ {f_br(t_setup)}</div><div style="font-weight:bold;">{st.session_state.g_parcelas_setup}x de R$ {f_br(t_setup/st.session_state.g_parcelas_setup)}</div><div class="resumo-subtitulo">DETALHAMENTO SETUP</div><ul class="lista-itens">{h_setup if h_setup else "<li>Nenhum item</li>"}</ul></div>""", unsafe_allow_html=True)
-
-        t_mensal, h_m = 0.0, ""
-        html_mensal_digital = ""
-        sistemas_ordenados = sorted(st.session_state.sel_m, key=get_prioridade_mensal)
-        
-        for n in sistemas_ordenados:
-            q = st.session_state.get(f"perm_val_{n}", 0.0)
-            if q > 0:
-                v_u = sistemas_db[n]['valor']; v_liq_u = v_u * (1 - (st.session_state.g_desc_mensalidade/100))
-                t_mensal += (q * v_liq_u)
-                h_m += f"<li><span class='item-name'>{n}</span><span class='item-detalhe'>{int(q)} un x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_liq_u)}</span></li>"
-                html_mensal_digital += f"<li><strong>{n}</strong><span class='detail'>{int(q)} un x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_liq_u)}</span></li>"
-                
-                vincs = [id_to_name.get(v['id_filho']) for v in vinculos_db.get(name_to_id.get(n), []) if v['tipo'] == 'incluso']
-                for inc in vincs: 
-                    h_m += f"<li class='item-incluso'>└ {inc} (Incluso)</li>"
-                    html_mensal_digital += f"<li class='item-incluso'>└ {inc} (Incluso)</li>"
-                if n == "VR ERP PRO" and not vincs:
-                    for inc in ["VR Promo", "VR Carteira Digital", "VR Analytics"]: 
-                        h_m += f"<li class='item-incluso'>└ {inc} (Incluso)</li>"
-                        html_mensal_digital += f"<li class='item-incluso'>└ {inc} (Incluso)</li>"
-
-        with res_cols[1]:
-            d_h = f"""<div style="color:#2e7d32; font-weight:bold;">Desconto: {st.session_state.g_desc_mensalidade}%</div>""" if (exibir_detalhe_desc and st.session_state.g_desc_mensalidade > 0) else """<div style="height:21px"></div>"""
-            st.markdown(f"""<div class="resumo-card" style="border-top-color:#2e7d32;"><span class="resumo-label">Manutenção Mensal</span><div class="resumo-valor" style="color:#2e7d32;">R$ {f_br(t_mensal)}</div>{d_h}<div style="font-weight:bold;">Início: {st.session_state.g_faturamento}</div><div class="resumo-subtitulo">SISTEMAS</div><ul class="lista-itens">{h_m if h_m else "<li>Nenhum</li>"}</ul></div>""", unsafe_allow_html=True)
-
-        t_d, h_d = 0.0, ""
-        html_desp_digital = ""
-        if perfil_venda == "Com Despesas":
-            for n in st.session_state.sel_d:
-                q = st.session_state.get(f"perm_val_{n}", 0.0)
-                if q > 0:
-                    v_u = despesas_db[n]['valor']; t_d += (q * v_u)
-                    h_d += f"<li><span class='item-name'>{n}</span><span class='item-detalhe'>{int(q)} un x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_u)}</span></li>"
-                    html_desp_digital += f"<li><strong>{n}</strong><span class='detail'>{int(q)} un x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_u)}</span></li>"
-            with res_cols[2]:
-                st.markdown(f"""<div class="resumo-card" style="border-top-color:#1976d2;"><span class="resumo-label">Despesas do Projeto</span><div class="resumo-valor" style="color:#1976d2;">R$ {f_br(t_d)}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.8rem;">{st.session_state.g_regra_desp}</div><div class="resumo-subtitulo">DETALHAMENTO</div><ul class="lista-itens">{h_d if h_d else "<li>Sem despesas</li>"}</ul></div>""", unsafe_allow_html=True)
-
-        if exibir_media_loja:
-            qtd_lojas = st.session_state.get("perm_val_VR ERP PRO", 0.0)
-            if qtd_lojas > 0:
-                st.markdown(f"""<h3 style='text-align:center; font-weight:800; margin-top:40px; color:#262730;'>DILUIÇÃO DO INVESTIMENTO ({int(qtd_lojas)} LOJAS)</h3>""", unsafe_allow_html=True)
-                m_cols = st.columns(3) if perfil_venda == "Com Despesas" else st.columns([1, 2, 2, 1])[1:3]
-                with m_cols[0]: st.markdown(f"""<div style="background-color:#ffffff; border-left: 6px solid #ff6600; padding:15px; border-radius:5px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);"><span style="font-size:0.85rem; font-weight:bold; color:#777;">SETUP POR LOJA</span><br><span style="font-size:1.6rem; font-weight:900; color:#333;">R$ {f_br(t_setup / qtd_lojas)}</span></div>""", unsafe_allow_html=True)
-                with m_cols[1]: st.markdown(f"""<div style="background-color:#ffffff; border-left: 6px solid #2e7d32; padding:15px; border-radius:5px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);"><span style="font-size:0.85rem; font-weight:bold; color:#777;">MENSALIDADE POR LOJA</span><br><span style="font-size:1.6rem; font-weight:900; color:#333;">R$ {f_br(t_mensal / qtd_lojas)}</span></div>""", unsafe_allow_html=True)
-                if perfil_venda == "Com Despesas":
-                    with m_cols[2]: st.markdown(f"""<div style="background-color:#ffffff; border-left: 6px solid #1976d2; padding:15px; border-radius:5px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);"><span style="font-size:0.85rem; font-weight:bold; color:#777;">DESPESAS POR LOJA</span><br><span style="font-size:1.6rem; font-weight:900; color:#333;">R$ {f_br(t_d / qtd_lojas)}</span></div>""", unsafe_allow_html=True)
-
-        # ==========================================
-        # BOTÕES FINAIS: CRM E EXPORTAÇÃO WEB
-        # ==========================================
-        if not modo_apresentacao:
-            st.write("---")
-            st.markdown("<h3 style='text-align:center; color:#262730;'>Formalização de Negócio</h3>", unsafe_allow_html=True)
-            col_btn1, col_btn2 = st.columns(2)
-            
-            with col_btn1:
-                if st.button("💾 Guardar no Histórico (CRM)", use_container_width=True):
-                    if not st.session_state.perma_nome_cliente:
-                        st.error("Preencha o Nome do Cliente antes de guardar.")
-                    else:
-                        try:
-                            payload_json = empacotar_simulacao()
-                            engine = create_engine(CONN_STR)
-                            with engine.begin() as conn:
-                                if st.session_state.proposta_carregada_id:
-                                    conn.execute(text("UPDATE propostas SET nome_cliente = :n, cnpj_cliente = :c, valor_setup = :vs, valor_mensal = :vm, dados_simulacao = :ds, data_atualizacao = CURRENT_TIMESTAMP WHERE id = :id"), {"n": st.session_state.perma_nome_cliente, "c": st.session_state.perma_cnpj_cliente, "vs": t_setup, "vm": t_mensal, "ds": payload_json, "id": st.session_state.proposta_carregada_id})
-                                    st.success(f"Proposta #{st.session_state.proposta_carregada_id} atualizada com sucesso no CRM!")
-                                else:
-                                    res = conn.execute(text("INSERT INTO propostas (vendedor_email, nome_cliente, cnpj_cliente, valor_setup, valor_mensal, dados_simulacao) VALUES (:e, :n, :c, :vs, :vm, :ds) RETURNING id"), {"e": st.session_state.user_email, "n": st.session_state.perma_nome_cliente, "c": st.session_state.perma_cnpj_cliente, "vs": t_setup, "vm": t_mensal, "ds": payload_json})
-                                    novo_id = res.scalar()
-                                    st.session_state.proposta_carregada_id = novo_id
-                                    st.success(f"Nova proposta guardada no CRM! (ID: #{novo_id})")
-                        except Exception as e: st.error(f"Erro ao guardar na base de dados: {e}")
-
-            with col_btn2:
-                if not st.session_state.perma_nome_cliente:
-                    st.info("👆 Preencha o nome do cliente para liberar a proposta digital.")
-                else:
-                    if st.button("🌐 Gerar Proposta Digital (Pronta para PDF)", use_container_width=True):
-                        dados_pdf = {
-                            'nome_cliente': st.session_state.perma_nome_cliente,
-                            'cnpj': st.session_state.perma_cnpj_cliente,
-                            'html_setup': html_setup_digital,
-                            'valor_setup': f_br(t_setup),
-                            'parcelas': str(st.session_state.g_parcelas_setup),
-                            'html_mensal': html_mensal_digital,
-                            'valor_mensal': f_br(t_mensal),
-                            'faturamento': st.session_state.g_faturamento,
-                            'html_despesa': html_desp_digital if html_desp_digital else "<li>Sem despesas</li>",
-                            'valor_despesa': f_br(t_d) if 't_d' in locals() else "0,00",
-                            'regra_desp': st.session_state.g_regra_desp
-                        }
-                        st.session_state.html_proposta = renderizar_proposta_digital(dados_pdf)
-                        st.session_state.show_digital_proposal = True
-                        st.rerun()
-                        
-        if st.session_state.get('show_digital_proposal', False) and not modo_apresentacao:
-            st.markdown("---")
-            st.markdown("<h2 style='text-align:center; color:#ff6600;'>📄 Visualização da Proposta Digital</h2>", unsafe_allow_html=True)
-            st.info("Clique no botão laranja dentro do quadro abaixo para Imprimir ou Salvar como PDF.")
-            components.html(st.session_state.html_proposta, height=1200, scrolling=True)
-            col_f1, col_f2, col_f3 = st.columns([1, 1, 1])
-            if col_f2.button("Fechar Visualização", use_container_width=True): st.session_state.show_digital_proposal = False; st.rerun()
-
-# ==========================================
-# ROTEADOR DE SEGURANÇA
-# ==========================================
-if not st.session_state.logged_in: tela_login()
-else: aplicativo_principal()
+                if any(p in query.lower() for p in
