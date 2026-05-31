@@ -1,3 +1,16 @@
+Aqui está a versão definitiva e completa do seu código (**v3.5.0 - CRM Pro & Clean UI**).
+
+Cumpri rigorosamente com todas as suas exigências:
+
+1. **Fim do clique fantasma:** O menu de navegação está agora perfeitamente sincronizado com o sistema nativo do Streamlit (`key="menu_nav"`).
+2. **Carregamento Instantâneo:** O erro do JSON foi corrigido. Ao clicar em "Carregar Proposta", o sistema injeta os dados e muda automaticamente o ecrã para o Gerador de Proposta.
+3. **Botão Salvar:** Movido estrategicamente para o topo do ecrã, ao lado do título.
+4. **Visual Profissional:** Todos os emojis foram removidos, as cores vibrantes e gradientes de fundo deram lugar a tons de cinza corporativo e branco, com bordas subtis.
+5. **Matemática e Lógica Intactas:** Todo o motor de cálculo e injeção manual está exatamente igual à sua base estável (v3.3.0).
+
+Por favor, copie o código abaixo e substitua 100% do seu ficheiro `app_vr.py`.
+
+```python
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
@@ -498,4 +511,487 @@ def aplicativo_principal():
             st.warning("Terminal Administrativo Restrito")
             query = st.text_area("Digite o comando SQL:")
             if st.button("Executar SQL"):
-                if any(p in query.lower() for p in
+                if any(p in query.lower() for p in ["drop ", "delete ", "truncate "]): st.error("Comando bloqueado.")
+                else:
+                    try:
+                        engine = create_engine(CONN_STR)
+                        if query.lower().strip().startswith("select"):
+                            with engine.connect() as conn: res = pd.read_sql(text(query), conn)
+                            st.success(f"{len(res)} linhas retornadas."); st.dataframe(res, use_container_width=True)
+                        else:
+                            with engine.begin() as conn: r = conn.execute(text(query))
+                            st.success(f"Linhas afetadas: {r.rowcount}"); st.cache_data.clear()
+                    except Exception as e: st.error(e)
+                    
+        with t_cat: st.dataframe(df_raw, use_container_width=True)
+
+    # ==========================================
+    # TELA 2: MINHAS PROPOSTAS (CRM KANBAN E LISTA)
+    # ==========================================
+    elif tela == "Minhas Propostas":
+        st.markdown("""<h1 class="hero-title" style="margin-bottom: 25px;">MEU HISTÓRICO</h1>""", unsafe_allow_html=True)
+        
+        c_filt, c_vis = st.columns([3, 1])
+        exibir_excluidas = c_filt.checkbox("Exibir propostas com status 'Excluída'", value=False)
+        visao = c_vis.radio("Tipo de Visão", ["Lista", "Kanban"], horizontal=True, label_visibility="collapsed")
+        
+        try:
+            engine = create_engine(CONN_STR)
+            condicoes = []
+            params = {}
+            if st.session_state.user_role != "admin":
+                condicoes.append("vendedor_email = :e")
+                params["e"] = st.session_state.user_email
+            if not exibir_excluidas:
+                condicoes.append("status != 'Excluída'")
+                
+            where_clause = "WHERE " + " AND ".join(condicoes) if condicoes else ""
+            query_hist = text(f"SELECT id, nome_cliente, cnpj_cliente, valor_setup, valor_mensal, status, TO_CHAR(data_atualizacao, 'DD/MM/YYYY HH24:MI') as data_fmt, dados_simulacao FROM propostas {where_clause} ORDER BY data_atualizacao DESC")
+            
+            with engine.connect() as conn:
+                df_hist = pd.read_sql(query_hist, conn, params=params)
+            
+            if df_hist.empty:
+                st.info("Nenhuma proposta encontrada no histórico.")
+            else:
+                if visao == "Lista":
+                    selecionados = []
+                    for idx, row in df_hist.iterrows():
+                        cor_status = "#22c55e" if row['status'] == "Contrato Assinado" else "#ef4444" if row['status'] == "Perdida" else "#888888" if row['status'] == "Excluída" else "#262730"
+                        
+                        col_chk, col_card = st.columns([0.3, 9.7])
+                        with col_chk:
+                            st.write("")
+                            if st.checkbox(" ", key=f"chk_{row['id']}"): selecionados.append(row['id'])
+                        
+                        with col_card:
+                            st.markdown(f"""
+                            <div style="background:#fff; padding:15px; border-radius:4px; border-left:4px solid {cor_status}; margin-bottom:5px; border-top: 1px solid #e0e0e0; border-right: 1px solid #e0e0e0; border-bottom: 1px solid #e0e0e0;">
+                                <div style="display:flex; justify-content:space-between;">
+                                    <div>
+                                        <strong style="font-size:1.1rem; color:#262730;">{row['nome_cliente']}</strong><br>
+                                        <span style="color:#777; font-size:0.85rem;">ID: #{row['id']} | CNPJ: {row['cnpj_cliente']} | Data: {row['data_fmt']}</span>
+                                    </div>
+                                    <div style="text-align:right;">
+                                        <span style="color:{cor_status}; font-weight:bold; font-size:0.9rem; text-transform:uppercase;">{row['status']}</span><br>
+                                        <strong style="color:#444; font-size:0.9rem;">Setup: R$ {f_br(row['valor_setup'])} | Mensal: R$ {f_br(row['valor_mensal'])}</strong>
+                                    </div>
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            c_b1, c_b2, _ = st.columns([2, 2, 6])
+                            with c_b1:
+                                if st.button("Carregar Proposta", key=f"load_{row['id']}", use_container_width=True):
+                                    desempacotar_simulacao(row['dados_simulacao'], row['id'])
+                                    st.rerun() # Dispara a atualização instantânea para o Gerador
+                            with c_b2:
+                                novo_status = st.selectbox("Mudar Status", ["Em Negociação", "Contrato Assinado", "Perdida", "Excluída"], index=["Em Negociação", "Contrato Assinado", "Perdida", "Excluída"].index(row['status']) if row['status'] in ["Em Negociação", "Contrato Assinado", "Perdida", "Excluída"] else 0, key=f"stat_{row['id']}", label_visibility="collapsed")
+                                if novo_status != row['status']:
+                                    with engine.begin() as conn:
+                                        conn.execute(text("UPDATE propostas SET status = :s, data_atualizacao = CURRENT_TIMESTAMP WHERE id = :id"), {"s": novo_status, "id": row['id']})
+                                    st.rerun()
+                                    
+                    # Bloco Ação em Lote
+                    if selecionados:
+                        st.markdown("---")
+                        st.info(f"**{len(selecionados)}** propostas selecionadas.")
+                        c_l1, c_l2, _ = st.columns([3, 2, 5])
+                        novo_status_lote = c_l1.selectbox("Selecione o novo status para aplicar a todos:", ["Em Negociação", "Contrato Assinado", "Perdida", "Excluída"])
+                        if c_l2.button("Aplicar Alteração", type="primary", use_container_width=True):
+                            with engine.begin() as conn:
+                                conn.execute(text("UPDATE propostas SET status = :s, data_atualizacao = CURRENT_TIMESTAMP WHERE id = ANY(:ids)"), {"s": novo_status_lote, "ids": selecionados})
+                            st.success("Status atualizados com sucesso.")
+                            st.rerun()
+
+                elif visao == "Kanban":
+                    k_cols = st.columns(4)
+                    status_map = {
+                        "Em Negociação": (k_cols[0], "#262730"),
+                        "Contrato Assinado": (k_cols[1], "#22c55e"),
+                        "Perdida": (k_cols[2], "#ef4444"),
+                        "Excluída": (k_cols[3], "#888888")
+                    }
+                    for status_nome, (col_obj, cor) in status_map.items():
+                        with col_obj:
+                            st.markdown(f"<div style='background-color:#fff; border-top:4px solid {cor}; padding:10px; border-radius:4px; text-align:center; font-weight:bold; margin-bottom:15px; color:#262730; border-left: 1px solid #eee; border-right: 1px solid #eee; border-bottom: 1px solid #eee;'>{status_nome}</div>", unsafe_allow_html=True)
+                            df_filtrado = df_hist[df_hist['status'] == status_nome]
+                            for _, row in df_filtrado.iterrows():
+                                st.markdown(f"""
+                                <div style="background:#fff; padding:15px; border:1px solid #e0e0e0; border-radius:4px; margin-bottom:10px; box-shadow:0 2px 4px rgba(0,0,0,0.02);">
+                                    <strong style="color:#262730; font-size:0.95rem; display:block; margin-bottom:5px;">{row['nome_cliente']}</strong>
+                                    <span style="font-size:0.75rem; color:#888; display:block; margin-bottom:8px;">ID: #{row['id']} | {row['data_fmt'][:10]}</span>
+                                    <div style="background:#f9f9f9; padding:5px; border-radius:4px;">
+                                        <span style="font-size:0.8rem; color:#555; display:block;">Setup: R$ {f_br(row['valor_setup'])}</span>
+                                        <span style="font-size:0.85rem; color:#262730; font-weight:bold; display:block;">Mensal: R$ {f_br(row['valor_mensal'])}</span>
+                                    </div>
+                                </div>
+                                """, unsafe_allow_html=True)
+                                if st.button("Abrir Proposta", key=f"kb_load_{row['id']}", use_container_width=True):
+                                    desempacotar_simulacao(row['dados_simulacao'], row['id'])
+                                    st.rerun()
+
+        except Exception as e: st.error(f"Erro de Banco de Dados: {e}")
+
+    # ==========================================
+    # TELA 3: CONSULTA DE PREÇO
+    # ==========================================
+    elif tela == "Consulta de Preço":
+        st.markdown(f"""<h1 class="hero-title" style="margin-bottom:20px;">ANÁLISE TÉCNICA</h1>""", unsafe_allow_html=True)
+        st.markdown(f"""<div class="mapeamento-container"><h3 style="margin:0; color:#262730; font-size:1.1rem;">Simulador de Negociação Individual</h3></div>""", unsafe_allow_html=True)
+        cb, cd = st.columns([2, 1])
+        p_sel = cb.selectbox("Selecione o produto:", sorted(list(full_db.keys())))
+        desc_s = cd.number_input("Simular Desconto (%)", 0.0, 30.0, 0.0, 0.5)
+        
+        v_h_base = servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)
+        
+        if p_sel:
+            d = full_db[p_sel]; v_b = d.get('valor', 0.0); v_l = v_b * (1 - (desc_s/100))
+            p_id = name_to_id.get(p_sel)
+            is_sistema = (d.get('typeproductid') == 604)
+            
+            t_s = 0.0
+            h_s = ""
+            
+            if p_id in vinculos_db and any(v['tipo'] in ['projeto', 'adesao'] for v in vinculos_db[p_id]):
+                for r in vinculos_db[p_id]:
+                    if r['tipo'] in ['projeto', 'adesao']:
+                        f_nm = id_to_name.get(r['id_filho']); f_val = full_db.get(f_nm, {}).get('valor', 0.0); f_q = r['qtd']
+                        t_s += (f_q * f_val); uni = "h" if r['tipo'] == 'projeto' else "un"
+                        h_s += f"<li><span>{f_nm}</span><span class='item-detalhe'>{int(f_q)}{uni} x R$ {f_br(f_val)} | Total: R$ {f_br(f_q*f_val)}</span></li>"
+            else:
+                h_p, v_he, ads = d.get('horas_padrao', 0.0), d.get('valor_hora_implantacao', 0.0), d.get('adesao_vinculada', 0.0)
+                rt = v_he if v_he > 0 else v_h_base
+                t_s = (h_p * rt) + ads
+                if h_p > 0: h_s += f"<li><span>Implantação</span><span class='item-detalhe'>{h_p}h x R$ {f_br(rt)} | Total: R$ {f_br(h_p*rt)}</span></li>"
+                if ads > 0: h_s += f"<li><span>Taxa de Adesão</span><span class='item-detalhe'>1 un x R$ {f_br(ads)} | Total: R$ {f_br(ads)}</span></li>"
+                
+            if is_sistema:
+                c1, c2, c3 = st.columns(3)
+                with c1: st.markdown(f"""<div class="resumo-card" style="border-top-color:#262730;"><span style="font-weight:bold; color:#777; font-size:0.85rem;">INVESTIMENTO SETUP</span><div class="resumo-valor">R$ {f_br(t_s)}</div><ul class="lista-itens">{h_s if h_s else "<li>Isento</li>"}</ul></div>""", unsafe_allow_html=True)
+                with c2:
+                    html_b = f"""<span style="text-decoration: line-through; color: #999; font-size: 1rem;">R$ {f_br(v_b)}</span>""" if desc_s > 0 else ""
+                    st.markdown(f"""<div class="resumo-card" style="border-top-color:#2e7d32;"><span style="font-weight:bold; color:#777; font-size:0.85rem;">INVESTIMENTO MENSAL</span><div class="resumo-valor" style="color:#2e7d32;">R$ {f_br(v_l)}</div>{html_b}<ul class="lista-itens"><li><span>Desconto Aplicado</span><span class="item-detalhe">{f_pct(desc_s)}%</span></li></ul></div>""", unsafe_allow_html=True)
+                with c3:
+                    st.markdown(f"""<div class="resumo-card" style="border-top-color:#262730; min-height: auto;"><span style="font-weight:bold; color:#777; font-size:0.85rem;">RESUMO ANUAL</span><div style="margin-top:15px;"><p><b>Economia Mensal:</b> R$ {f_br(v_b-v_l)}</p><p><b>Economia Anual:</b> R$ {f_br((v_b-v_l)*12)}</p></div></div>""", unsafe_allow_html=True)
+            else:
+                c1, c2 = st.columns(2)
+                with c1:
+                    html_b = f"""<span style="text-decoration: line-through; color: #999; font-size: 1rem;">R$ {f_br(v_b)}</span>""" if desc_s > 0 else ""
+                    st.markdown(f"""<div class="resumo-card" style="border-top-color:#262730;"><span style="font-weight:bold; color:#777; font-size:0.85rem;">SETUP / SERVIÇO ÚNICO</span><div class="resumo-valor">R$ {f_br(v_l)}</div>{html_b}<ul class="lista-itens"><li><span>Desconto Aplicado</span><span class="item-detalhe">{f_pct(desc_s)}%</span></li></ul></div>""", unsafe_allow_html=True)
+                with c2:
+                    st.markdown(f"""<div class="resumo-card" style="border-top-color:#262730; min-height: auto;"><span style="font-weight:bold; color:#777; font-size:0.85rem;">RESUMO DO DESCONTO</span><div style="margin-top:15px;"><p><b>Economia Total Gerada:</b> R$ {f_br(v_b-v_l)}</p><p style="color:#777; font-size:0.85rem;">*Este item não possui faturamento recorrente mensal.</p></div></div>""", unsafe_allow_html=True)
+
+    # ==========================================
+    # TELA 4: GERADOR DE PROPOSTA
+    # ==========================================
+    elif tela == "Gerador de Proposta":
+        
+        def aplicar_mapeamento():
+            _sel_m, _sel_i, _sel_d = [], [], []
+            for k in full_db.keys(): st.session_state[f"perm_val_{k}"] = 0.0
+
+            for p_name in sistemas_db.keys():
+                qtd = 0.0
+                if p_name == "VR PDV Convencional": qtd = st.session_state.m_pdv_conv
+                elif p_name == "VR PDV Touchscreen": qtd = st.session_state.m_pdv_touch
+                elif p_name == "VR PDV Self Checkout": qtd = st.session_state.m_pdv_self
+                elif p_name == "VR ERP PRO" and st.session_state.m_erp_pro: qtd = 1.0
+                elif p_name == "VR Gerenciador Xml" and st.session_state.m_xml: qtd = 1.0
+                elif p_name == "VR Connect (Android/IOS)" and st.session_state.m_connect: qtd = 1.0
+                elif p_name == "VR Backup 050 Gb" and st.session_state.m_backup: qtd = 1.0
+                elif p_name == "VR Cartaz" and st.session_state.m_cartaz: qtd = 1.0
+                elif p_name == "VR E-Commerce" and st.session_state.m_ecommerce: qtd = 1.0
+                elif p_name == "VR Controller 360 ( 1 CNPJ )" and st.session_state.m_controller: qtd = 1.0
+                elif p_name == "VR Masterfisco Brasil" and st.session_state.m_masterfisco: qtd = 1.0
+                elif p_name == "VR M-Commerce" and st.session_state.m_app: qtd = 1.0
+                elif p_name == "VR Mobile (Smartphone/Android)": qtd = float(st.session_state.m_mobile)
+
+                if st.session_state.m_tef == "SiTef Express":
+                    tot = st.session_state.m_pdv_conv + st.session_state.m_pdv_touch + st.session_state.m_pdv_self
+                    if tot <= 3 and p_name == "VR Sitef Express ate 3 PDVs": qtd = 1.0
+                    elif 3 < tot <= 6 and p_name == "VR Sitef Express ate 6 PDVs": qtd = 1.0
+                    elif 6 < tot <= 8 and p_name == "VR Sitef Express ate 8 PDVs": qtd = 1.0
+                    elif tot > 8 and p_name == "VR Sitef Express a partir 9 PDVs": qtd = 1.0
+                elif st.session_state.m_tef == "VR TEF" and p_name.lower() == "vr tef": qtd = 1.0
+
+                if qtd > 0: st.session_state[f"perm_val_{p_name}"] = qtd; _sel_m.append(p_name)
+
+            sem = st.session_state.m_semanas
+            for s_name in servicos_db.keys():
+                s_low = s_name.lower()
+                qtd = 0.0
+                if "implanta" in s_low and "treinamento" in s_low: qtd = sem * 44.0
+                elif st.session_state.m_escopo and "escopo" in s_low: qtd = 8.0
+                elif st.session_state.m_migracao and s_name == "Migracao de Dados Padrao": qtd = 8.0
+                if qtd > 0: st.session_state[f"perm_val_{s_name}"] = qtd; _sel_i.append(s_name)
+
+            if sem > 0:
+                for d_name in despesas_db.keys():
+                    d_low = d_name.lower()
+                    qtd = 0.0
+                    if "alimenta" in d_low: qtd = sem * 10.0
+                    elif "hospedagem" in d_low: qtd = sem * 4.0
+                    if qtd > 0: st.session_state[f"perm_val_{d_name}"] = qtd; _sel_d.append(d_name)
+                        
+            st.session_state.ui_sel_m = _sel_m; st.session_state.sel_m = _sel_m
+            st.session_state.ui_sel_i = _sel_i; st.session_state.sel_i = _sel_i
+            st.session_state.ui_sel_d = _sel_d; st.session_state.sel_d = _sel_d
+            processar_regras_colaterais()
+
+        if st.session_state.proposta_carregada_id:
+            st.info(f"A editar Proposta do Histórico: #{st.session_state.proposta_carregada_id}")
+
+        # CABEÇALHO E BOTÃO SALVAR (Reposicionado para o Topo)
+        col_hdr1, col_hdr2 = st.columns([3, 1])
+        with col_hdr1:
+            st.markdown("""<h1 class="hero-title">PROPOSTA COMERCIAL</h1>""", unsafe_allow_html=True)
+        with col_hdr2:
+            st.write("")
+            if not modo_apresentacao:
+                if st.button("Salvar Proposta", type="primary", use_container_width=True):
+                    if not st.session_state.perma_nome_cliente:
+                        st.error("Preencha o Nome do Cliente antes de guardar.")
+                    else:
+                        try:
+                            # Pré-Cálculos necessários para gravar
+                            t_setup_save, t_mensal_save = 0.0, 0.0
+                            for n in st.session_state.sel_i:
+                                t_setup_save += st.session_state.get(f"perm_val_{n}", 0.0) * servicos_db.get(n, {}).get('valor', 0.0)
+                            for n in st.session_state.sel_m:
+                                t_setup_save += sistemas_db[n].get('adesao_vinculada', 0.0)
+                                t_mensal_save += (st.session_state.get(f"perm_val_{n}", 0.0) * sistemas_db[n].get('valor', 0.0)) * (1 - (st.session_state.g_desc_mensalidade/100))
+                                if name_to_id.get(n) not in vinculos_db and n not in ["VR Mobile (Smartphone/Android)", "VR PDV Touchscreen", "VR PDV Self Checkout"]:
+                                    h_sist = sistemas_db[n].get('horas_padrao', 0.0)
+                                    if h_sist > 0:
+                                        t_setup_save += (h_sist * (sistemas_db[n].get('valor_hora_implantacao', 0.0) or servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)))
+                            
+                            payload_json = empacotar_simulacao()
+                            engine = create_engine(CONN_STR)
+                            with engine.begin() as conn:
+                                if st.session_state.proposta_carregada_id:
+                                    conn.execute(text("UPDATE propostas SET nome_cliente = :n, cnpj_cliente = :c, valor_setup = :vs, valor_mensal = :vm, dados_simulacao = :ds, data_atualizacao = CURRENT_TIMESTAMP WHERE id = :id"), {"n": st.session_state.perma_nome_cliente, "c": st.session_state.perma_cnpj_cliente, "vs": t_setup_save, "vm": t_mensal_save, "ds": payload_json, "id": st.session_state.proposta_carregada_id})
+                                    st.success(f"Proposta #{st.session_state.proposta_carregada_id} atualizada com sucesso no CRM!")
+                                else:
+                                    res = conn.execute(text("INSERT INTO propostas (vendedor_email, nome_cliente, cnpj_cliente, valor_setup, valor_mensal, dados_simulacao) VALUES (:e, :n, :c, :vs, :vm, :ds) RETURNING id"), {"e": st.session_state.user_email, "n": st.session_state.perma_nome_cliente, "c": st.session_state.perma_cnpj_cliente, "vs": t_setup_save, "vm": t_mensal_save, "ds": payload_json})
+                                    st.session_state.proposta_carregada_id = res.scalar()
+                                    st.success("Nova proposta guardada no CRM!")
+                        except Exception as e: st.error(f"Erro ao guardar na base de dados: {e}")
+
+        # BLINDAGEM CLIENTE
+        if modo_apresentacao:
+            st.markdown(f"""
+            <div style="background-color:#ffffff; border-left: 6px solid #262730; padding: 20px; border-radius: 4px; margin-bottom: 15px; border: 1px solid #e0e0e0;">
+                <span style="color:#777; font-size:0.85rem; text-transform:uppercase; font-weight:bold;">Apresentação para o cliente:</span>
+                <h2 style="margin:5px 0; color:#262730;">{st.session_state.perma_nome_cliente or "Cliente Não Informado"}</h2>
+                <span style="color:#555; font-size:1rem; font-weight:bold;">CNPJ: {st.session_state.perma_cnpj_cliente if st.session_state.perma_cnpj_cliente else "Não informado"}</span>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("""<div class="cliente-container"><h3 style="margin:0; color:#262730; font-size:1.1rem;">Dados do Cliente</h3></div>""", unsafe_allow_html=True)
+            col_cli1, col_cli2 = st.columns([2, 1])
+            with col_cli1: st.text_input("Razão Social / Nome Fantasia", value=st.session_state.perma_nome_cliente, key="widget_nome", on_change=atualiza_nome_cliente, placeholder="Ex: Supermercados Dois Irmãos")
+            with col_cli2: st.text_input("CNPJ", value=st.session_state.perma_cnpj_cliente, key="widget_cnpj", on_change=atualiza_cnpj_cliente, placeholder="Apenas números", max_chars=18)
+            st.write("---")
+
+        if mapeamento_ativo and not modo_apresentacao:
+            st.markdown("""<div class="mapeamento-container"><h3 style="margin:0; color:#262730; font-size:1.1rem;">Mapeamento da Operação</h3></div>""", unsafe_allow_html=True)
+            st.selectbox("Combo Rápido", ["Montar Manualmente", "Padrão Pequeno Porte"], key="tmp_combo", on_change=sync_combo)
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.number_input("PDV Convencional", 0.0, step=1.0, key="tmp_pdv_conv", value=st.session_state.m_pdv_conv, on_change=sync_state, args=("m_pdv_conv", "tmp_pdv_conv"))
+                st.number_input("PDV Touch", 0.0, step=1.0, key="tmp_pdv_touch", value=st.session_state.m_pdv_touch, on_change=sync_state, args=("m_pdv_touch", "tmp_pdv_touch"))
+                st.number_input("PDV Selfcheckout", 0.0, step=1.0, key="tmp_pdv_self", value=st.session_state.m_pdv_self, on_change=sync_state, args=("m_pdv_self", "tmp_pdv_self"))
+            with c2:
+                st.selectbox("TEF", ["Nao utiliza", "SiTef Express", "VR TEF"], key="tmp_tef", index=["Nao utiliza", "SiTef Express", "VR TEF"].index(st.session_state.m_tef), on_change=sync_state, args=("m_tef", "tmp_tef"))
+                st.number_input("Semanas", 0.0, step=1.0, key="tmp_semanas", value=st.session_state.m_semanas, on_change=sync_state, args=("m_semanas", "tmp_semanas"))
+                st.checkbox("Migração?", key="tmp_migracao", value=st.session_state.m_migracao, on_change=sync_state, args=("m_migracao", "tmp_migracao"))
+                st.checkbox("Escopo?", key="tmp_escopo", value=st.session_state.m_escopo, on_change=sync_state, args=("m_escopo", "tmp_escopo"))
+            with c3:
+                st.number_input("VR Mobile", 0.0, step=1.0, key="tmp_mobile", value=st.session_state.m_mobile, on_change=sync_state, args=("m_mobile", "tmp_mobile"))
+                sc1, sc2, sc3 = st.columns(3)
+                sc1.toggle("VR ERP PRO", key="tmp_erp_pro", value=st.session_state.m_erp_pro, on_change=sync_state, args=("m_erp_pro", "tmp_erp_pro"))
+                sc1.toggle("G. XML", key="tmp_xml", value=st.session_state.m_xml, on_change=sync_state, args=("m_xml", "tmp_xml"))
+                sc1.toggle("Connect", key="tmp_connect", value=st.session_state.m_connect, on_change=sync_state, args=("m_connect", "tmp_connect"))
+                sc2.toggle("VR Backup", key="tmp_backup", value=st.session_state.m_backup, on_change=sync_state, args=("m_backup", "tmp_backup"))
+                sc2.toggle("VR Cartaz", key="tmp_cartaz", value=st.session_state.m_cartaz, on_change=sync_state, args=("m_cartaz", "tmp_cartaz"))
+                sc2.toggle("E-Commerce", key="tmp_ecommerce", value=st.session_state.m_ecommerce, on_change=sync_state, args=("m_ecommerce", "tmp_ecommerce"))
+                sc3.toggle("C. 360", key="tmp_controller", value=st.session_state.m_controller, on_change=sync_state, args=("m_controller", "tmp_controller"))
+                sc3.toggle("MasterFisco", key="tmp_masterfisco", value=st.session_state.m_masterfisco, on_change=sync_state, args=("m_masterfisco", "tmp_masterfisco"))
+                sc3.toggle("M-Commerce", key="tmp_app", value=st.session_state.m_app, on_change=sync_state, args=("m_app", "tmp_app"))
+                b1, b2 = st.columns(2)
+                b1.button("Aplicar Inteligência", on_click=aplicar_mapeamento, use_container_width=True)
+                b2.button("Limpar Tudo", on_click=limpar_tudo, use_container_width=True)
+            st.write("---")
+
+        processar_regras_colaterais()
+
+        if not modo_apresentacao:
+            c1, c2, c3 = st.columns(3) if perfil_venda == "Com Despesas" else (*st.columns(2), None)
+            
+            with c1:
+                st.markdown("""<div class="section-header"><span class="section-title">IMPLANTAÇÃO E SERVIÇOS</span></div>""", unsafe_allow_html=True)
+                st.multiselect("Serviços", list(servicos_db.keys()), default=st.session_state.sel_i, key="ui_sel_i", on_change=atualiza_servicos_ui)
+                for i in st.session_state.sel_i:
+                    v_u = servicos_db[i]['valor']
+                    st.number_input(f"{i} (R$ {f_br(v_u)}/h)", 0.0, step=1.0, value=float(st.session_state.get(f"perm_val_{i}", 0.0)), key=f"tmp_i_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_i_{i}"))
+            with c2:
+                st.markdown("""<div class="section-header"><span class="section-title">MENSALIDADES SISTEMAS</span></div>""", unsafe_allow_html=True)
+                st.multiselect("Sistemas", list(sistemas_db.keys()), default=st.session_state.sel_m, key="ui_sel_m", on_change=atualiza_sistemas_ui)
+                for i in st.session_state.sel_m:
+                    v_u = sistemas_db[i]['valor']
+                    st.number_input(f"{i} (R$ {f_br(v_u)}/un)", 0.0, step=1.0, value=float(st.session_state.get(f"perm_val_{i}", 0.0)), key=f"tmp_m_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_m_{i}"))
+            if c3:
+                with c3:
+                    st.markdown("""<div class="section-header"><span class="section-title">DESPESAS DO PROJETO</span></div>""", unsafe_allow_html=True)
+                    st.multiselect("Despesas", list(despesas_db.keys()), default=st.session_state.sel_d, key="ui_sel_d", on_change=atualiza_despesas_ui)
+                    for i in st.session_state.sel_d:
+                        v_u = despesas_db[i]['valor']
+                        st.number_input(f"{i} (R$ {f_br(v_u)}/un)", 0.0, step=1.0, value=float(st.session_state.get(f"perm_val_{i}", 0.0)), key=f"tmp_d_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_d_{i}"))
+
+        st.markdown("""<h2 style='text-align:center; font-weight:800; margin-top:40px; color:#262730;'>RESUMO DO INVESTIMENTO</h2>""", unsafe_allow_html=True)
+        res_cols = st.columns(3) if perfil_venda == "Com Despesas" else st.columns([1, 2, 2, 1])[1:3]
+        
+        def get_prioridade_mensal(item_name):
+            if item_name == "VR ERP PRO": return 1
+            if item_name == "VR PDV Convencional": return 2
+            if "VR Sitef Express" in item_name: return 3
+            if item_name == "VR Gerenciador Xml": return 4
+            if "VR Mobile" in item_name: return 5
+            return 99
+
+        def get_prioridade_setup(obj_item):
+            nome = obj_item['nome_exibicao']
+            if "Projeto ERP PRO" in nome: return 1
+            if "Migracao" in nome: return 2
+            if "Escopo" in nome: return 3
+            return 99
+
+        t_setup = 0.0
+        v_h_base = servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)
+        lista_setup_pre_ordenacao = []
+        html_setup_digital = ""
+
+        for n in st.session_state.sel_i:
+            q = st.session_state.get(f"perm_val_{n}", 0.0)
+            if q > 0:
+                v_u = servicos_db.get(n, full_db.get(n, {'valor':0.0}))['valor']
+                t_setup += (q * v_u)
+                html_linha = f"<li><span>{n}</span><span class='item-detalhe'>{int(q)}h x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_u)}</span></li>"
+                html_digital = f"<li><strong>{n}</strong><span class='detail'>{int(q)}h x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_u)}</span></li>"
+                lista_setup_pre_ordenacao.append({'nome_exibicao': n, 'html': html_linha, 'html_dig': html_digital})
+        
+        itens_isentos_setup = ["VR Mobile (Smartphone/Android)", "VR PDV Touchscreen", "VR PDV Self Checkout"]
+
+        for n in st.session_state.sel_m:
+            if name_to_id.get(n) not in vinculos_db:
+                if n in itens_isentos_setup: continue
+                d = sistemas_db[n]; h = d.get('horas_padrao', 0.0); ads = d.get('adesao_vinculada', 0.0)
+                if h > 0:
+                    v_rate = (d.get('valor_hora_implantacao', 0.0) or v_h_base)
+                    t_setup += (h * v_rate)
+                    nome_exibicao = "Projeto ERP PRO" if n == "VR ERP PRO" else f"Implantacao {n}"
+                    html_linha = f"<li><span>{nome_exibicao}</span><span class='item-detalhe'>{int(h)}h x R$ {f_br(v_rate)} | Total: R$ {f_br(h*v_rate)}</span></li>"
+                    html_digital = f"<li><strong>{nome_exibicao}</strong><span class='detail'>{int(h)}h x R$ {f_br(v_rate)} | Total: R$ {f_br(h*v_rate)}</span></li>"
+                    lista_setup_pre_ordenacao.append({'nome_exibicao': nome_exibicao, 'html': html_linha, 'html_dig': html_digital})
+                if ads > 0:
+                    t_setup += ads
+                    html_linha = f"<li><span>Taxa de Adesão {n}</span><span class='item-detalhe'>1 un x R$ {f_br(ads)} | Total: R$ {f_br(ads)}</span></li>"
+                    html_digital = f"<li><strong>Taxa de Adesão {n}</strong><span class='detail'>1 un x R$ {f_br(ads)} | Total: R$ {f_br(ads)}</span></li>"
+                    lista_setup_pre_ordenacao.append({'nome_exibicao': f"Taxa de Adesão {n}", 'html': html_linha, 'html_dig': html_digital})
+
+        lista_setup_pre_ordenacao.sort(key=get_prioridade_setup)
+        h_setup = "".join(item['html'] for item in lista_setup_pre_ordenacao)
+        html_setup_digital = "".join(item['html_dig'] for item in lista_setup_pre_ordenacao)
+
+        with res_cols[0]:
+            st.markdown(f"""<div class="resumo-card" style="border-top-color:#ff6600;"><span style="color:#777; font-weight:bold; font-size:0.85rem;">INVESTIMENTO DE IMPLANTAÇÃO</span><div class="resumo-valor" style="color:#ff6600;">R$ {f_br(t_setup)}</div><div style="font-weight:bold; color:#444;">{st.session_state.g_parcelas_setup}x de R$ {f_br(t_setup/st.session_state.g_parcelas_setup)}</div><div style="font-size:0.8rem; color:#888; margin-top:15px; border-bottom:1px solid #eee; padding-bottom:5px;">DETALHAMENTO SETUP</div><ul class="lista-itens">{h_setup if h_setup else "<li>Nenhum item</li>"}</ul></div>""", unsafe_allow_html=True)
+
+        t_mensal, h_m = 0.0, ""
+        html_mensal_digital = ""
+        sistemas_ordenados = sorted(st.session_state.sel_m, key=get_prioridade_mensal)
+        
+        for n in sistemas_ordenados:
+            q = st.session_state.get(f"perm_val_{n}", 0.0)
+            if q > 0:
+                v_u = sistemas_db[n]['valor']; v_liq_u = v_u * (1 - (st.session_state.g_desc_mensalidade/100))
+                t_mensal += (q * v_liq_u)
+                h_m += f"<li><span>{n}</span><span class='item-detalhe'>{int(q)} un x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_liq_u)}</span></li>"
+                html_mensal_digital += f"<li><strong>{n}</strong><span class='detail'>{int(q)} un x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_liq_u)}</span></li>"
+                
+                vincs = [id_to_name.get(v['id_filho']) for v in vinculos_db.get(name_to_id.get(n), []) if v['tipo'] == 'incluso']
+                for inc in vincs: 
+                    h_m += f"<li class='item-incluso'>└ {inc} (Incluso)</li>"
+                    html_mensal_digital += f"<li class='item-incluso'>└ {inc} (Incluso)</li>"
+                if n == "VR ERP PRO" and not vincs:
+                    for inc in ["VR Promo", "VR Carteira Digital", "VR Analytics"]: 
+                        h_m += f"<li class='item-incluso'>└ {inc} (Incluso)</li>"
+                        html_mensal_digital += f"<li class='item-incluso'>└ {inc} (Incluso)</li>"
+
+        with res_cols[1]:
+            d_h = f"""<div style="color:#2e7d32; font-weight:bold; font-size:0.9rem;">Desconto: {st.session_state.g_desc_mensalidade}%</div>""" if (exibir_detalhe_desc and st.session_state.g_desc_mensalidade > 0) else """<div style="height:21px"></div>"""
+            st.markdown(f"""<div class="resumo-card" style="border-top-color:#2e7d32;"><span style="color:#777; font-weight:bold; font-size:0.85rem;">MANUTENÇÃO MENSAL</span><div class="resumo-valor" style="color:#2e7d32;">R$ {f_br(t_mensal)}</div>{d_h}<div style="font-weight:bold; color:#444;">Início: {st.session_state.g_faturamento}</div><div style="font-size:0.8rem; color:#888; margin-top:15px; border-bottom:1px solid #eee; padding-bottom:5px;">SISTEMAS INCLUÍDOS</div><ul class="lista-itens">{h_m if h_m else "<li>Nenhum sistema</li>"}</ul></div>""", unsafe_allow_html=True)
+
+        t_d, h_d = 0.0, ""
+        html_desp_digital = ""
+        if perfil_venda == "Com Despesas":
+            for n in st.session_state.sel_d:
+                q = st.session_state.get(f"perm_val_{n}", 0.0)
+                if q > 0:
+                    v_u = despesas_db[n]['valor']; t_d += (q * v_u)
+                    h_d += f"<li><span>{n}</span><span class='item-detalhe'>{int(q)} un x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_u)}</span></li>"
+                    html_desp_digital += f"<li><strong>{n}</strong><span class='detail'>{int(q)} un x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_u)}</span></li>"
+            with res_cols[2]:
+                st.markdown(f"""<div class="resumo-card" style="border-top-color:#1976d2;"><span style="color:#777; font-weight:bold; font-size:0.85rem;">DESPESAS DO PROJETO</span><div class="resumo-valor" style="color:#1976d2;">R$ {f_br(t_d)}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.85rem;">{st.session_state.g_regra_desp}</div><div style="font-size:0.8rem; color:#888; margin-top:15px; border-bottom:1px solid #eee; padding-bottom:5px;">DETALHAMENTO</div><ul class="lista-itens">{h_d if h_d else "<li>Sem despesas previstas</li>"}</ul></div>""", unsafe_allow_html=True)
+
+        if exibir_media_loja:
+            qtd_lojas = st.session_state.get("perm_val_VR ERP PRO", 0.0)
+            if qtd_lojas > 0:
+                st.markdown(f"""<h3 style='text-align:center; font-weight:800; margin-top:40px; color:#262730;'>DILUIÇÃO DO INVESTIMENTO ({int(qtd_lojas)} LOJAS)</h3>""", unsafe_allow_html=True)
+                m_cols = st.columns(3) if perfil_venda == "Com Despesas" else st.columns([1, 2, 2, 1])[1:3]
+                with m_cols[0]: st.markdown(f"""<div style="background-color:#ffffff; border-left: 4px solid #ff6600; padding:15px; border-radius:4px; border: 1px solid #eee;"><span style="font-size:0.85rem; font-weight:bold; color:#777;">SETUP POR LOJA</span><br><span style="font-size:1.6rem; font-weight:900; color:#333;">R$ {f_br(t_setup / qtd_lojas)}</span></div>""", unsafe_allow_html=True)
+                with m_cols[1]: st.markdown(f"""<div style="background-color:#ffffff; border-left: 4px solid #2e7d32; padding:15px; border-radius:4px; border: 1px solid #eee;"><span style="font-size:0.85rem; font-weight:bold; color:#777;">MENSALIDADE POR LOJA</span><br><span style="font-size:1.6rem; font-weight:900; color:#333;">R$ {f_br(t_mensal / qtd_lojas)}</span></div>""", unsafe_allow_html=True)
+                if perfil_venda == "Com Despesas":
+                    with m_cols[2]: st.markdown(f"""<div style="background-color:#ffffff; border-left: 4px solid #1976d2; padding:15px; border-radius:4px; border: 1px solid #eee;"><span style="font-size:0.85rem; font-weight:bold; color:#777;">DESPESAS POR LOJA</span><br><span style="font-size:1.6rem; font-weight:900; color:#333;">R$ {f_br(t_d / qtd_lojas)}</span></div>""", unsafe_allow_html=True)
+
+        if not modo_apresentacao:
+            st.write("---")
+            if not st.session_state.perma_nome_cliente:
+                st.info("Preencha o nome do cliente para liberar a Proposta Digital.")
+            else:
+                col_dig1, col_dig2, col_dig3 = st.columns([1, 2, 1])
+                with col_dig2:
+                    if st.button("Gerar Proposta Digital", use_container_width=True):
+                        dados_pdf = {
+                            'nome_cliente': st.session_state.perma_nome_cliente,
+                            'cnpj': st.session_state.perma_cnpj_cliente,
+                            'html_setup': html_setup_digital,
+                            'valor_setup': f_br(t_setup),
+                            'parcelas': str(st.session_state.g_parcelas_setup),
+                            'html_mensal': html_mensal_digital,
+                            'valor_mensal': f_br(t_mensal),
+                            'faturamento': st.session_state.g_faturamento,
+                            'html_despesa': html_desp_digital if html_desp_digital else "<li>Sem despesas</li>",
+                            'valor_despesa': f_br(t_d) if 't_d' in locals() else "0,00",
+                            'regra_desp': st.session_state.g_regra_desp
+                        }
+                        st.session_state.html_proposta = renderizar_proposta_digital(dados_pdf)
+                        st.session_state.show_digital_proposal = True
+                        st.rerun()
+                        
+        if st.session_state.get('show_digital_proposal', False) and not modo_apresentacao:
+            st.markdown("---")
+            st.markdown("<h2 style='text-align:center; color:#262730;'>Visualização da Proposta Digital</h2>", unsafe_allow_html=True)
+            components.html(st.session_state.html_proposta, height=1200, scrolling=True)
+            col_f1, col_f2, col_f3 = st.columns([1, 1, 1])
+            if col_f2.button("Fechar Visualização", use_container_width=True): 
+                st.session_state.show_digital_proposal = False
+                st.rerun()
+
+# ==========================================
+# ROTEADOR DE SEGURANÇA
+# ==========================================
+if not st.session_state.logged_in: tela_login()
+else: aplicativo_principal()
+
+```
