@@ -1795,4 +1795,3 @@ def aplicativo_principal():
 if not st.session_state.logged_in: tela_login()
 
 else: aplicativo_principal() 
-
