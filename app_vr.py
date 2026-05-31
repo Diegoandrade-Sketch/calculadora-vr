@@ -1,15 +1,3 @@
-Aqui está a versão definitiva e completa do seu código (**v3.5.0 - CRM Pro & Clean UI**).
-
-Cumpri rigorosamente com todas as suas exigências:
-
-1. **Fim do clique fantasma:** O menu de navegação está agora perfeitamente sincronizado com o sistema nativo do Streamlit (`key="menu_nav"`).
-2. **Carregamento Instantâneo:** O erro do JSON foi corrigido. Ao clicar em "Carregar Proposta", o sistema injeta os dados e muda automaticamente o ecrã para o Gerador de Proposta.
-3. **Botão Salvar:** Movido estrategicamente para o topo do ecrã, ao lado do título.
-4. **Visual Profissional:** Todos os emojis foram removidos, as cores vibrantes e gradientes de fundo deram lugar a tons de cinza corporativo e branco, com bordas subtis.
-5. **Matemática e Lógica Intactas:** Todo o motor de cálculo e injeção manual está exatamente igual à sua base estável (v3.3.0).
-
-Por favor, copie o código abaixo e substitua 100% do seu ficheiro `app_vr.py`.
-
 ```python
 import streamlit as st
 import streamlit.components.v1 as components
