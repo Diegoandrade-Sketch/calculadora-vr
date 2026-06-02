@@ -14,7 +14,7 @@ import base64
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-APP_VERSION = "v5.0.0 - Gamification & CPQ Master"
+APP_VERSION = "v5.0.1 - Gamification & CPQ Master (Stable)"
 CACHE_FILE = "cache_vr.json"
 
 if 'perma_nome_cliente' not in st.session_state: st.session_state.perma_nome_cliente = ""
@@ -54,8 +54,7 @@ def f_br(valor):
 def f_pct(valor):
     return str(valor).replace('.', ',')
 
-def sync_state(key_permanente, key_widget):
-    st.session_state[key_permanente] = st.session_state[key_widget]
+def mark_unsaved():
     st.session_state.has_unsaved_changes = True
 
 def get_logo_base64():
@@ -65,7 +64,7 @@ def get_logo_base64():
 
 def atualiza_nome_cliente(): 
     st.session_state.perma_nome_cliente = st.session_state.widget_nome
-    st.session_state.has_unsaved_changes = True
+    mark_unsaved()
 
 def atualiza_cnpj_cliente():
     raw = str(st.session_state.widget_cnpj)
@@ -75,7 +74,7 @@ def atualiza_cnpj_cliente():
         st.session_state.perma_cnpj_cliente = formatado
     else:
         st.session_state.perma_cnpj_cliente = apenas_numeros
-    st.session_state.has_unsaved_changes = True
+    mark_unsaved()
 
 # ==========================================
 # MÓDULOS DO CRM (EMPACOTAMENTO JSON)
@@ -93,7 +92,7 @@ def empacotar_simulacao():
         'sel_i': st.session_state.sel_i,
         'sel_d': st.session_state.sel_d,
         'mapeamento': {k: st.session_state[k] for k in st.session_state.keys() if k.startswith('m_')},
-        'quantidades': {k: st.session_state[k] for k in st.session_state.keys() if k.startswith('perm_val_')},
+        'quantidades': {k: st.session_state[k] for k in st.session_state.keys() if k.startswith('perm_val_') and not k.startswith('perm_val_setup_')},
         'descontos_itens': {k: st.session_state[k] for k in st.session_state.keys() if k.startswith('perm_desc_')},
         'setup_sistemas': {k: st.session_state[k] for k in st.session_state.keys() if k.startswith('perm_val_setup_')}
     }
@@ -108,14 +107,12 @@ def desempacotar_simulacao(json_data, prop_id):
         
         md = dados.get('modo_desconto', 'Total').replace('Global', 'Total')
         st.session_state.modo_desconto = md
-        st.session_state.tmp_modo_desconto = md
         
         st.session_state.g_desc_mensalidade = float(dados.get('g_desc_mensalidade', 0.0))
-        st.session_state.tmp_g_desc_mensalidade = st.session_state.g_desc_mensalidade
-        
         st.session_state.g_parcelas_setup = int(dados.get('g_parcelas_setup', 4))
         st.session_state.g_faturamento = dados.get('g_faturamento', "Na assinatura")
         st.session_state.g_regra_desp = dados.get('g_regra_desp', "Faturamento na assinatura")
+        
         st.session_state.sel_m = dados.get('sel_m', [])
         st.session_state.sel_i = dados.get('sel_i', [])
         st.session_state.sel_d = dados.get('sel_d', [])
@@ -173,7 +170,8 @@ def carregar_dados_vendas():
         if 'preco' in df.columns: df['valor'] = pd.to_numeric(df['preco'], errors='coerce').fillna(0.0)
         elif 'valor' in df.columns: df['valor'] = pd.to_numeric(df['valor'], errors='coerce').fillna(0.0)
 
-        for col in ['horas_padrao', 'adesao_vinculada', 'valor_hora_implantacao', 'typeproductid']:
+        # Alterado de valor_hora_implantacao para valor_projeto conforme solicitado
+        for col in ['horas_padrao', 'adesao_vinculada', 'valor_projeto', 'typeproductid']:
             if col in df.columns: df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
 
         full = df.set_index('produto').to_dict('index')
@@ -215,7 +213,7 @@ init_state = {
     'm_combo': "Montar Manualmente", 'm_pdv_conv': 0.0, 'm_pdv_touch': 0.0, 'm_pdv_self': 0.0, 'm_semanas': 0.0, 'm_mobile': 0.0,
     'm_tef': "Nao utiliza", 'm_migracao': False, 'm_ecommerce': False, 'm_app': False, 'm_connect': False,
     'm_erp_pro': False, 'm_xml': False, 'm_escopo': False, 'm_controller': False, 'm_cartaz': False, 'm_masterfisco': False, 'm_backup': False,
-    'auto_added': set(), 'sel_m': [], 'sel_i': [], 'sel_d': [], 'ui_sel_m': [], 'ui_sel_i': [], 'ui_sel_d': [],
+    'auto_added': set(), 'sel_m': [], 'sel_i': [], 'sel_d': [],
     'modo_desconto': "Total", 'g_desc_mensalidade': 0.0, 'g_parcelas_setup': 4, 'g_faturamento': "Na assinatura", 'g_regra_desp': "Faturamento na assinatura"
 }
 
@@ -264,7 +262,6 @@ def tela_login():
                         try:
                             engine = get_db_engine()
                             with engine.connect() as conn:
-                                # Captura agora os novos dados do banco blindado
                                 resultado = pd.read_sql(text("SELECT u.*, un.nome_fantasia as nome_unidade, un.meta_regiao FROM usuarios u LEFT JOIN unidades un ON u.id_unidade = un.id WHERE u.email = :e AND u.ativo = TRUE"), conn, params={"e": email})
                             if not resultado.empty:
                                 user = resultado.iloc[0]
@@ -438,7 +435,7 @@ def aplicativo_principal():
                             if f_nome not in st.session_state.auto_added:
                                 st.session_state[f"perm_val_{f_nome}"] = float(r['qtd'])
 
-        lista_servicos_atual = list(st.session_state.ui_sel_i)
+        lista_servicos_atual = list(st.session_state.sel_i)
         for item in st.session_state.auto_added - novos_auto:
             if item in lista_servicos_atual:
                 lista_servicos_atual.remove(item)
@@ -448,12 +445,11 @@ def aplicativo_principal():
                 lista_servicos_atual.append(item)
                 
         st.session_state.auto_added = novos_auto
-        st.session_state.ui_sel_i = lista_servicos_atual
         st.session_state.sel_i = lista_servicos_atual
 
-    def atualiza_sistemas_ui(): st.session_state.sel_m = st.session_state.ui_sel_m; processar_regras_colaterais(); st.session_state.has_unsaved_changes = True
-    def atualiza_servicos_ui(): st.session_state.sel_i = st.session_state.ui_sel_i; st.session_state.has_unsaved_changes = True
-    def atualiza_despesas_ui(): st.session_state.sel_d = st.session_state.ui_sel_d; st.session_state.has_unsaved_changes = True
+    def atualiza_sistemas():
+        processar_regras_colaterais()
+        mark_unsaved()
 
     def limpar_tudo():
         for k, v in init_state.items(): 
@@ -464,28 +460,6 @@ def aplicativo_principal():
             st.session_state[f"negociar_{nome}"] = False
             st.session_state[f"perm_val_setup_{nome}"] = full_db[nome].get('horas_padrao', 0.0)
             
-        campos_numericos = ['tmp_pdv_conv', 'tmp_pdv_touch', 'tmp_pdv_self', 'tmp_semanas', 'tmp_mobile']
-        for c in campos_numericos:
-            if c in st.session_state: st.session_state[c] = 0.0
-            
-        campos_booleanos = ['tmp_migracao', 'tmp_escopo', 'tmp_erp_pro', 'tmp_xml', 'tmp_connect', 'tmp_backup', 'tmp_cartaz', 'tmp_ecommerce', 'tmp_controller', 'tmp_masterfisco', 'tmp_app']
-        for b in campos_booleanos:
-            if b in st.session_state: st.session_state[b] = False
-            
-        for key in list(st.session_state.keys()):
-            if key.startswith('tmp_desc_') or key.startswith('tmp_negociar_') or key.startswith('tmp_setup_'):
-                if isinstance(st.session_state[key], bool): st.session_state[key] = False
-                else: st.session_state[key] = 0.0
-                
-        st.session_state.tmp_combo = "Montar Manualmente"
-        st.session_state.tmp_modo_desconto = "Total"
-        st.session_state.tmp_g_desc_mensalidade = 0.0
-        
-        if 'tmp_tef' in st.session_state: st.session_state['tmp_tef'] = "Nao utiliza"
-        if 'ui_sel_m' in st.session_state: st.session_state.ui_sel_m = []
-        if 'ui_sel_i' in st.session_state: st.session_state.ui_sel_i = []
-        if 'ui_sel_d' in st.session_state: st.session_state.ui_sel_d = []
-        
         st.session_state.perma_nome_cliente = ""; st.session_state.perma_cnpj_cliente = ""; st.session_state.proposta_carregada_id = None
         if 'widget_nome' in st.session_state: st.session_state.widget_nome = ""
         if 'widget_cnpj' in st.session_state: st.session_state.widget_cnpj = ""
@@ -493,13 +467,10 @@ def aplicativo_principal():
         st.session_state.has_unsaved_changes = False
 
     def sync_combo():
-        if st.session_state.tmp_combo == "Padrao Pequeno Porte":
+        mark_unsaved()
+        if st.session_state.m_combo == "Padrao Pequeno Porte":
             st.session_state.m_pdv_touch = 0.0; st.session_state.m_pdv_self = 0.0; st.session_state.m_ecommerce = False; st.session_state.m_app = False; st.session_state.m_connect = False; st.session_state.m_controller = False; st.session_state.m_cartaz = False; st.session_state.m_masterfisco = False; st.session_state.m_backup = False; st.session_state.m_semanas = 0.0
             st.session_state.m_erp_pro = True; st.session_state.m_pdv_conv = 3.0; st.session_state.m_xml = True; st.session_state.m_mobile = 1.0; st.session_state.m_tef = "SiTef Express"; st.session_state.m_migracao = True; st.session_state.m_escopo = True
-            
-    def sync_modo_desconto():
-        st.session_state.modo_desconto = st.session_state.tmp_modo_desconto
-        st.session_state.has_unsaved_changes = True
 
     # ==========================================
     # SIDEBAR (INSERÇÃO DA ABA INÍCIO)
@@ -528,19 +499,19 @@ def aplicativo_principal():
             
             perfil_venda = st.selectbox("Perfil do Cliente", ["Com Despesas", "Sem Despesas"])
             
-            st.session_state.modo_desconto = st.radio("Modo de Desconto (Mensalidades)", ["Total", "Item"], index=["Total", "Item"].index(st.session_state.get('modo_desconto', 'Total')), key="tmp_modo_desconto", on_change=sync_modo_desconto)
+            st.radio("Modo de Desconto (Mensalidades)", ["Total", "Item"], key="modo_desconto", on_change=mark_unsaved)
             
             if st.session_state.modo_desconto == "Total":
-                st.session_state.g_desc_mensalidade = st.number_input("Desconto Total Mensalidade (%)", 0.0, 100.0, float(st.session_state.g_desc_mensalidade), 0.5, key="tmp_g_desc_mensalidade", on_change=sync_state, args=("g_desc_mensalidade", "tmp_g_desc_mensalidade"))
+                st.number_input("Desconto Total Mensalidade (%)", 0.0, 100.0, step=0.5, key="g_desc_mensalidade", on_change=mark_unsaved)
             else:
                 st.info("Desconto Ativado por Item (Acesse as engrenagens na coluna de Sistemas).")
                 st.session_state.g_desc_mensalidade = 0.0
                 
             exibir_detalhe_desc = st.toggle("Exibir Desconto na Tela", value=True)
             exibir_media_loja = st.toggle("Exibir Media por Loja", value=False)
-            st.session_state.g_faturamento = st.selectbox("Início Mensalidade", ["Na assinatura", "30 dias", "60 dias", "Após implantação"], index=["Na assinatura", "30 dias", "60 dias", "Após implantação"].index(st.session_state.g_faturamento))
-            st.session_state.g_parcelas_setup = st.selectbox("Parcelas Setup", [1, 2, 3, 4, 5, 6, 10, 12], index=[1, 2, 3, 4, 5, 6, 10, 12].index(st.session_state.g_parcelas_setup))
-            st.session_state.g_regra_desp = st.selectbox("Faturamento Despesas", ["Faturamento na assinatura", "Faturamento pós Implantação"], index=["Faturamento na assinatura", "Faturamento pós Implantação"].index(st.session_state.g_regra_desp))
+            st.selectbox("Início Mensalidade", ["Na assinatura", "30 dias", "60 dias", "Após implantação"], key="g_faturamento", on_change=mark_unsaved)
+            st.selectbox("Parcelas Setup", [1, 2, 3, 4, 5, 6, 10, 12], key="g_parcelas_setup", on_change=mark_unsaved)
+            st.selectbox("Faturamento Despesas", ["Faturamento na assinatura", "Faturamento pós Implantação"], key="g_regra_desp", on_change=mark_unsaved)
         st.write("---")
         if st.button("Sair (Logout)", use_container_width=True): st.session_state.clear(); st.rerun()
         st.markdown(f"""<hr><div style="font-size:0.8rem; color:{db_cor};">{db_status}</div><div style="font-size:0.7rem; color:#888;">{APP_VERSION}</div>""", unsafe_allow_html=True)
@@ -557,7 +528,6 @@ def aplicativo_principal():
                 "Júnior": {"proj": 80000.0, "rec": 14000.0, "premio": 2090.00},
                 "Pleno": {"proj": 88000.0, "rec": 18200.0, "premio": 2868.79},
                 "Sênior": {"proj": 98560.0, "rec": 22660.0, "premio": 3628.77},
-                # Variações de digitação possíveis
                 "Junior": {"proj": 80000.0, "rec": 14000.0, "premio": 2090.00},
                 "Senior": {"proj": 98560.0, "rec": 22660.0, "premio": 3628.77},
             },
@@ -577,7 +547,6 @@ def aplicativo_principal():
         m_rec = metas_matriz[c][s]["rec"]
         p_base = metas_matriz[c][s]["premio"]
 
-        # Motor de Calendário (Trimestre)
         hoje = datetime.date.today()
         q = (hoje.month - 1) // 3 + 1
         mes_inicio = 3 * q - 2
@@ -585,7 +554,6 @@ def aplicativo_principal():
         if q == 4: d_fim_tri = datetime.date(hoje.year + 1, 1, 1) - datetime.timedelta(days=1)
         else: d_fim_tri = datetime.date(hoje.year, mes_inicio + 3, 1) - datetime.timedelta(days=1)
         
-        # Leitura Blindada do Banco de Dados
         t_proj_crm, t_rec_crm = 0.0, 0.0
         t_proj_ext, t_rec_ext = 0.0, 0.0
         
@@ -597,7 +565,6 @@ def aplicativo_principal():
                     t_proj_crm = float(r_crm['setup'].iloc[0] or 0.0)
                     t_rec_crm = float(r_crm['mensal'].iloc[0] or 0.0)
                 
-                # Leitura da tabela Vendas Externas (Ajuste do Gestor)
                 r_ext = pd.read_sql(text("SELECT SUM(valor_projeto) as setup, SUM(valor_recorrente) as mensal FROM vendas_externas WHERE vendedor_email = :e AND mes_referencia >= :start AND mes_referencia <= :end"), conn, params={"e": st.session_state.user_email, "start": d_inicio_tri, "end": d_fim_tri})
                 if not r_ext.empty:
                     t_proj_ext = float(r_ext['setup'].iloc[0] or 0.0)
@@ -610,8 +577,6 @@ def aplicativo_principal():
         
         pct_proj = realizado_proj / m_proj if m_proj > 0 else 0
         pct_rec = realizado_rec / m_rec if m_rec > 0 else 0
-        
-        # Regra do Peso: 40% Projeto / 60% Recorrente
         pct_global = (pct_proj * 0.4) + (pct_rec * 0.6)
         premio_projetado = p_base * pct_global
 
@@ -653,7 +618,6 @@ def aplicativo_principal():
 
         st.markdown("<br><hr>", unsafe_allow_html=True)
         
-        # Bússola Mensal e Call to Action
         c_mes, c_act = st.columns([2, 1])
         with c_mes:
             st.markdown(f"""<h4 style="color:#262730; margin-bottom:15px;">Bússola Mensal (Alvo do Mês Atual)</h4>""", unsafe_allow_html=True)
@@ -682,7 +646,7 @@ def aplicativo_principal():
                 st.rerun()
 
     # ==========================================
-    # TELA 1: PAINEL ADMIN (ATUALIZADA COM VENDAS EXTERNAS)
+    # TELA 1: PAINEL ADMIN
     # ==========================================
     elif tela == "Painel Admin":
         st.markdown("""<h1 class="hero-title">BACKOFFICE</h1>""", unsafe_allow_html=True)
@@ -731,7 +695,6 @@ def aplicativo_principal():
                     st.dataframe(pd.read_sql("SELECT u.id, u.nome, u.email, u.cargo, u.perfil_senioridade as senioridade, un.nome_fantasia as unidade FROM usuarios u LEFT JOIN unidades un ON u.id_unidade = un.id", engine), use_container_width=True)
             except Exception: st.error("Erro ao comunicar com a base de dados.")
             
-        # NOVA ABA DE VENDAS EXTERNAS
         with t_ext:
             st.markdown("<div class='section-header'><span class='section-title'>Livro-Razão (Lançamento de Vendas Externas)</span></div>", unsafe_allow_html=True)
             try:
@@ -750,7 +713,6 @@ def aplicativo_principal():
                         v_rec_ext = cy2.number_input("Total Vendido em Recorrente (R$)", min_value=0.0, step=100.0)
                         
                         if st.form_submit_button("Injetar Saldo na Gamificação", type="primary"):
-                            # Forçar dia 1 para garantir padrão na consulta de ciclo
                             data_formatada = datetime.date(dt_ref.year, dt_ref.month, 1)
                             with engine.begin() as conn:
                                 conn.execute(text("INSERT INTO vendas_externas (vendedor_email, mes_referencia, valor_projeto, valor_recorrente) VALUES (:e, :m, :p, :r)"), {"e": usr_dict[usr_sel], "m": data_formatada, "p": v_proj_ext, "r": v_rec_ext})
@@ -927,7 +889,8 @@ def aplicativo_principal():
                         t_s += (f_q * f_val); uni = "h" if r['tipo'] == 'projeto' else "un"
                         h_s += f"<li><span class='item-name'>{f_nm}</span><span class='item-detalhe'>{int(f_q)}{uni} x R$ {f_br(f_val)} | Total: R$ {f_br(f_q*f_val)}</span></li>"
             else:
-                h_p, v_he, ads = d.get('horas_padrao', 0.0), d.get('valor_hora_implantacao', 0.0), d.get('adesao_vinculada', 0.0)
+                # Alterado para valor_projeto
+                h_p, v_he, ads = d.get('horas_padrao', 0.0), d.get('valor_projeto', 0.0), d.get('adesao_vinculada', 0.0)
                 rt = v_he if v_he > 0 else v_h_base
                 t_s = (h_p * rt) + ads
                 if h_p > 0: h_s += f"<li><span class='item-name'>Implantação</span><span class='item-detalhe'>{h_p}h x R$ {f_br(rt)} | Total: R$ {f_br(h_p*rt)}</span></li>"
@@ -1001,9 +964,9 @@ def aplicativo_principal():
                     elif "hospedagem" in d_low: qtd = sem * 4.0
                     if qtd > 0: st.session_state[f"perm_val_{d_name}"] = qtd; _sel_d.append(d_name)
                         
-            st.session_state.ui_sel_m = _sel_m; st.session_state.sel_m = _sel_m
-            st.session_state.ui_sel_i = _sel_i; st.session_state.sel_i = _sel_i
-            st.session_state.ui_sel_d = _sel_d; st.session_state.sel_d = _sel_d
+            st.session_state.sel_m = _sel_m
+            st.session_state.sel_i = _sel_i
+            st.session_state.sel_d = _sel_d
             processar_regras_colaterais()
             st.session_state.has_unsaved_changes = True
 
@@ -1032,7 +995,8 @@ def aplicativo_principal():
                                     t_mensal_b += (q_m * sistemas_db[n].get('valor', 0.0)) * (1 - (desc_bd/100))
                                     if name_to_id.get(n) not in vinculos_db and n not in ["VR Mobile (Smartphone/Android)", "VR PDV Touchscreen", "VR PDV Self Checkout"]:
                                         h_sist = st.session_state.get(f"perm_val_setup_{n}", sistemas_db[n].get('horas_padrao', 0.0))
-                                        if h_sist > 0: t_setup_b += (h_sist * (sistemas_db[n].get('valor_hora_implantacao', 0.0) or servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)))
+                                        # Alterado para valor_projeto
+                                        if h_sist > 0: t_setup_b += (h_sist * (sistemas_db[n].get('valor_projeto', 0.0) or servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)))
                             
                             payload_json = empacotar_simulacao()
                             engine = get_db_engine()
@@ -1064,7 +1028,8 @@ def aplicativo_principal():
                                     t_setup_b += sistemas_db[n].get('adesao_vinculada', 0.0); t_mensal_b += (q_m * sistemas_db[n].get('valor', 0.0)) * (1 - (desc_bd/100))
                                     if name_to_id.get(n) not in vinculos_db and n not in ["VR Mobile (Smartphone/Android)", "VR PDV Touchscreen", "VR PDV Self Checkout"]:
                                         h_sist = st.session_state.get(f"perm_val_setup_{n}", sistemas_db[n].get('horas_padrao', 0.0))
-                                        if h_sist > 0: t_setup_b += (h_sist * (sistemas_db[n].get('valor_hora_implantacao', 0.0) or servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)))
+                                        # Alterado para valor_projeto
+                                        if h_sist > 0: t_setup_b += (h_sist * (sistemas_db[n].get('valor_projeto', 0.0) or servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)))
                             
                             payload_json = empacotar_simulacao()
                             engine = get_db_engine()
@@ -1093,30 +1058,30 @@ def aplicativo_principal():
         if mapeamento_ativo and not modo_apresentacao:
             st.markdown("""<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">Mapeamento da Operacao</h3></div>""", unsafe_allow_html=True)
             
-            st.selectbox("Combo Rápido", ["Montar Manualmente", "Padrao Pequeno Porte"], key="tmp_combo", on_change=sync_combo)
+            st.selectbox("Combo Rápido", ["Montar Manualmente", "Padrao Pequeno Porte"], key="m_combo", on_change=sync_combo)
             
             c1, c2, c3 = st.columns(3)
             with c1:
-                st.number_input("PDV Convencional", 0.0, step=1.0, key="tmp_pdv_conv", value=st.session_state.m_pdv_conv, on_change=sync_state, args=("m_pdv_conv", "tmp_pdv_conv"))
-                st.number_input("PDV Touch", 0.0, step=1.0, key="tmp_pdv_touch", value=st.session_state.m_pdv_touch, on_change=sync_state, args=("m_pdv_touch", "tmp_pdv_touch"))
-                st.number_input("PDV Selfcheckout", 0.0, step=1.0, key="tmp_pdv_self", value=st.session_state.m_pdv_self, on_change=sync_state, args=("m_pdv_self", "tmp_pdv_self"))
+                st.number_input("PDV Convencional", 0.0, step=1.0, key="m_pdv_conv", on_change=mark_unsaved)
+                st.number_input("PDV Touch", 0.0, step=1.0, key="m_pdv_touch", on_change=mark_unsaved)
+                st.number_input("PDV Selfcheckout", 0.0, step=1.0, key="m_pdv_self", on_change=mark_unsaved)
             with c2:
-                st.selectbox("TEF", ["Nao utiliza", "SiTef Express", "VR TEF"], key="tmp_tef", index=["Nao utiliza", "SiTef Express", "VR TEF"].index(st.session_state.m_tef), on_change=sync_state, args=("m_tef", "tmp_tef"))
-                st.number_input("Semanas", 0.0, step=1.0, key="tmp_semanas", value=st.session_state.m_semanas, on_change=sync_state, args=("m_semanas", "tmp_semanas"))
-                st.checkbox("Migração?", key="tmp_migracao", value=st.session_state.m_migracao, on_change=sync_state, args=("m_migracao", "tmp_migracao"))
-                st.checkbox("Escopo?", key="tmp_escopo", value=st.session_state.m_escopo, on_change=sync_state, args=("m_escopo", "tmp_escopo"))
+                st.selectbox("TEF", ["Nao utiliza", "SiTef Express", "VR TEF"], key="m_tef", on_change=mark_unsaved)
+                st.number_input("Semanas", 0.0, step=1.0, key="m_semanas", on_change=mark_unsaved)
+                st.checkbox("Migração?", key="m_migracao", on_change=mark_unsaved)
+                st.checkbox("Escopo?", key="m_escopo", on_change=mark_unsaved)
             with c3:
-                st.number_input("VR Mobile", 0.0, step=1.0, key="tmp_mobile", value=st.session_state.m_mobile, on_change=sync_state, args=("m_mobile", "tmp_mobile"))
+                st.number_input("VR Mobile", 0.0, step=1.0, key="m_mobile", on_change=mark_unsaved)
                 sc1, sc2, sc3 = st.columns(3)
-                sc1.toggle("VR ERP PRO", key="tmp_erp_pro", value=st.session_state.m_erp_pro, on_change=sync_state, args=("m_erp_pro", "tmp_erp_pro"))
-                sc1.toggle("G. XML", key="tmp_xml", value=st.session_state.m_xml, on_change=sync_state, args=("m_xml", "tmp_xml"))
-                sc1.toggle("Connect", key="tmp_connect", value=st.session_state.m_connect, on_change=sync_state, args=("m_connect", "tmp_connect"))
-                sc2.toggle("VR Backup", key="tmp_backup", value=st.session_state.m_backup, on_change=sync_state, args=("m_backup", "tmp_backup"))
-                sc2.toggle("VR Cartaz", key="tmp_cartaz", value=st.session_state.m_cartaz, on_change=sync_state, args=("m_cartaz", "tmp_cartaz"))
-                sc2.toggle("E-Commerce", key="tmp_ecommerce", value=st.session_state.m_ecommerce, on_change=sync_state, args=("m_ecommerce", "tmp_ecommerce"))
-                sc3.toggle("C. 360", key="tmp_controller", value=st.session_state.m_controller, on_change=sync_state, args=("m_controller", "tmp_controller"))
-                sc3.toggle("MasterFisco", key="tmp_masterfisco", value=st.session_state.m_masterfisco, on_change=sync_state, args=("m_masterfisco", "tmp_masterfisco"))
-                sc3.toggle("M-Commerce", key="tmp_app", value=st.session_state.m_app, on_change=sync_state, args=("m_app", "tmp_app"))
+                sc1.toggle("VR ERP PRO", key="m_erp_pro", on_change=mark_unsaved)
+                sc1.toggle("G. XML", key="m_xml", on_change=mark_unsaved)
+                sc1.toggle("Connect", key="m_connect", on_change=mark_unsaved)
+                sc2.toggle("VR Backup", key="m_backup", on_change=mark_unsaved)
+                sc2.toggle("VR Cartaz", key="m_cartaz", on_change=mark_unsaved)
+                sc2.toggle("E-Commerce", key="m_ecommerce", on_change=mark_unsaved)
+                sc3.toggle("C. 360", key="m_controller", on_change=mark_unsaved)
+                sc3.toggle("MasterFisco", key="m_masterfisco", on_change=mark_unsaved)
+                sc3.toggle("M-Commerce", key="m_app", on_change=mark_unsaved)
                 b1, b2 = st.columns(2)
                 b1.button("Aplicar Inteligência", on_click=aplicar_mapeamento, use_container_width=True)
                 b2.button("Limpar Tudo", on_click=limpar_tudo, use_container_width=True)
@@ -1129,10 +1094,10 @@ def aplicativo_principal():
             
             with c1:
                 st.markdown("""<div class="section-header"><span class="section-title">IMPLANTAÇÃO E SERVIÇOS</span></div>""", unsafe_allow_html=True)
-                st.multiselect("Serviços Manuais", list(servicos_db.keys()), default=st.session_state.sel_i, key="ui_sel_i", on_change=atualiza_servicos_ui)
+                st.multiselect("Serviços Manuais", list(servicos_db.keys()), key="sel_i", on_change=mark_unsaved)
                 for i in st.session_state.sel_i:
                     v_u = servicos_db[i]['valor']
-                    st.number_input(f"{i} (R$ {f_br(v_u)}/h)", 0.0, step=1.0, value=float(st.session_state.get(f"perm_val_{i}", 0.0)), key=f"tmp_i_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_i_{i}"))
+                    st.number_input(f"{i} (R$ {f_br(v_u)}/h)", 0.0, step=1.0, key=f"perm_val_{i}", on_change=mark_unsaved)
                     
                 has_sistemas_com_setup = any(name_to_id.get(m) not in vinculos_db and m not in ["VR Mobile (Smartphone/Android)", "VR PDV Touchscreen", "VR PDV Self Checkout"] and sistemas_db[m].get('horas_padrao', 0.0) > 0 for m in st.session_state.sel_m)
                 
@@ -1144,36 +1109,35 @@ def aplicativo_principal():
                             d = sistemas_db[m]
                             h_padrao = d.get('horas_padrao', 0.0)
                             if h_padrao > 0:
-                                v_rate = d.get('valor_hora_implantacao', 0.0) or v_h_base
+                                # Alterado para valor_projeto
+                                v_rate = d.get('valor_projeto', 0.0) or v_h_base
                                 nome_exib = "Projeto ERP PRO" if m == "VR ERP PRO" else f"Implantação {m}"
-                                val_memoria = st.session_state.get(f"perm_val_setup_{m}", h_padrao)
-                                st.number_input(f"{nome_exib} (R$ {f_br(v_rate)}/h)", 0.0, step=1.0, value=float(val_memoria), key=f"tmp_setup_{m}", on_change=sync_state, args=(f"perm_val_setup_{m}", f"tmp_setup_{m}"))
+                                st.number_input(f"{nome_exib} (R$ {f_br(v_rate)}/h)", 0.0, step=1.0, key=f"perm_val_setup_{m}", on_change=mark_unsaved)
 
             with c2:
                 st.markdown("""<div class="section-header"><span class="section-title">MENSALIDADES SISTEMAS</span></div>""", unsafe_allow_html=True)
-                st.multiselect("Sistemas", list(sistemas_db.keys()), default=st.session_state.sel_m, key="ui_sel_m", on_change=atualiza_sistemas_ui)
+                st.multiselect("Sistemas", list(sistemas_db.keys()), key="sel_m", on_change=atualiza_sistemas)
                 for i in st.session_state.sel_m:
                     v_u = sistemas_db[i]['valor']
-                    st.number_input(f"{i} (R$ {f_br(v_u)}/un)", 0.0, step=1.0, value=float(st.session_state.get(f"perm_val_{i}", 0.0)), key=f"tmp_m_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_m_{i}"))
+                    st.number_input(f"{i} (R$ {f_br(v_u)}/un)", 0.0, step=1.0, key=f"perm_val_{i}", on_change=mark_unsaved)
                     
                     if st.session_state.modo_desconto == "Item":
                         def sync_negociacao(item_name):
-                            st.session_state[f"negociar_{item_name}"] = st.session_state[f"tmp_negociar_{item_name}"]
                             st.session_state.has_unsaved_changes = True
-                            if not st.session_state[f"tmp_negociar_{item_name}"]:
+                            if not st.session_state[f"negociar_{item_name}"]:
                                 st.session_state[f"perm_desc_{item_name}"] = 0.0
                                 
-                        neg = st.checkbox(f"⚙️ Negociar {i}", value=st.session_state.get(f"negociar_{i}", False), key=f"tmp_negociar_{i}", on_change=sync_negociacao, args=(i,))
+                        neg = st.checkbox(f"⚙️ Negociar {i}", key=f"negociar_{i}", on_change=sync_negociacao, args=(i,))
                         if neg:
-                            st.number_input(f"↳ Desconto % ({i})", 0.0, 100.0, value=float(st.session_state.get(f"perm_desc_{i}", 0.0)), key=f"tmp_desc_{i}", on_change=sync_state, args=(f"perm_desc_{i}", f"tmp_desc_{i}"))
+                            st.number_input(f"↳ Desconto % ({i})", 0.0, 100.0, key=f"perm_desc_{i}", on_change=mark_unsaved)
             
             if c3:
                 with c3:
                     st.markdown("""<div class="section-header"><span class="section-title">DESPESAS DO PROJETO</span></div>""", unsafe_allow_html=True)
-                    st.multiselect("Despesas", list(despesas_db.keys()), default=st.session_state.sel_d, key="ui_sel_d", on_change=atualiza_despesas_ui)
+                    st.multiselect("Despesas", list(despesas_db.keys()), key="sel_d", on_change=mark_unsaved)
                     for i in st.session_state.sel_d:
                         v_u = despesas_db[i]['valor']
-                        st.number_input(f"{i} (R$ {f_br(v_u)}/un)", 0.0, step=1.0, value=float(st.session_state.get(f"perm_val_{i}", 0.0)), key=f"tmp_d_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_d_{i}"))
+                        st.number_input(f"{i} (R$ {f_br(v_u)}/un)", 0.0, step=1.0, key=f"perm_val_{i}", on_change=mark_unsaved)
 
         st.markdown("""<h2 style='text-align:center; font-weight:800; margin-top:30px;'>RESUMO DO INVESTIMENTO</h2>""", unsafe_allow_html=True)
         res_cols = st.columns(3) if perfil_venda == "Com Despesas" else st.columns([1, 2, 2, 1])[1:3]
@@ -1216,7 +1180,8 @@ def aplicativo_principal():
                 h = st.session_state.get(f"perm_val_setup_{n}", d.get('horas_padrao', 0.0))
                 ads = d.get('adesao_vinculada', 0.0)
                 if h > 0:
-                    v_rate = (d.get('valor_hora_implantacao', 0.0) or v_h_base)
+                    # Alterado para valor_projeto
+                    v_rate = (d.get('valor_projeto', 0.0) or v_h_base)
                     t_setup += (h * v_rate)
                     nome_exibicao = "Projeto ERP PRO" if n == "VR ERP PRO" else f"Implantacao {n}"
                     html_linha = f"<li><span class='item-name'>{nome_exibicao}</span><span class='item-detalhe'>{int(h)}h x R$ {f_br(v_rate)} | Total: R$ {f_br(h*v_rate)}</span></li>"
