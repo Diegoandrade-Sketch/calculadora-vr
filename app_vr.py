@@ -14,7 +14,7 @@ import base64
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-APP_VERSION = "v3.9.0 - Perfis & Setup Override Fixed"
+APP_VERSION = "v4.0.0 - CPQ & Gestão Pro"
 CACHE_FILE = "cache_vr.json"
 
 # Inicialização de estados persistentes
@@ -85,6 +85,7 @@ def empacotar_simulacao():
     payload = {
         'perma_nome_cliente': st.session_state.perma_nome_cliente,
         'perma_cnpj_cliente': st.session_state.perma_cnpj_cliente,
+        'modo_desconto': st.session_state.modo_desconto,
         'g_desc_mensalidade': st.session_state.g_desc_mensalidade,
         'g_parcelas_setup': st.session_state.g_parcelas_setup,
         'g_faturamento': st.session_state.g_faturamento,
@@ -93,7 +94,8 @@ def empacotar_simulacao():
         'sel_i': st.session_state.sel_i,
         'sel_d': st.session_state.sel_d,
         'mapeamento': {k: st.session_state[k] for k in st.session_state.keys() if k.startswith('m_')},
-        'quantidades': {k: st.session_state[k] for k in st.session_state.keys() if k.startswith('perm_val_')}
+        'quantidades': {k: st.session_state[k] for k in st.session_state.keys() if k.startswith('perm_val_')},
+        'descontos_itens': {k: st.session_state[k] for k in st.session_state.keys() if k.startswith('perm_desc_')}
     }
     return json.dumps(payload)
 
@@ -103,6 +105,7 @@ def desempacotar_simulacao(json_data, prop_id):
         
         st.session_state.perma_nome_cliente = dados.get('perma_nome_cliente', '')
         st.session_state.perma_cnpj_cliente = dados.get('perma_cnpj_cliente', '')
+        st.session_state.modo_desconto = dados.get('modo_desconto', 'Global')
         st.session_state.g_desc_mensalidade = float(dados.get('g_desc_mensalidade', 0.0))
         st.session_state.g_parcelas_setup = int(dados.get('g_parcelas_setup', 4))
         st.session_state.g_faturamento = dados.get('g_faturamento', "Na assinatura")
@@ -113,11 +116,11 @@ def desempacotar_simulacao(json_data, prop_id):
         
         for k, v in dados.get('mapeamento', {}).items(): st.session_state[k] = v
         for k, v in dados.get('quantidades', {}).items(): st.session_state[k] = float(v)
+        for k, v in dados.get('descontos_itens', {}).items(): st.session_state[k] = float(v)
         
         st.session_state.proposta_carregada_id = prop_id
         st.session_state.show_digital_proposal = False
         st.session_state.has_unsaved_changes = False
-        
         st.session_state.aba_atual = "Gerador de Proposta"
     except Exception as e:
         st.error(f"Falha ao ler os dados do histórico: {str(e)}")
@@ -199,7 +202,7 @@ init_state = {
     'm_tef': "Nao utiliza", 'm_migracao': False, 'm_ecommerce': False, 'm_app': False, 'm_connect': False,
     'm_erp_pro': False, 'm_xml': False, 'm_escopo': False, 'm_controller': False, 'm_cartaz': False, 'm_masterfisco': False, 'm_backup': False,
     'auto_added': set(), 'sel_m': [], 'sel_i': [], 'sel_d': [], 'ui_sel_m': [], 'ui_sel_i': [], 'ui_sel_d': [],
-    'g_desc_mensalidade': 0.0, 'g_parcelas_setup': 4, 'g_faturamento': "Na assinatura", 'g_regra_desp': "Faturamento na assinatura"
+    'modo_desconto': "Global", 'g_desc_mensalidade': 0.0, 'g_parcelas_setup': 4, 'g_faturamento': "Na assinatura", 'g_regra_desp': "Faturamento na assinatura"
 }
 
 for k, v in init_state.items():
@@ -207,6 +210,7 @@ for k, v in init_state.items():
 
 for nome in full_db.keys():
     if f"perm_val_{nome}" not in st.session_state: st.session_state[f"perm_val_{nome}"] = 0.0
+    if f"perm_desc_{nome}" not in st.session_state: st.session_state[f"perm_desc_{nome}"] = 0.0
 
 # ==========================================
 # BLOCO 1: LOGIN
@@ -306,6 +310,7 @@ def renderizar_proposta_digital(dados):
             .card-list li {{ font-size: 14px; border-bottom: 1px dashed #ddd; padding: 10px 0; color: #444; }}
             .card-list li strong {{ display: block; font-size: 15px; color: #222; margin-bottom: 4px; }}
             .card-list li .detail {{ background: #eee; padding: 4px 8px; border-radius: 4px; display: inline-block; font-size: 12px; }}
+            .card-list li del {{ color: #999; font-size: 12px; margin-right: 5px; }}
             .item-incluso {{ color: #888; font-style: italic; border: none !important; padding-top: 4px !important; padding-left: 15px !important; }}
             .footer {{ margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; color: #888; font-size: 12px; }}
             .signatures {{ display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 40px; }}
@@ -376,7 +381,6 @@ def renderizar_proposta_digital(dados):
 # BLOCO 3: APLICATIVO PRINCIPAL (UI E LÓGICA)
 # ==========================================
 def aplicativo_principal():
-    # CSS ORIGINAL v3.3.0 PRESERVADO NA ÍNTEGRA
     st.markdown("""
         <style>
         .stApp { background: linear-gradient(135deg, #ffffff 0%, #fff5ed 100%); }
@@ -405,8 +409,6 @@ def aplicativo_principal():
                         f_nome = id_to_name.get(r['id_filho'])
                         if f_nome: 
                             novos_auto.add(f_nome)
-                            # CORREÇÃO CRÍTICA: Só sobrescreve se for um item novo adicionado automaticamente.
-                            # Respeita a edição manual do vendedor!
                             if f_nome not in st.session_state.auto_added:
                                 st.session_state[f"perm_val_{f_nome}"] = float(r['qtd'])
 
@@ -429,7 +431,9 @@ def aplicativo_principal():
 
     def limpar_tudo():
         for k, v in init_state.items(): st.session_state[k] = v if not isinstance(v, list) else []
-        for nome in full_db.keys(): st.session_state[f"perm_val_{nome}"] = 0.0
+        for nome in full_db.keys(): 
+            st.session_state[f"perm_val_{nome}"] = 0.0
+            st.session_state[f"perm_desc_{nome}"] = 0.0
         
         campos_numericos = ['tmp_pdv_conv', 'tmp_pdv_touch', 'tmp_pdv_self', 'tmp_semanas', 'tmp_mobile']
         for c in campos_numericos:
@@ -439,6 +443,11 @@ def aplicativo_principal():
         for b in campos_booleanos:
             if b in st.session_state: st.session_state[b] = False
             
+        # Limpar widgets temporarios
+        for key in list(st.session_state.keys()):
+            if key.startswith('tmp_desc_'):
+                st.session_state[key] = 0.0
+                
         if 'tmp_tef' in st.session_state: st.session_state['tmp_tef'] = "Nao utiliza"
         if 'ui_sel_m' in st.session_state: st.session_state.ui_sel_m = []
         if 'ui_sel_i' in st.session_state: st.session_state.ui_sel_i = []
@@ -481,7 +490,15 @@ def aplicativo_principal():
             
             perfil_venda = st.selectbox("Perfil do Cliente", ["Com Despesas", "Sem Despesas"])
             
-            st.session_state.g_desc_mensalidade = st.number_input("Desconto Mensalidade (%)", 0.0, 30.0, st.session_state.g_desc_mensalidade, 0.5)
+            # CHAVE SELETORA DE MODO DE DESCONTO
+            st.session_state.modo_desconto = st.radio("Modo de Desconto (Mensalidades)", ["Global", "Por Item"], index=["Global", "Por Item"].index(st.session_state.get('modo_desconto', 'Global')))
+            
+            if st.session_state.modo_desconto == "Global":
+                st.session_state.g_desc_mensalidade = st.number_input("Desconto Mensalidade (%)", 0.0, 30.0, float(st.session_state.g_desc_mensalidade), 0.5)
+            else:
+                st.info("Desconto Ativado por Item (Linha a linha).")
+                st.session_state.g_desc_mensalidade = 0.0
+                
             exibir_detalhe_desc = st.toggle("Exibir Desconto na Tela", value=True)
             exibir_media_loja = st.toggle("Exibir Media por Loja", value=False)
             st.session_state.g_faturamento = st.selectbox("Início Mensalidade", ["Na assinatura", "30 dias", "60 dias", "Após implantação"], index=["Na assinatura", "30 dias", "60 dias", "Após implantação"].index(st.session_state.g_faturamento))
@@ -530,7 +547,6 @@ def aplicativo_principal():
                         u_nome, u_email = c1.text_input("Nome Completo"), c2.text_input("E-mail Corporativo")
                         c3, c4 = st.columns(2)
                         u_unid = c3.selectbox("Unidade Vinculada", list(unid_dict.keys()))
-                        # NOVOS PERFIS ADICIONADOS
                         u_role = c4.selectbox("Nível de Acesso", ["vendedor", "admin", "financeiro", "projetos", "consultor"])
                         if st.form_submit_button("Criar Usuário"):
                             with engine.begin() as conn: conn.execute(text("INSERT INTO usuarios (nome, email, nivel_acesso, id_unidade, senha, primeiro_acesso) VALUES (:n, :e, :r, :id_u, '123456', TRUE)"), {"n": u_nome, "e": u_email, "r": u_role, "id_u": unid_dict[u_unid]})
@@ -568,7 +584,7 @@ def aplicativo_principal():
         with t_cat: st.dataframe(df_raw, use_container_width=True)
 
     # ==========================================
-    # TELA 2: MINHAS PROPOSTAS (CRM KANBAN E LISTA)
+    # TELA 2: MINHAS PROPOSTAS
     # ==========================================
     elif tela == "Minhas Propostas":
         st.markdown("""<h1 class="hero-title">MEU HISTÓRICO</h1>""", unsafe_allow_html=True)
@@ -801,8 +817,11 @@ def aplicativo_principal():
                             for n in st.session_state.sel_m:
                                 q_m = st.session_state.get(f"perm_val_{n}", 0.0)
                                 if q_m > 0:
+                                    # Aplicação da Inteligência de Desconto no BD
+                                    desc_bd = st.session_state.g_desc_mensalidade if st.session_state.modo_desconto == "Global" else st.session_state.get(f"perm_desc_{n}", 0.0)
+                                    
                                     t_setup_b += sistemas_db[n].get('adesao_vinculada', 0.0)
-                                    t_mensal_b += (q_m * sistemas_db[n].get('valor', 0.0)) * (1 - (st.session_state.g_desc_mensalidade/100))
+                                    t_mensal_b += (q_m * sistemas_db[n].get('valor', 0.0)) * (1 - (desc_bd/100))
                                     if name_to_id.get(n) not in vinculos_db and n not in ["VR Mobile (Smartphone/Android)", "VR PDV Touchscreen", "VR PDV Self Checkout"]:
                                         h_sist = st.session_state.get(f"perm_val_setup_{n}", sistemas_db[n].get('horas_padrao', 0.0))
                                         if h_sist > 0: t_setup_b += (h_sist * (sistemas_db[n].get('valor_hora_implantacao', 0.0) or servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)))
@@ -833,7 +852,9 @@ def aplicativo_principal():
                             for n in st.session_state.sel_m:
                                 q_m = st.session_state.get(f"perm_val_{n}", 0.0)
                                 if q_m > 0:
-                                    t_setup_b += sistemas_db[n].get('adesao_vinculada', 0.0); t_mensal_b += (q_m * sistemas_db[n].get('valor', 0.0)) * (1 - (st.session_state.g_desc_mensalidade/100))
+                                    desc_bd = st.session_state.g_desc_mensalidade if st.session_state.modo_desconto == "Global" else st.session_state.get(f"perm_desc_{n}", 0.0)
+                                    
+                                    t_setup_b += sistemas_db[n].get('adesao_vinculada', 0.0); t_mensal_b += (q_m * sistemas_db[n].get('valor', 0.0)) * (1 - (desc_bd/100))
                                     if name_to_id.get(n) not in vinculos_db and n not in ["VR Mobile (Smartphone/Android)", "VR PDV Touchscreen", "VR PDV Self Checkout"]:
                                         h_sist = st.session_state.get(f"perm_val_setup_{n}", sistemas_db[n].get('horas_padrao', 0.0))
                                         if h_sist > 0: t_setup_b += (h_sist * (sistemas_db[n].get('valor_hora_implantacao', 0.0) or servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)))
@@ -909,6 +930,10 @@ def aplicativo_principal():
                 for i in st.session_state.sel_m:
                     v_u = sistemas_db[i]['valor']
                     st.number_input(f"{i} (R$ {f_br(v_u)}/un)", 0.0, step=1.0, value=float(st.session_state.get(f"perm_val_{i}", 0.0)), key=f"tmp_m_{i}", on_change=sync_state, args=(f"perm_val_{i}", f"tmp_m_{i}"))
+                    # SELETOR DE DESCONTO POR ITEM
+                    if st.session_state.modo_desconto == "Por Item":
+                        st.number_input(f"↳ Desconto % ({i})", 0.0, 100.0, value=float(st.session_state.get(f"perm_desc_{i}", 0.0)), key=f"tmp_desc_{i}", on_change=sync_state, args=(f"perm_desc_{i}", f"tmp_desc_{i}"))
+            
             if c3:
                 with c3:
                     st.markdown("""<div class="section-header"><span class="section-title">DESPESAS DO PROJETO</span></div>""", unsafe_allow_html=True)
@@ -984,10 +1009,22 @@ def aplicativo_principal():
         for n in sistemas_ordenados:
             q = st.session_state.get(f"perm_val_{n}", 0.0)
             if q > 0:
-                v_u = sistemas_db[n]['valor']; v_liq_u = v_u * (1 - (st.session_state.g_desc_mensalidade/100))
+                v_u = sistemas_db[n]['valor']
+                
+                # CÁLCULO INTELIGENTE DO DESCONTO E ANCORAGEM
+                desc_aplicado = st.session_state.g_desc_mensalidade if st.session_state.modo_desconto == "Global" else st.session_state.get(f"perm_desc_{n}", 0.0)
+                v_liq_u = v_u * (1 - (desc_aplicado/100))
                 t_mensal += (q * v_liq_u)
-                h_m += f"<li><span class='item-name'>{n}</span><span class='item-detalhe'>{int(q)} un x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_liq_u)}</span></li>"
-                html_mensal_digital += f"<li><strong>{n}</strong><span class='detail'>{int(q)} un x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_liq_u)}</span></li>"
+                
+                str_orig = f"R$ {f_br(q * v_u)}"
+                str_desc = f"R$ {f_br(q * v_liq_u)}"
+                
+                if desc_aplicado > 0:
+                    h_m += f"<li><span class='item-name'>{n}</span><span class='item-detalhe'>{int(q)} un x R$ {f_br(v_u)} | Total: <del style='color:#999; margin-right:5px;'>{str_orig}</del>{str_desc}</span></li>"
+                    html_mensal_digital += f"<li><strong>{n}</strong><span class='detail'>{int(q)} un x R$ {f_br(v_u)} | Total: <del>{str_orig}</del> {str_desc}</span></li>"
+                else:
+                    h_m += f"<li><span class='item-name'>{n}</span><span class='item-detalhe'>{int(q)} un x R$ {f_br(v_u)} | Total: {str_orig}</span></li>"
+                    html_mensal_digital += f"<li><strong>{n}</strong><span class='detail'>{int(q)} un x R$ {f_br(v_u)} | Total: {str_orig}</span></li>"
                 
                 vincs = [id_to_name.get(v['id_filho']) for v in vinculos_db.get(name_to_id.get(n), []) if v['tipo'] == 'incluso']
                 for inc in vincs: 
@@ -999,7 +1036,7 @@ def aplicativo_principal():
                         html_mensal_digital += f"<li class='item-incluso'>└ {inc} (Incluso)</li>"
 
         with res_cols[1]:
-            d_h = f"""<div style="color:#2e7d32; font-weight:bold;">Desconto: {st.session_state.g_desc_mensalidade}%</div>""" if (exibir_detalhe_desc and st.session_state.g_desc_mensalidade > 0) else """<div style="height:21px"></div>"""
+            d_h = f"""<div style="color:#2e7d32; font-weight:bold;">Desconto: {st.session_state.g_desc_mensalidade}%</div>""" if (st.session_state.modo_desconto == "Global" and exibir_detalhe_desc and st.session_state.g_desc_mensalidade > 0) else """<div style="height:21px"></div>"""
             st.markdown(f"""<div class="resumo-card" style="border-top-color:#2e7d32;"><span class="resumo-label" style="color:#2e7d32; font-weight:bold;">Manutenção Mensal</span><div class="resumo-valor" style="color:#2e7d32;">R$ {f_br(t_mensal)}</div>{d_h}<div style="font-weight:bold;">Início: {st.session_state.g_faturamento}</div><div class="resumo-subtitulo" style="margin-top:15px;">SISTEMAS</div><ul class="lista-itens">{h_m if h_m else "<li>Nenhum</li>"}</ul></div>""", unsafe_allow_html=True)
 
         t_d, h_d = 0.0, ""
@@ -1060,7 +1097,7 @@ def aplicativo_principal():
                 st.rerun()
 
     # ==========================================
-    # TELA 5: DASHBOARD DO GESTOR (Exclusiva ADMIN)
+    # TELA 5: DASHBOARD DO GESTOR
     # ==========================================
     elif tela == "Visão do Gestor":
         st.markdown("""<h1 class="hero-title" style="margin-bottom:25px;">DASHBOARD COMERCIAL</h1>""", unsafe_allow_html=True)
@@ -1088,7 +1125,6 @@ def aplicativo_principal():
                 with c4: st.markdown(f"""<div class="resumo-card" style="min-height:auto; border-top-color:#2e7d32;"><span style="color:#777; font-weight:bold; font-size:0.8rem;">MRR ADQUIRIDO (MENSAL)</span><div style="font-size:1.8rem; font-weight:900; color:#2e7d32;">R$ {f_br(ganhas['valor_mensal'].sum())}</div></div>""", unsafe_allow_html=True)
                 
                 st.write("---")
-                
                 col_dash1, col_dash2 = st.columns([2, 1])
                 with col_dash1:
                     st.markdown("### Ranking de Vendedores (Financeiro)")
@@ -1130,7 +1166,7 @@ def aplicativo_principal():
                 with col_op2:
                     st.markdown("**Propostas Geradas por Dia**")
                     df_dash['data_curta'] = pd.to_datetime(df_dash['data_atualizacao']).dt.date
-                    prop_dia = df_dash.groupby(['data_curta', 'vendedor_email']).size().reset_index(name='Propostas Criadas/Atualizadas')
+                    prop_dia = df_dash.groupby(['data_curta', 'vendedor_email']).size().reset_index(name='Propostas Movimentadas')
                     prop_dia = prop_dia.sort_values(by='data_curta', ascending=False).head(15)
                     prop_dia.columns = ['Data', 'Vendedor', 'Propostas Movimentadas']
                     st.dataframe(prop_dia, use_container_width=True, hide_index=True)
