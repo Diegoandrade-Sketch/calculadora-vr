@@ -14,7 +14,7 @@ import base64
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-APP_VERSION = "v6.0.0 - Sales Intelligence & CPQ (Stable)"
+APP_VERSION = "v6.0.1 - Sales Intelligence & CPQ (Stable)"
 CACHE_FILE = "cache_vr.json"
 
 if 'perma_nome_cliente' not in st.session_state: st.session_state.perma_nome_cliente = ""
@@ -206,7 +206,7 @@ for k_serv, v_serv in servicos_db.items():
         if v_h_base_global > 0: break
 
 # ==========================================
-# ESTADO GLOBAL E ESCUDO DE INTEIROS
+# ESTADO GLOBAL E ISOLAMENTO DE MÓDULOS
 # ==========================================
 if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 if 'user_role' not in st.session_state: st.session_state.user_role = None
@@ -224,7 +224,10 @@ init_state = {
     'm_erp_pro': False, 'm_xml': False, 'm_escopo': False, 'm_controller': False, 'm_cartaz': False, 'm_masterfisco': False, 'm_backup': False,
     'auto_added': set(), 'sel_m': [], 'sel_i': [], 'sel_d': [],
     'modo_desconto': "Total", 'g_desc_mensalidade': 0.0, 'g_parcelas_setup': 4, 'g_faturamento': "Na assinatura", 'g_regra_desp': "Faturamento na assinatura",
-    'diag_pdv': 0, 'diag_fat': 0.0, 'diag_area': 0, 'diag_func': 0, 'diag_sku': 0
+    
+    # VARIÁVEIS ISOLADAS DO MÓDULO DIAGNÓSTICO (v6.0)
+    'diag_pdv': 0, 'diag_fat_str': "", 'diag_area': 0, 'diag_func': 0, 'diag_sku': 0,
+    'param_piso_pdv': 150000.0, 'param_piso_rh': 25000.0, 'param_perda': 4.0, 'param_risco_trib': 18.0
 }
 
 for k, v in init_state.items():
@@ -502,7 +505,6 @@ def aplicativo_principal():
         if st.session_state.has_unsaved_changes and st.session_state.perma_nome_cliente:
             st.markdown("<div style='background-color:#fff3cd; color:#856404; padding:8px; border-radius:4px; font-size:0.8rem; border-left:3px solid #ffeeba; margin-bottom:15px;'>Atenção: Alterações não salvas</div>", unsafe_allow_html=True)
 
-        # Regra de Roteamento de Segurança por Perfil
         if st.session_state.user_role == "consultor":
             abas = ["Diagnóstico"]
         else:
@@ -677,22 +679,50 @@ def aplicativo_principal():
         st.markdown("<h1 class='hero-title'>DIAGNÓSTICO DE OPERAÇÃO</h1>", unsafe_allow_html=True)
         st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Sales Intelligence | Identificação de Gaps e Oportunidades</p>", unsafe_allow_html=True)
 
+        # ENGRENAGEM DE PARAMETRIZAÇÃO
+        with st.expander("⚙️ Parâmetros do Diagnóstico (Benchmarks da VR)"):
+            st.markdown("Ajuste as réguas ideais para refletir a realidade do formato da loja (Bairro, Atacarejo, Express, etc).")
+            cp1, cp2, cp3, cp4 = st.columns(4)
+            st.session_state.param_piso_pdv = cp1.number_input("Piso Faturamento / PDV (R$)", value=float(st.session_state.get('param_piso_pdv', 150000.0)), step=10000.0)
+            st.session_state.param_piso_rh = cp2.number_input("Piso Faturamento / Func (R$)", value=float(st.session_state.get('param_piso_rh', 25000.0)), step=1000.0)
+            st.session_state.param_perda = cp3.number_input("Média de Perda Setor (%)", value=float(st.session_state.get('param_perda', 4.0)), step=0.5)
+            st.session_state.param_risco_trib = cp4.number_input("Risco Tributário Base (%)", value=float(st.session_state.get('param_risco_trib', 18.0)), step=1.0)
+
         st.markdown("""<div class="cliente-container"><h3 style="margin:0; color:#262730;">Dados Estruturais do Supermercado</h3><p style='color:#777; font-size:0.9rem; margin-top:5px;'>Preencha gradualmente para revelar o diagnóstico. Os cruzamentos são feitos em tempo real.</p></div>""", unsafe_allow_html=True)
 
         c_in1, c_in2, c_in3, c_in4, c_in5 = st.columns(5)
-        with c_in1: st.number_input("Qtd Checkouts (PDVs)", min_value=0, step=1, key="diag_pdv")
-        with c_in2: st.number_input("Faturamento Mensal (R$)", min_value=0.0, step=50000.0, key="diag_fat")
-        with c_in3: st.number_input("Área de Venda (m²)", min_value=0, step=50, key="diag_area")
-        with c_in4: st.number_input("Qtd de Funcionários", min_value=0, step=1, key="diag_func")
-        with c_in5: st.number_input("Mix de Produtos (SKU)", min_value=0, step=1000, key="diag_sku")
+        
+        # CAMPO DE FATURAMENTO COM MÁSCARA INTELIGENTE (SEM QUEBRAR O NÚMERO)
+        with c_in2: 
+            fat_str = st.text_input("Faturamento Mensal", value=st.session_state.get('diag_fat_str', ""), placeholder="Ex: 1500000")
+            fat_val = 0.0
+            if fat_str:
+                # Remove tudo que não for dígito
+                numeros = re.sub(r'\D', '', fat_str) 
+                if numeros:
+                    fat_val = float(numeros)
+            st.session_state.diag_fat_str = fat_str
+            # Exibe o valor elegantemente formatado logo abaixo da caixa de texto
+            st.markdown(f"<div style='font-size:1.1rem; font-weight:900; color:#2e7d32; margin-top:-15px; margin-bottom:15px;'>R$ {f_br(fat_val)}</div>", unsafe_allow_html=True)
+
+        with c_in1: st.session_state.diag_pdv = st.number_input("Qtd Checkouts (PDVs)", min_value=0, step=1, value=st.session_state.get('diag_pdv', 0))
+        with c_in3: st.session_state.diag_area = st.number_input("Área de Venda (m²)", min_value=0, step=50, value=st.session_state.get('diag_area', 0))
+        with c_in4: st.session_state.diag_func = st.number_input("Qtd de Funcionários", min_value=0, step=1, value=st.session_state.get('diag_func', 0))
+        with c_in5: st.session_state.diag_sku = st.number_input("Mix de Produtos (SKU)", min_value=0, step=1000, value=st.session_state.get('diag_sku', 0))
 
         st.write("---")
 
         pdvs = st.session_state.diag_pdv
-        fat = st.session_state.diag_fat
+        fat = fat_val
         area = st.session_state.diag_area
         func = st.session_state.diag_func
         sku = st.session_state.diag_sku
+
+        # Resgate dos Parâmetros Dinâmicos
+        piso_pdv = st.session_state.param_piso_pdv
+        piso_rh = st.session_state.param_piso_rh
+        taxa_perda = st.session_state.param_perda / 100.0
+        taxa_risco = st.session_state.param_risco_trib / 100.0
 
         def render_diag_card(title, value_text, subtitle, status_color, insight, recommendation=""):
             html = f"""
@@ -718,13 +748,12 @@ def aplicativo_principal():
                 if pdvs == 0:
                     st.markdown(render_diag_card("Eficiência de Caixa", "Aguardando", "Dados Insuficientes", "#ccc", "Informe o número de PDVs e/ou Faturamento para medir a ociosidade."), unsafe_allow_html=True)
                 elif pdvs > 0 and fat == 0:
-                    potencial_min = pdvs * 150000
-                    potencial_max = pdvs * 250000
-                    st.markdown(render_diag_card("Eficiência de Caixa", "Projeção", f"Potencial: R$ {f_br(potencial_min)}/mês", "#3b82f6", f"Com {pdvs} PDVs, sua operação deveria faturar entre R$ {f_br(potencial_min)} e R$ {f_br(potencial_max)}. Informe o faturamento atual para descobrir se há ociosidade física."), unsafe_allow_html=True)
+                    potencial_min = pdvs * piso_pdv
+                    st.markdown(render_diag_card("Eficiência de Caixa", "Projeção", f"Potencial: R$ {f_br(potencial_min)}/mês", "#3b82f6", f"Com {pdvs} PDVs, sua operação deveria faturar no mínimo R$ {f_br(potencial_min)}. Informe o faturamento atual para descobrir se há ociosidade física."), unsafe_allow_html=True)
                 else:
                     fat_pdv = fat / pdvs
-                    if fat_pdv < 150000:
-                        st.markdown(render_diag_card("Eficiência de Caixa", f"R$ {f_br(fat_pdv)}", "Abaixo do Ideal (Piso: R$ 150k)", "#ef4444", "Sua loja apresenta alta ociosidade de caixas ou fuga de receita grave. Custos fixos de hardware e operador não estão se pagando.", "Implantação do <b>VR Controller 360</b> para monitorar a produtividade por operador, identificar horários de pico reais e justificar cortes ou readequação de checkouts."), unsafe_allow_html=True)
+                    if fat_pdv < piso_pdv:
+                        st.markdown(render_diag_card("Eficiência de Caixa", f"R$ {f_br(fat_pdv)}", f"Abaixo do Ideal (Piso: R$ {f_br(piso_pdv)})", "#ef4444", "Sua loja apresenta alta ociosidade de caixas ou fuga de receita grave. Custos fixos de hardware e operador não estão se pagando.", "Implantação do <b>VR Controller 360</b> para monitorar a produtividade por operador, identificar horários de pico reais e justificar cortes ou readequação de checkouts."), unsafe_allow_html=True)
                     else:
                         st.markdown(render_diag_card("Eficiência de Caixa", f"R$ {f_br(fat_pdv)}", "Operação Saudável", "#22c55e", "Seus checkouts possuem excelente giro e ticket médio adequado para a estrutura física relatada.", "Mantenha o acompanhamento em tempo real para evitar formação de filas no horário de pico."), unsafe_allow_html=True)
 
@@ -733,12 +762,12 @@ def aplicativo_principal():
                 if func == 0:
                     st.markdown(render_diag_card("Produtividade de RH", "Aguardando", "Dados Insuficientes", "#ccc", "Informe o número de Funcionários para medir o impacto da folha de pagamento."), unsafe_allow_html=True)
                 elif func > 0 and fat == 0:
-                    potencial_min_rh = func * 25000
+                    potencial_min_rh = func * piso_rh
                     st.markdown(render_diag_card("Produtividade de RH", "Projeção", "Potencial de Equipe", "#3b82f6", f"Pela régua saudável, sua equipe atual deveria estar entregando pelo menos R$ {f_br(potencial_min_rh)} de receita mensal."), unsafe_allow_html=True)
                 else:
                     fat_func = fat / func
-                    if fat_func < 25000:
-                        st.markdown(render_diag_card("Produtividade de RH", f"R$ {f_br(fat_func)}", "Abaixo do Ideal (Piso: R$ 25k)", "#ef4444", "A folha de pagamento está excessivamente pesada para a receita gerada. Há ineficiência grave ou equipe superdimensionada, destruindo a margem líquida.", "Adoção de terminais de <b>VR PDV Self Checkout</b> para enxugar a linha de frente e <b>VR Controller</b> para criar metas de produtividade."), unsafe_allow_html=True)
+                    if fat_func < piso_rh:
+                        st.markdown(render_diag_card("Produtividade de RH", f"R$ {f_br(fat_func)}", f"Abaixo do Ideal (Piso: R$ {f_br(piso_rh)})", "#ef4444", "A folha de pagamento está excessivamente pesada para a receita gerada. Há ineficiência grave ou equipe superdimensionada, destruindo a margem líquida.", "Adoção de terminais de <b>VR PDV Self Checkout</b> para enxugar a linha de frente e <b>VR Controller</b> para criar metas de produtividade."), unsafe_allow_html=True)
                     else:
                         st.markdown(render_diag_card("Produtividade de RH", f"R$ {f_br(fat_func)}", "Eficiência Comprovada", "#22c55e", "A receita gerada por colaborador sustenta a folha de pagamento dentro de uma margem operacional extremamente segura.", "Utilize o Controller para bonificar os melhores operadores e reter talentos chave."), unsafe_allow_html=True)
 
@@ -747,24 +776,24 @@ def aplicativo_principal():
                 if sku == 0 and fat == 0:
                     st.markdown(render_diag_card("Margem e Fisco", "Aguardando", "Dados Insuficientes", "#ccc", "Informe o Mix de Produtos (SKU) e Faturamento para projetar o risco financeiro oculto."), unsafe_allow_html=True)
                 else:
-                    itens_risco = sku * 0.18 if sku > 0 else 0
-                    furo_margem = fat * 0.04 if fat > 0 else 0
+                    itens_risco = sku * taxa_risco if sku > 0 else 0
+                    furo_margem = fat * taxa_perda if fat > 0 else 0
                     
                     if fat > 0 and sku > 0:
                         titulo_risco = f"R$ {f_br(furo_margem)}"
                         sub_risco = f"{int(itens_risco)} Itens Vulneráveis"
-                        insight = "Combinando a média do varejo (4% de perda financeira) com a taxa de 18% de cadastro defasado, sua operação está altamente exposta a tributação em duplicidade."
+                        insight = f"Combinando a média do varejo ({st.session_state.param_perda}% de perda) com a taxa de {st.session_state.param_risco_trib}% de cadastro defasado, sua operação está altamente exposta a tributação em duplicidade."
                     elif sku > 0:
                         titulo_risco = f"{int(itens_risco)} Itens"
                         sub_risco = "Base Desatualizada"
-                        insight = "Historicamente, 18% da base de um mercado possui falhas (NCM, PIS/COFINS). Isso gera impostos pagos a mais ou margens furadas no PDV."
+                        insight = f"Historicamente, {st.session_state.param_risco_trib}% da base possui falhas (NCM, PIS/COFINS). Isso gera impostos pagos a mais ou margens furadas."
                     else:
                         titulo_risco = f"R$ {f_br(furo_margem)}"
                         sub_risco = "Risco de Perda Mensal"
-                        insight = "Sem validação rigorosa, a média de sangria do mercado (quebra, validade, imposto) gira em 4% do faturamento."
+                        insight = f"Sem validação rigorosa, a média de sangria do mercado (quebra, validade, imposto) gira em {st.session_state.param_perda}% do faturamento."
                         
-                    cor_alerta = "#f59e0b" if (sku > 0 and sku < 10000) else "#ef4444"
-                    st.markdown(render_diag_card("Margem e Fisco (O Ralo)", titulo_risco, sub_risco, cor_alerta, insight, "<b>VR Masterfisco</b> para higienização tributária automatizada, protegendo o caixa e recuperando margens silenciosamente todos os dias."), unsafe_allow_html=True)
+                    cor_alerta = "#f59e0b" if (sku > 0 and sku < 10000 and fat == 0) else "#ef4444"
+                    st.markdown(render_diag_card("Margem e Fisco (O Ralo)", titulo_risco, sub_risco, cor_alerta, insight, "<b>VR Masterfisco</b> para higienização tributária automatizada, protegendo o caixa e recuperando margens silenciosamente."), unsafe_allow_html=True)
 
     # ==========================================
     # TELA 1: PAINEL ADMIN
