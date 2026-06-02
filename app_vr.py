@@ -14,7 +14,7 @@ import base64
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-APP_VERSION = "v5.0.2 - Gamification & CPQ Master (Stable)"
+APP_VERSION = "v5.0.3 - Gamification & CPQ Master (Stable)"
 CACHE_FILE = "cache_vr.json"
 
 if 'perma_nome_cliente' not in st.session_state: st.session_state.perma_nome_cliente = ""
@@ -194,6 +194,16 @@ def carregar_dados_vendas():
         return {}, {}, {}, {}, {}, {}, {}, "Erro de Processamento", "#ef4444", pd.DataFrame(), pd.DataFrame()
 
 sistemas_db, servicos_db, despesas_db, full_db, id_to_name, name_to_id, vinculos_db, db_status, db_cor, df_raw, df_vinc = carregar_dados_vendas()
+
+# ==========================================
+# CÁLCULO GERAL DA HORA TÉCNICA (TRAVA DE SEGURANÇA)
+# ==========================================
+v_h_base_global = 161.60
+for k_serv, v_serv in servicos_db.items():
+    if "treinamento" in k_serv.lower():
+        v_h_base_global = v_serv.get('valor_projeto', 0.0)
+        if v_h_base_global <= 0: v_h_base_global = v_serv.get('valor', 0.0)
+        if v_h_base_global > 0: break
 
 # ==========================================
 # ESTADO GLOBAL (Calculadora e Usuário)
@@ -422,29 +432,42 @@ def aplicativo_principal():
     """, unsafe_allow_html=True)
 
     def processar_regras_colaterais():
-        novos_auto = set()
+        novos_auto = {}
         for m_nome in st.session_state.sel_m:
+            qtd_pai = st.session_state.get(f"perm_val_{m_nome}", 0.0)
             p_id = name_to_id.get(m_nome)
-            if p_id and p_id in vinculos_db:
+            if p_id and p_id in vinculos_db and qtd_pai > 0:
                 for r in vinculos_db[p_id]:
                     if r['tipo'] in ['projeto', 'adesao']:
                         f_nome = id_to_name.get(r['id_filho'])
                         if f_nome: 
-                            novos_auto.add(f_nome)
-                            if f_nome not in st.session_state.auto_added:
-                                st.session_state[f"perm_val_{f_nome}"] = float(r['qtd'])
+                            # REGRA INTELIGENTE: Multiplica a Qtd Base do Vínculo pela Qtd do Sistema Pai
+                            qtd_filho = float(r['qtd']) * qtd_pai
+                            if f_nome not in novos_auto or qtd_filho > novos_auto[f_nome]:
+                                novos_auto[f_nome] = qtd_filho
 
         lista_servicos_atual = list(st.session_state.sel_i)
-        for item in st.session_state.auto_added - novos_auto:
-            if item in lista_servicos_atual:
-                lista_servicos_atual.remove(item)
-                st.session_state[f"perm_val_{item}"] = 0.0
-        for item in novos_auto:
-            if item not in lista_servicos_atual: 
+        
+        # Remove ou zera os colaterais antigos
+        for item in list(st.session_state.auto_added):
+            if item not in novos_auto:
+                if item in lista_servicos_atual:
+                    lista_servicos_atual.remove(item)
+                    st.session_state[f"perm_val_{item}"] = 0.0
+                st.session_state.auto_added.discard(item)
+
+        # Adiciona e atualiza os colaterais multiplicados
+        for item, qtd in novos_auto.items():
+            if item not in lista_servicos_atual:
                 lista_servicos_atual.append(item)
-                
-        st.session_state.auto_added = novos_auto
+            st.session_state[f"perm_val_{item}"] = qtd
+            st.session_state.auto_added.add(item)
+            
         st.session_state.sel_i = lista_servicos_atual
+
+    def sync_qtd_sistema():
+        processar_regras_colaterais()
+        mark_unsaved()
 
     def atualiza_sistemas():
         processar_regras_colaterais()
@@ -487,7 +510,6 @@ def aplicativo_principal():
             if st.session_state.user_role == "admin":
                 abas.append("Visão do Gestor")
         
-        # Trava de segurança para garantir que a aba atual sempre existe na lista de opções
         if st.session_state.aba_atual not in abas:
             st.session_state.aba_atual = abas[0]
             
@@ -629,7 +651,7 @@ def aplicativo_principal():
             """, unsafe_allow_html=True)
             
             if st.session_state.meta_regiao > 0:
-                st.markdown(f"""<h4 style="color:#262730; margin-top:25px; margin-bottom:15px;">Espírito de Equipa ({st.session_state.unidade_nome})</h4>""", unsafe_allow_html=True)
+                st.markdown(f"""<h4 style="color:#262730; margin-top:25px; margin-bottom:15px;">Espírito de Equipe ({st.session_state.unidade_nome})</h4>""", unsafe_allow_html=True)
                 st.markdown(f"""
                 <div style="background:#fff; padding:15px; border-radius:8px; border-left: 4px solid #ffcc00; box-shadow: 0 2px 10px rgba(0,0,0,0.05);">
                     <p style="margin:0; color:#444; font-size:1.05rem;">A meta global da sua unidade regional é de <b>R$ {f_br(st.session_state.meta_regiao)}</b>.</p>
@@ -668,7 +690,7 @@ def aplicativo_principal():
                         engine = get_db_engine()
                         with engine.begin() as conn: conn.execute(text("INSERT INTO unidades (nome_fantasia, cnpj, cidade, logradouro, meta_regiao) VALUES (:n, :c, :ci, :e, :m)"), {"n": n_fantasia, "c": v_cnpj, "ci": v_cidade, "e": v_end, "m": m_reg})
                         st.success("Unidade cadastrada!")
-                    except Exception: st.error("Erro interno. Verifique a conexão com a base de dados.")
+                    except Exception: st.error("Erro interno. Verifique a conexão com o banco de dados.")
             try:
                 engine = get_db_engine()
                 st.dataframe(pd.read_sql("SELECT id, nome_fantasia, cidade, meta_regiao, ativo FROM unidades", engine), use_container_width=True)
@@ -694,7 +716,7 @@ def aplicativo_principal():
                             with engine.begin() as conn: conn.execute(text("INSERT INTO usuarios (nome, email, nivel_acesso, id_unidade, senha, primeiro_acesso, cargo, perfil_senioridade) VALUES (:n, :e, :r, :id_u, '123456', TRUE, :cg, :ps)"), {"n": u_nome, "e": u_email, "r": u_role, "id_u": unid_dict[u_unid], "cg": u_cargo, "ps": u_senioridade})
                             st.success(f"Usuário {u_nome} criado! Senha provisória: 123456")
                     st.dataframe(pd.read_sql("SELECT u.id, u.nome, u.email, u.cargo, u.perfil_senioridade as senioridade, un.nome_fantasia as unidade FROM usuarios u LEFT JOIN unidades un ON u.id_unidade = un.id", engine), use_container_width=True)
-            except Exception: st.error("Erro ao comunicar com a base de dados.")
+            except Exception: st.error("Erro ao comunicar com o banco de dados.")
             
         with t_ext:
             st.markdown("<div class='section-header'><span class='section-title'>Livro-Razão (Lançamento de Vendas Externas)</span></div>", unsafe_allow_html=True)
@@ -873,12 +895,10 @@ def aplicativo_principal():
         p_sel = cb.selectbox("Selecione o produto:", sorted(list(full_db.keys())))
         desc_s = cd.number_input("Simular Desconto (%)", 0.0, 30.0, 0.0, 0.5)
         
-        v_h_base = servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)
-        
         if p_sel:
             d = full_db[p_sel]
             
-            # Análise se é serviço, puxa valor projeto
+            # Análise se é serviço, puxa valor projeto com fallback seguro
             v_b = d.get('valor', 0.0)
             if d.get('typeproductid') == 606 and d.get('valor_projeto', 0.0) > 0:
                 v_b = d.get('valor_projeto', 0.0)
@@ -905,7 +925,7 @@ def aplicativo_principal():
                         h_s += f"<li><span class='item-name'>{f_nm}</span><span class='item-detalhe'>{int(f_q)}{uni} x R$ {f_br(f_val)} | Total: R$ {f_br(f_q*f_val)}</span></li>"
             else:
                 h_p, v_he, ads = d.get('horas_padrao', 0.0), d.get('valor_projeto', 0.0), d.get('adesao_vinculada', 0.0)
-                rt = v_he if v_he > 0 else v_h_base
+                rt = v_he if v_he > 0 else v_h_base_global
                 t_s = (h_p * rt) + ads
                 if h_p > 0: h_s += f"<li><span class='item-name'>Implantação</span><span class='item-detalhe'>{h_p}h x R$ {f_br(rt)} | Total: R$ {f_br(h_p*rt)}</span></li>"
                 if ads > 0: h_s += f"<li><span class='item-name'>Taxa de Adesão</span><span class='item-detalhe'>1 un x R$ {f_br(ads)} | Total: R$ {f_br(ads)}</span></li>"
@@ -1000,12 +1020,13 @@ def aplicativo_principal():
                         try:
                             t_setup_b, t_mensal_b = 0.0, 0.0
                             
-                            # SALVAMENTO SEGURO DOS SERVIÇOS
                             for n in st.session_state.sel_i: 
-                                d_serv = servicos_db.get(n, {})
-                                val_u = d_serv.get('valor_projeto', 0.0)
-                                if val_u <= 0: val_u = d_serv.get('valor', 0.0)
-                                t_setup_b += st.session_state.get(f"perm_val_{n}", 0.0) * val_u
+                                q_i = st.session_state.get(f"perm_val_{n}", 0.0)
+                                if q_i > 0:
+                                    d_serv = servicos_db.get(n, {})
+                                    val_u = d_serv.get('valor_projeto', 0.0)
+                                    if val_u <= 0: val_u = d_serv.get('valor', 0.0)
+                                    t_setup_b += q_i * val_u
                                 
                             for n in st.session_state.sel_m:
                                 q_m = st.session_state.get(f"perm_val_{n}", 0.0)
@@ -1016,7 +1037,7 @@ def aplicativo_principal():
                                     t_mensal_b += (q_m * sistemas_db[n].get('valor', 0.0)) * (1 - (desc_bd/100))
                                     if name_to_id.get(n) not in vinculos_db and n not in ["VR Mobile (Smartphone/Android)", "VR PDV Touchscreen", "VR PDV Self Checkout"]:
                                         h_sist = st.session_state.get(f"perm_val_setup_{n}", sistemas_db[n].get('horas_padrao', 0.0))
-                                        if h_sist > 0: t_setup_b += (h_sist * (sistemas_db[n].get('valor_projeto', 0.0) or servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)))
+                                        if h_sist > 0: t_setup_b += (h_sist * (sistemas_db[n].get('valor_projeto', 0.0) or v_h_base_global))
                             
                             payload_json = empacotar_simulacao()
                             engine = get_db_engine()
@@ -1042,10 +1063,12 @@ def aplicativo_principal():
                             t_setup_b, t_mensal_b = 0.0, 0.0
                             
                             for n in st.session_state.sel_i: 
-                                d_serv = servicos_db.get(n, {})
-                                val_u = d_serv.get('valor_projeto', 0.0)
-                                if val_u <= 0: val_u = d_serv.get('valor', 0.0)
-                                t_setup_b += st.session_state.get(f"perm_val_{n}", 0.0) * val_u
+                                q_i = st.session_state.get(f"perm_val_{n}", 0.0)
+                                if q_i > 0:
+                                    d_serv = servicos_db.get(n, {})
+                                    val_u = d_serv.get('valor_projeto', 0.0)
+                                    if val_u <= 0: val_u = d_serv.get('valor', 0.0)
+                                    t_setup_b += q_i * val_u
                                 
                             for n in st.session_state.sel_m:
                                 q_m = st.session_state.get(f"perm_val_{n}", 0.0)
@@ -1054,7 +1077,7 @@ def aplicativo_principal():
                                     t_setup_b += sistemas_db[n].get('adesao_vinculada', 0.0); t_mensal_b += (q_m * sistemas_db[n].get('valor', 0.0)) * (1 - (desc_bd/100))
                                     if name_to_id.get(n) not in vinculos_db and n not in ["VR Mobile (Smartphone/Android)", "VR PDV Touchscreen", "VR PDV Self Checkout"]:
                                         h_sist = st.session_state.get(f"perm_val_setup_{n}", sistemas_db[n].get('horas_padrao', 0.0))
-                                        if h_sist > 0: t_setup_b += (h_sist * (sistemas_db[n].get('valor_projeto', 0.0) or servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)))
+                                        if h_sist > 0: t_setup_b += (h_sist * (sistemas_db[n].get('valor_projeto', 0.0) or v_h_base_global))
                             
                             payload_json = empacotar_simulacao()
                             engine = get_db_engine()
@@ -1121,33 +1144,40 @@ def aplicativo_principal():
                 st.markdown("""<div class="section-header"><span class="section-title">IMPLANTAÇÃO E SERVIÇOS</span></div>""", unsafe_allow_html=True)
                 st.multiselect("Serviços Manuais", list(servicos_db.keys()), key="sel_i", on_change=mark_unsaved)
                 
-                # REGRA INTELIGENTE PARA A TELA DE SERVIÇOS
+                # APLICAÇÃO DA TRAVA DO PREÇO DO SERVIÇO
                 for i in st.session_state.sel_i:
                     d_s = servicos_db[i]
                     v_u = d_s.get('valor_projeto', 0.0)
                     if v_u <= 0: v_u = d_s.get('valor', 0.0)
                     st.number_input(f"{i} (R$ {f_br(v_u)}/h)", 0.0, step=1.0, key=f"perm_val_{i}", on_change=mark_unsaved)
                     
-                has_sistemas_com_setup = any(name_to_id.get(m) not in vinculos_db and m not in ["VR Mobile (Smartphone/Android)", "VR PDV Touchscreen", "VR PDV Self Checkout"] and sistemas_db[m].get('horas_padrao', 0.0) > 0 for m in st.session_state.sel_m)
+                has_sistemas_com_setup = any(
+                    name_to_id.get(m) not in vinculos_db and 
+                    m not in ["VR Mobile (Smartphone/Android)", "VR PDV Touchscreen", "VR PDV Self Checkout"] and 
+                    sistemas_db[m].get('horas_padrao', 0.0) > 0 and 
+                    st.session_state.get(f"perm_val_{m}", 0.0) > 0 # A NOVA TRAVA VISUAL 
+                    for m in st.session_state.sel_m
+                )
                 
                 if has_sistemas_com_setup:
                     st.markdown("<div style='margin-top:15px; font-weight:bold; font-size:0.9rem; color:#ff6600; border-bottom:1px solid #eee; padding-bottom:5px;'>Setup Automático (Sistemas)</div>", unsafe_allow_html=True)
-                    v_h_base = servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)
                     for m in st.session_state.sel_m:
-                        if name_to_id.get(m) not in vinculos_db and m not in ["VR Mobile (Smartphone/Android)", "VR PDV Touchscreen", "VR PDV Self Checkout"]:
-                            d = sistemas_db[m]
-                            h_padrao = d.get('horas_padrao', 0.0)
-                            if h_padrao > 0:
-                                v_rate = d.get('valor_projeto', 0.0) or v_h_base
-                                nome_exib = "Projeto ERP PRO" if m == "VR ERP PRO" else f"Implantação {m}"
-                                st.number_input(f"{nome_exib} (R$ {f_br(v_rate)}/h)", 0.0, step=1.0, key=f"perm_val_setup_{m}", on_change=mark_unsaved)
+                        if st.session_state.get(f"perm_val_{m}", 0.0) > 0: # SÓ EXIBE SE A QUANTIDADE DO SISTEMA FOR > 0
+                            if name_to_id.get(m) not in vinculos_db and m not in ["VR Mobile (Smartphone/Android)", "VR PDV Touchscreen", "VR PDV Self Checkout"]:
+                                d = sistemas_db[m]
+                                h_padrao = d.get('horas_padrao', 0.0)
+                                if h_padrao > 0:
+                                    v_rate = d.get('valor_projeto', 0.0) or v_h_base_global
+                                    nome_exib = "Projeto ERP PRO" if m == "VR ERP PRO" else f"Implantação {m}"
+                                    st.number_input(f"{nome_exib} (R$ {f_br(v_rate)}/h)", 0.0, step=1.0, key=f"perm_val_setup_{m}", on_change=mark_unsaved)
 
             with c2:
                 st.markdown("""<div class="section-header"><span class="section-title">MENSALIDADES SISTEMAS</span></div>""", unsafe_allow_html=True)
                 st.multiselect("Sistemas", list(sistemas_db.keys()), key="sel_m", on_change=atualiza_sistemas)
                 for i in st.session_state.sel_m:
                     v_u = sistemas_db[i]['valor']
-                    st.number_input(f"{i} (R$ {f_br(v_u)}/un)", 0.0, step=1.0, key=f"perm_val_{i}", on_change=mark_unsaved)
+                    # Adicionado sync_qtd_sistema para multiplicar os serviços ao alterar a quantidade
+                    st.number_input(f"{i} (R$ {f_br(v_u)}/un)", 0.0, step=1.0, key=f"perm_val_{i}", on_change=sync_qtd_sistema)
                     
                     if st.session_state.modo_desconto == "Item":
                         def sync_negociacao(item_name):
@@ -1186,11 +1216,10 @@ def aplicativo_principal():
             return 99
 
         t_setup = 0.0
-        v_h_base = servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)
         lista_setup_pre_ordenacao = []
         html_setup_digital = ""
 
-        # REGRA INTELIGENTE NA SOMA DO SETUP
+        # O CÁLCULO CEGO DOS SERVIÇOS NO RESUMO BLINDADO
         for n in st.session_state.sel_i:
             q = st.session_state.get(f"perm_val_{n}", 0.0)
             if q > 0:
@@ -1206,23 +1235,25 @@ def aplicativo_principal():
         itens_isentos_setup = ["VR Mobile (Smartphone/Android)", "VR PDV Touchscreen", "VR PDV Self Checkout"]
 
         for n in st.session_state.sel_m:
-            if name_to_id.get(n) not in vinculos_db:
-                if n in itens_isentos_setup: continue
-                d = sistemas_db[n]
-                h = st.session_state.get(f"perm_val_setup_{n}", d.get('horas_padrao', 0.0))
-                ads = d.get('adesao_vinculada', 0.0)
-                if h > 0:
-                    v_rate = (d.get('valor_projeto', 0.0) or v_h_base)
-                    t_setup += (h * v_rate)
-                    nome_exibicao = "Projeto ERP PRO" if n == "VR ERP PRO" else f"Implantacao {n}"
-                    html_linha = f"<li><span class='item-name'>{nome_exibicao}</span><span class='item-detalhe'>{int(h)}h x R$ {f_br(v_rate)} | Total: R$ {f_br(h*v_rate)}</span></li>"
-                    html_digital = f"<li><strong>{nome_exibicao}</strong><span class='detail'>{int(h)}h x R$ {f_br(v_rate)} | Total: R$ {f_br(h*v_rate)}</span></li>"
-                    lista_setup_pre_ordenacao.append({'nome_exibicao': nome_exibicao, 'html': html_linha, 'html_dig': html_digital})
-                if ads > 0:
-                    t_setup += ads
-                    html_linha = f"<li><span class='item-name'>Taxa de Adesao {n}</span><span class='item-detalhe'>1 un x R$ {f_br(ads)} | Total: R$ {f_br(ads)}</span></li>"
-                    html_digital = f"<li><strong>Taxa de Adesao {n}</strong><span class='detail'>1 un x R$ {f_br(ads)} | Total: R$ {f_br(ads)}</span></li>"
-                    lista_setup_pre_ordenacao.append({'nome_exibicao': f"Taxa de Adesao {n}", 'html': html_linha, 'html_dig': html_digital})
+            q_m = st.session_state.get(f"perm_val_{n}", 0.0)
+            if q_m > 0: # CÁLCULO SEGURO APENAS SE A QUANTIDADE DO SISTEMA PAI FOR > 0
+                if name_to_id.get(n) not in vinculos_db:
+                    if n in itens_isentos_setup: continue
+                    d = sistemas_db[n]
+                    h = st.session_state.get(f"perm_val_setup_{n}", d.get('horas_padrao', 0.0))
+                    ads = d.get('adesao_vinculada', 0.0)
+                    if h > 0:
+                        v_rate = (d.get('valor_projeto', 0.0) or v_h_base_global)
+                        t_setup += (h * v_rate)
+                        nome_exibicao = "Projeto ERP PRO" if n == "VR ERP PRO" else f"Implantacao {n}"
+                        html_linha = f"<li><span class='item-name'>{nome_exibicao}</span><span class='item-detalhe'>{int(h)}h x R$ {f_br(v_rate)} | Total: R$ {f_br(h*v_rate)}</span></li>"
+                        html_digital = f"<li><strong>{nome_exibicao}</strong><span class='detail'>{int(h)}h x R$ {f_br(v_rate)} | Total: R$ {f_br(h*v_rate)}</span></li>"
+                        lista_setup_pre_ordenacao.append({'nome_exibicao': nome_exibicao, 'html': html_linha, 'html_dig': html_digital})
+                    if ads > 0:
+                        t_setup += ads
+                        html_linha = f"<li><span class='item-name'>Taxa de Adesao {n}</span><span class='item-detalhe'>1 un x R$ {f_br(ads)} | Total: R$ {f_br(ads)}</span></li>"
+                        html_digital = f"<li><strong>Taxa de Adesao {n}</strong><span class='detail'>1 un x R$ {f_br(ads)} | Total: R$ {f_br(ads)}</span></li>"
+                        lista_setup_pre_ordenacao.append({'nome_exibicao': f"Taxa de Adesao {n}", 'html': html_linha, 'html_dig': html_digital})
 
         lista_setup_pre_ordenacao.sort(key=get_prioridade_setup)
         h_setup = "".join(item['html'] for item in lista_setup_pre_ordenacao)
