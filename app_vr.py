@@ -1,8 +1,3 @@
-O terreno está perfeitamente preparado no seu banco de dados. A arquitetura modular garante que o nosso "Gerador de Proposta" continua numa bolha 100% blindada, sem qualquer alteração no seu funcionamento ou visual.
-
-Abaixo está o código definitivo (v5.0.0). Para aplicar a atualização, substitua todo o conteúdo do seu ficheiro `app_vr.py` por este código:
-
-```python
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
@@ -1416,5 +1411,3 @@ def aplicativo_principal():
 # ==========================================
 if not st.session_state.logged_in: tela_login()
 else: aplicativo_principal()
-
-```
