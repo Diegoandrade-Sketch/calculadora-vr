@@ -14,14 +14,13 @@ import base64
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-APP_VERSION = "v3.8.0 - Master CRM & Tracking"
+APP_VERSION = "v3.9.0 - Perfis & Setup Override Fixed"
 CACHE_FILE = "cache_vr.json"
 
-# Inicialização de estados persistentes (O "Cofre" do CRM e da Tela)
+# Inicialização de estados persistentes
 if 'perma_nome_cliente' not in st.session_state: st.session_state.perma_nome_cliente = ""
 if 'perma_cnpj_cliente' not in st.session_state: st.session_state.perma_cnpj_cliente = ""
 if 'aba_atual' not in st.session_state: st.session_state.aba_atual = "Gerador de Proposta"
-if 'menu_nav' not in st.session_state: st.session_state.menu_nav = "Gerador de Proposta"
 if 'proposta_carregada_id' not in st.session_state: st.session_state.proposta_carregada_id = None
 if 'show_digital_proposal' not in st.session_state: st.session_state.show_digital_proposal = False
 if 'has_unsaved_changes' not in st.session_state: st.session_state.has_unsaved_changes = False
@@ -119,12 +118,9 @@ def desempacotar_simulacao(json_data, prop_id):
         st.session_state.show_digital_proposal = False
         st.session_state.has_unsaved_changes = False
         
-        # Sincronização e Redirecionamento Instantâneo
         st.session_state.aba_atual = "Gerador de Proposta"
-        st.session_state.menu_nav = "Gerador de Proposta"
-        st.rerun()
-    except Exception:
-        st.error("Falha ao ler os dados do histórico.")
+    except Exception as e:
+        st.error(f"Falha ao ler os dados do histórico: {str(e)}")
 
 # ==========================================
 # DATA LAYER (CARREGAMENTO DO BANCO)
@@ -158,7 +154,6 @@ def carregar_dados_vendas():
         df.columns = [str(c).strip().lower() for c in df.columns]
         df = df.drop_duplicates(subset=['produto'], keep='last')
         
-        # Mapeamento dinâmico e Inteligente: Substitui 'valor' pelo 'preco' do banco de dados
         if 'preco' in df.columns:
             df['valor'] = pd.to_numeric(df['preco'], errors='coerce').fillna(0.0)
         elif 'valor' in df.columns:
@@ -214,7 +209,7 @@ for nome in full_db.keys():
     if f"perm_val_{nome}" not in st.session_state: st.session_state[f"perm_val_{nome}"] = 0.0
 
 # ==========================================
-# BLOCO 1: LOGIN (Com Rastreamento de Acesso)
+# BLOCO 1: LOGIN
 # ==========================================
 def tela_login():
     st.markdown("""<style>.stApp { background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%); } div[data-testid="stForm"] { background-color: #ffffff; border-radius: 16px; padding: 40px 30px; border: none; box-shadow: 0 15px 35px rgba(0, 0, 0, 0.05), 0 5px 15px rgba(0, 0, 0, 0.03); } div[data-testid="stForm"] button { background: linear-gradient(90deg, #262730 0%, #3a3b45 100%); color: white; border: none; border-radius: 8px; font-weight: 600; padding: 0.5rem 1rem; transition: all 0.3s ease; margin-top: 15px; } div[data-testid="stForm"] button:hover { background: #000; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2); color: white; } div[data-testid="stTextInput"] input { border-radius: 8px; border: 1px solid #e0e0e0; padding: 12px 15px; background-color: #fcfcfc; } div[data-testid="stTextInput"] input:focus { border-color: #262730; box-shadow: 0 0 0 1px #262730; background-color: #ffffff; }</style>""", unsafe_allow_html=True)
@@ -255,15 +250,14 @@ def tela_login():
                                     st.session_state.user_email = email; st.session_state.user_role = user['nivel_acesso']; st.session_state.user_name = user['nome']
                                     st.session_state.unidade_nome = user['nome_unidade'] if pd.notna(user['nome_unidade']) else "VR Software"
                                     
-                                    # INÍCIO DO TRACKING: Salvar Log de Acesso no Banco de Dados
-                                    try:
-                                        with engine.begin() as conn_log:
-                                            conn_log.execute(text("INSERT INTO logs_acesso (email_usuario) VALUES (:e)"), {"e": email})
-                                    except Exception:
-                                        pass # Falha silenciosa para não impedir o login se a tabela ainda não existir
-                                    
-                                    if user['primeiro_acesso']: st.session_state.primeiro_acesso = True; st.rerun()
-                                    else: st.session_state.logged_in = True; st.rerun()
+                                    if user['primeiro_acesso']: 
+                                        st.session_state.primeiro_acesso = True; st.rerun()
+                                    else: 
+                                        try:
+                                            with engine.begin() as conn_log:
+                                                conn_log.execute(text("INSERT INTO logs_acesso (email_usuario) VALUES (:e)"), {"e": email})
+                                        except Exception: pass
+                                        st.session_state.logged_in = True; st.rerun()
                                 else: st.error("Senha incorreta.")
                             else: st.error("Usuário não cadastrado ou bloqueado.")
                         except Exception: st.error("Ocorreu um erro ao validar os dados.")
@@ -409,42 +403,48 @@ def aplicativo_principal():
                 for r in vinculos_db[p_id]:
                     if r['tipo'] in ['projeto', 'adesao']:
                         f_nome = id_to_name.get(r['id_filho'])
-                        if f_nome: novos_auto.add(f_nome); st.session_state[f"perm_val_{f_nome}"] = float(r['qtd'])
+                        if f_nome: 
+                            novos_auto.add(f_nome)
+                            # CORREÇÃO CRÍTICA: Só sobrescreve se for um item novo adicionado automaticamente.
+                            # Respeita a edição manual do vendedor!
+                            if f_nome not in st.session_state.auto_added:
+                                st.session_state[f"perm_val_{f_nome}"] = float(r['qtd'])
 
         lista_servicos_atual = list(st.session_state.ui_sel_i)
         for item in st.session_state.auto_added - novos_auto:
             if item in lista_servicos_atual:
-                lista_servicos_atual.remove(item); st.session_state[f"perm_val_{item}"] = 0.0
+                lista_servicos_atual.remove(item)
+                st.session_state[f"perm_val_{item}"] = 0.0
         for item in novos_auto:
-            if item not in lista_servicos_atual: lista_servicos_atual.append(item)
-        st.session_state.auto_added = novos_auto; st.session_state.ui_sel_i = lista_servicos_atual; st.session_state.sel_i = lista_servicos_atual
+            if item not in lista_servicos_atual: 
+                lista_servicos_atual.append(item)
+                
+        st.session_state.auto_added = novos_auto
+        st.session_state.ui_sel_i = lista_servicos_atual
+        st.session_state.sel_i = lista_servicos_atual
 
     def atualiza_sistemas_ui(): st.session_state.sel_m = st.session_state.ui_sel_m; processar_regras_colaterais(); st.session_state.has_unsaved_changes = True
     def atualiza_servicos_ui(): st.session_state.sel_i = st.session_state.ui_sel_i; st.session_state.has_unsaved_changes = True
     def atualiza_despesas_ui(): st.session_state.sel_d = st.session_state.ui_sel_d; st.session_state.has_unsaved_changes = True
 
     def limpar_tudo():
-        # Limpeza do núcleo (Memória)
         for k, v in init_state.items(): st.session_state[k] = v if not isinstance(v, list) else []
         for nome in full_db.keys(): st.session_state[f"perm_val_{nome}"] = 0.0
         
-        # Limpeza Profunda dos Widgets Visuais (O segredo para a tela limpar junto)
-        for chave in list(st.session_state.keys()):
-            if chave.startswith('tmp_'):
-                if isinstance(st.session_state[chave], bool): st.session_state[chave] = False
-                elif isinstance(st.session_state[chave], (int, float)): st.session_state[chave] = 0.0
-                elif isinstance(st.session_state[chave], str): st.session_state[chave] = ""
-                
-        st.session_state['tmp_tef'] = "Nao utiliza"
-        st.session_state['tmp_combo'] = "Montar Manualmente"
+        campos_numericos = ['tmp_pdv_conv', 'tmp_pdv_touch', 'tmp_pdv_self', 'tmp_semanas', 'tmp_mobile']
+        for c in campos_numericos:
+            if c in st.session_state: st.session_state[c] = 0.0
+            
+        campos_booleanos = ['tmp_migracao', 'tmp_escopo', 'tmp_erp_pro', 'tmp_xml', 'tmp_connect', 'tmp_backup', 'tmp_cartaz', 'tmp_ecommerce', 'tmp_controller', 'tmp_masterfisco', 'tmp_app']
+        for b in campos_booleanos:
+            if b in st.session_state: st.session_state[b] = False
+            
+        if 'tmp_tef' in st.session_state: st.session_state['tmp_tef'] = "Nao utiliza"
+        if 'ui_sel_m' in st.session_state: st.session_state.ui_sel_m = []
+        if 'ui_sel_i' in st.session_state: st.session_state.ui_sel_i = []
+        if 'ui_sel_d' in st.session_state: st.session_state.ui_sel_d = []
         
-        st.session_state.ui_sel_m = []
-        st.session_state.ui_sel_i = []
-        st.session_state.ui_sel_d = []
-        
-        st.session_state.perma_nome_cliente = ""
-        st.session_state.perma_cnpj_cliente = ""
-        st.session_state.proposta_carregada_id = None
+        st.session_state.perma_nome_cliente = ""; st.session_state.perma_cnpj_cliente = ""; st.session_state.proposta_carregada_id = None
         if 'widget_nome' in st.session_state: st.session_state.widget_nome = ""
         if 'widget_cnpj' in st.session_state: st.session_state.widget_cnpj = ""
         st.session_state.show_digital_proposal = False
@@ -456,7 +456,7 @@ def aplicativo_principal():
             st.session_state.m_erp_pro = True; st.session_state.m_pdv_conv = 3.0; st.session_state.m_xml = True; st.session_state.m_mobile = 1.0; st.session_state.m_tef = "SiTef Express"; st.session_state.m_migracao = True; st.session_state.m_escopo = True
 
     # ==========================================
-    # SIDEBAR COM CORREÇÃO DE REDIRECIONAMENTO
+    # SIDEBAR
     # ==========================================
     with st.sidebar:
         if os.path.exists("logo_vr.png"): st.image("logo_vr.png", width=180)
@@ -470,10 +470,8 @@ def aplicativo_principal():
             abas.append("Painel Admin")
             abas.append("Visão do Gestor")
         
-        # Sincronização do Menu
-        if st.session_state.menu_nav not in abas: st.session_state.menu_nav = "Gerador de Proposta"
-        
-        tela = st.radio("Navegação:", abas, key="menu_nav")
+        idx_aba = abas.index(st.session_state.aba_atual) if st.session_state.aba_atual in abas else 0
+        tela = st.radio("Navegação:", abas, index=idx_aba)
         st.session_state.aba_atual = tela
 
         if tela == "Gerador de Proposta":
@@ -531,7 +529,9 @@ def aplicativo_principal():
                         c1, c2 = st.columns(2)
                         u_nome, u_email = c1.text_input("Nome Completo"), c2.text_input("E-mail Corporativo")
                         c3, c4 = st.columns(2)
-                        u_unid, u_role = c3.selectbox("Unidade Vinculada", list(unid_dict.keys())), c4.selectbox("Nível de Acesso", ["vendedor", "admin"])
+                        u_unid = c3.selectbox("Unidade Vinculada", list(unid_dict.keys()))
+                        # NOVOS PERFIS ADICIONADOS
+                        u_role = c4.selectbox("Nível de Acesso", ["vendedor", "admin", "financeiro", "projetos", "consultor"])
                         if st.form_submit_button("Criar Usuário"):
                             with engine.begin() as conn: conn.execute(text("INSERT INTO usuarios (nome, email, nivel_acesso, id_unidade, senha, primeiro_acesso) VALUES (:n, :e, :r, :id_u, '123456', TRUE)"), {"n": u_nome, "e": u_email, "r": u_role, "id_u": unid_dict[u_unid]})
                             st.success(f"Usuário {u_nome} criado! Senha provisória: 123456")
@@ -552,25 +552,23 @@ def aplicativo_principal():
             st.dataframe(df_vinc, use_container_width=True)
             
         with t_sql:
-            st.warning("Terminal Blindado (Somente DBA)")
-            query = st.text_area("Digite o comando SQL:")
+            st.warning("Terminal SQL Desbloqueado (Modo Admin Avançado)")
+            query = st.text_area("Digite o comando SQL (CREATE, INSERT, UPDATE liberados):")
             if st.button("Executar SQL"):
-                if any(p in query.lower() for p in ["drop ", "delete ", "truncate "]): st.error("Comandos destrutivos bloqueados.")
-                else:
-                    try:
-                        engine = get_db_engine()
-                        if query.lower().strip().startswith("select"):
-                            with engine.connect() as conn: res = pd.read_sql(text(query), conn)
-                            st.success(f"{len(res)} linhas retornadas."); st.dataframe(res, use_container_width=True)
-                        else:
-                            with engine.begin() as conn: r = conn.execute(text(query))
-                            st.success(f"Linhas afetadas: {r.rowcount}"); st.cache_data.clear()
-                    except Exception: st.error("Sintaxe incorreta ou permissão negada na base.")
+                try:
+                    engine = get_db_engine()
+                    if query.lower().strip().startswith("select"):
+                        with engine.connect() as conn: res = pd.read_sql(text(query), conn)
+                        st.success(f"{len(res)} linhas retornadas."); st.dataframe(res, use_container_width=True)
+                    else:
+                        with engine.begin() as conn: r = conn.execute(text(query))
+                        st.success(f"Comando executado com sucesso. Linhas afetadas/Tabelas modificadas: {r.rowcount}"); st.cache_data.clear()
+                except Exception as e: st.error(f"Sintaxe incorreta ou permissão negada na base. Erro Técnico: {e}")
                     
         with t_cat: st.dataframe(df_raw, use_container_width=True)
 
     # ==========================================
-    # TELA 2: MINHAS PROPOSTAS (CRM KANBAN)
+    # TELA 2: MINHAS PROPOSTAS (CRM KANBAN E LISTA)
     # ==========================================
     elif tela == "Minhas Propostas":
         st.markdown("""<h1 class="hero-title">MEU HISTÓRICO</h1>""", unsafe_allow_html=True)
@@ -629,6 +627,7 @@ def aplicativo_principal():
                             with c_b1:
                                 if st.button("Carregar Proposta", key=f"load_{row['id']}", use_container_width=True):
                                     desempacotar_simulacao(row['dados_simulacao'], row['id'])
+                                    st.rerun()
                             with c_b2:
                                 novo_status = st.selectbox("Mudar Status", ["Em Negociação", "Contrato Assinado", "Perdida", "Excluída"], index=["Em Negociação", "Contrato Assinado", "Perdida", "Excluída"].index(row['status']) if row['status'] in ["Em Negociação", "Contrato Assinado", "Perdida", "Excluída"] else 0, key=f"stat_{row['id']}", label_visibility="collapsed")
                                 if novo_status != row['status']:
@@ -636,7 +635,6 @@ def aplicativo_principal():
                                         conn.execute(text("UPDATE propostas SET status = :s, data_atualizacao = CURRENT_TIMESTAMP WHERE id = :id"), {"s": novo_status, "id": row['id']})
                                     st.rerun()
                                     
-                    # Alteração em Lote
                     if selecionados:
                         st.markdown("---")
                         st.info(f"**{len(selecionados)}** propostas selecionadas para alteração em lote.")
@@ -673,6 +671,7 @@ def aplicativo_principal():
                                 """, unsafe_allow_html=True)
                                 if st.button("Abrir", key=f"kb_load_{row['id']}", use_container_width=True):
                                     desempacotar_simulacao(row['dados_simulacao'], row['id'])
+                                    st.rerun()
 
         except Exception: st.error("Serviço de Histórico indisponível no momento.")
 
@@ -783,7 +782,6 @@ def aplicativo_principal():
             processar_regras_colaterais()
             st.session_state.has_unsaved_changes = True
 
-        # CABEÇALHO E BOTÕES DE SALVAMENTO
         col_hdr1, col_hdr2, col_hdr3 = st.columns([2, 1, 1])
         with col_hdr1:
             st.markdown("""<h1 class="hero-title">PROPOSTA COMERCIAL</h1>""", unsafe_allow_html=True)
@@ -806,7 +804,7 @@ def aplicativo_principal():
                                     t_setup_b += sistemas_db[n].get('adesao_vinculada', 0.0)
                                     t_mensal_b += (q_m * sistemas_db[n].get('valor', 0.0)) * (1 - (st.session_state.g_desc_mensalidade/100))
                                     if name_to_id.get(n) not in vinculos_db and n not in ["VR Mobile (Smartphone/Android)", "VR PDV Touchscreen", "VR PDV Self Checkout"]:
-                                        h_sist = sistemas_db[n].get('horas_padrao', 0.0)
+                                        h_sist = st.session_state.get(f"perm_val_setup_{n}", sistemas_db[n].get('horas_padrao', 0.0))
                                         if h_sist > 0: t_setup_b += (h_sist * (sistemas_db[n].get('valor_hora_implantacao', 0.0) or servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)))
                             
                             payload_json = empacotar_simulacao()
@@ -814,13 +812,13 @@ def aplicativo_principal():
                             with engine.begin() as conn:
                                 if st.session_state.proposta_carregada_id:
                                     conn.execute(text("UPDATE propostas SET nome_cliente = :n, cnpj_cliente = :c, valor_setup = :vs, valor_mensal = :vm, dados_simulacao = :ds, data_atualizacao = CURRENT_TIMESTAMP WHERE id = :id"), {"n": st.session_state.perma_nome_cliente, "c": st.session_state.perma_cnpj_cliente, "vs": t_setup_b, "vm": t_mensal_b, "ds": payload_json, "id": st.session_state.proposta_carregada_id})
-                                    st.success(f"Proposta #{st.session_state.proposta_carregada_id} atualizada com sucesso!")
+                                    st.success(f"Proposta #{st.session_state.proposta_carregada_id} atualizada com sucesso no CRM!")
                                 else:
                                     res = conn.execute(text("INSERT INTO propostas (vendedor_email, nome_cliente, cnpj_cliente, valor_setup, valor_mensal, dados_simulacao) VALUES (:e, :n, :c, :vs, :vm, :ds) RETURNING id"), {"e": st.session_state.user_email, "n": st.session_state.perma_nome_cliente, "c": st.session_state.perma_cnpj_cliente, "vs": t_setup_b, "vm": t_mensal_b, "ds": payload_json})
                                     st.session_state.proposta_carregada_id = res.scalar()
                                     st.success(f"Nova proposta guardada! (ID: #{st.session_state.proposta_carregada_id})")
                             st.session_state.has_unsaved_changes = False
-                        except Exception: st.error("Erro interno de comunicação com o CRM.")
+                        except Exception: st.error("Erro interno de comunicação com o CRM. Tente de novo.")
                         
         with col_hdr3:
             st.write("")
@@ -837,7 +835,7 @@ def aplicativo_principal():
                                 if q_m > 0:
                                     t_setup_b += sistemas_db[n].get('adesao_vinculada', 0.0); t_mensal_b += (q_m * sistemas_db[n].get('valor', 0.0)) * (1 - (st.session_state.g_desc_mensalidade/100))
                                     if name_to_id.get(n) not in vinculos_db and n not in ["VR Mobile (Smartphone/Android)", "VR PDV Touchscreen", "VR PDV Self Checkout"]:
-                                        h_sist = sistemas_db[n].get('horas_padrao', 0.0)
+                                        h_sist = st.session_state.get(f"perm_val_setup_{n}", sistemas_db[n].get('horas_padrao', 0.0))
                                         if h_sist > 0: t_setup_b += (h_sist * (sistemas_db[n].get('valor_hora_implantacao', 0.0) or servicos_db.get("Implantação e Treinamento", {}).get("valor", 0.0)))
                             
                             payload_json = empacotar_simulacao()
@@ -849,7 +847,6 @@ def aplicativo_principal():
                             st.success(f"Cópia criada e gravada com sucesso! (Novo ID: #{st.session_state.proposta_carregada_id})")
                         except Exception: st.error("Erro interno ao duplicar.")
 
-        # BLINDAGEM CLIENTE
         if modo_apresentacao:
             st.markdown(f"""
             <div style="background-color:#ffffff; border-left: 10px solid #262730; padding: 20px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
@@ -957,7 +954,9 @@ def aplicativo_principal():
         for n in st.session_state.sel_m:
             if name_to_id.get(n) not in vinculos_db:
                 if n in itens_isentos_setup: continue
-                d = sistemas_db[n]; h = d.get('horas_padrao', 0.0); ads = d.get('adesao_vinculada', 0.0)
+                d = sistemas_db[n]
+                h = st.session_state.get(f"perm_val_setup_{n}", d.get('horas_padrao', 0.0))
+                ads = d.get('adesao_vinculada', 0.0)
                 if h > 0:
                     v_rate = (d.get('valor_hora_implantacao', 0.0) or v_h_base)
                     t_setup += (h * v_rate)
@@ -1061,7 +1060,7 @@ def aplicativo_principal():
                 st.rerun()
 
     # ==========================================
-    # TELA 5: DASHBOARD DO GESTOR (Nova Tela)
+    # TELA 5: DASHBOARD DO GESTOR (Exclusiva ADMIN)
     # ==========================================
     elif tela == "Visão do Gestor":
         st.markdown("""<h1 class="hero-title" style="margin-bottom:25px;">DASHBOARD COMERCIAL</h1>""", unsafe_allow_html=True)
@@ -1070,12 +1069,10 @@ def aplicativo_principal():
             engine = get_db_engine()
             with engine.connect() as conn:
                 df_dash = pd.read_sql("SELECT * FROM propostas WHERE status != 'Excluída'", conn)
-                
-                # Tratamento para não quebrar caso a tabela de logs ainda não exista no PostgreSQL
                 try:
                     df_logs = pd.read_sql("SELECT email_usuario, DATE(data_acesso) as data FROM logs_acesso", conn)
                 except Exception:
-                    df_logs = pd.DataFrame() # Cria um dataframe vazio
+                    df_logs = pd.DataFrame()
             
             if df_dash.empty:
                 st.info("O CRM ainda não possui propostas para gerar indicadores.")
@@ -1084,68 +1081,62 @@ def aplicativo_principal():
                 negociacao = df_dash[df_dash['status'] == 'Em Negociação']
                 perdidas = df_dash[df_dash['status'] == 'Perdida']
                 
-                # --- INDICADORES FINANCEIROS TOP ---
                 c1, c2, c3, c4 = st.columns(4)
-                with c1: st.markdown(f"""<div class="resumo-card" style="min-height:auto; border-top-color:#ff6600; padding:20px;"><span style="color:#777; font-weight:bold; font-size:0.8rem;">TOTAL EM NEGOCIAÇÃO</span><div style="font-size:2.2rem; font-weight:900; color:#262730;">{len(negociacao)}</div></div>""", unsafe_allow_html=True)
-                with c2: st.markdown(f"""<div class="resumo-card" style="min-height:auto; border-top-color:#22c55e; padding:20px;"><span style="color:#777; font-weight:bold; font-size:0.8rem;">CONTRATOS ASSINADOS</span><div style="font-size:2.2rem; font-weight:900; color:#22c55e;">{len(ganhas)}</div></div>""", unsafe_allow_html=True)
-                with c3: st.markdown(f"""<div class="resumo-card" style="min-height:auto; border-top-color:#1976d2; padding:20px;"><span style="color:#777; font-weight:bold; font-size:0.8rem;">RECEITA SETUP (GANHA)</span><div style="font-size:1.6rem; font-weight:900; color:#262730;">R$ {f_br(ganhas['valor_setup'].sum())}</div></div>""", unsafe_allow_html=True)
-                with c4: st.markdown(f"""<div class="resumo-card" style="min-height:auto; border-top-color:#2e7d32; padding:20px;"><span style="color:#777; font-weight:bold; font-size:0.8rem;">MRR ADQUIRIDO (MENSAL)</span><div style="font-size:1.6rem; font-weight:900; color:#2e7d32;">R$ {f_br(ganhas['valor_mensal'].sum())}</div></div>""", unsafe_allow_html=True)
+                with c1: st.markdown(f"""<div class="resumo-card" style="min-height:auto; border-top-color:#ff6600;"><span style="color:#777; font-weight:bold; font-size:0.8rem;">TOTAL EM NEGOCIAÇÃO</span><div style="font-size:2rem; font-weight:900; color:#262730;">{len(negociacao)}</div></div>""", unsafe_allow_html=True)
+                with c2: st.markdown(f"""<div class="resumo-card" style="min-height:auto; border-top-color:#22c55e;"><span style="color:#777; font-weight:bold; font-size:0.8rem;">CONTRATOS ASSINADOS</span><div style="font-size:2rem; font-weight:900; color:#22c55e;">{len(ganhas)}</div></div>""", unsafe_allow_html=True)
+                with c3: st.markdown(f"""<div class="resumo-card" style="min-height:auto; border-top-color:#1976d2;"><span style="color:#777; font-weight:bold; font-size:0.8rem;">RECEITA SETUP (GANHA)</span><div style="font-size:1.8rem; font-weight:900; color:#262730;">R$ {f_br(ganhas['valor_setup'].sum())}</div></div>""", unsafe_allow_html=True)
+                with c4: st.markdown(f"""<div class="resumo-card" style="min-height:auto; border-top-color:#2e7d32;"><span style="color:#777; font-weight:bold; font-size:0.8rem;">MRR ADQUIRIDO (MENSAL)</span><div style="font-size:1.8rem; font-weight:900; color:#2e7d32;">R$ {f_br(ganhas['valor_mensal'].sum())}</div></div>""", unsafe_allow_html=True)
                 
                 st.write("---")
                 
-                # --- DESDOBRAMENTO FINANCEIRO E RANKING ---
                 col_dash1, col_dash2 = st.columns([2, 1])
-                
                 with col_dash1:
-                    st.markdown("<h3 style='color:#262730;'>Ranking de Vendedores (Leaderboard)</h3>", unsafe_allow_html=True)
+                    st.markdown("### Ranking de Vendedores (Financeiro)")
                     if not ganhas.empty:
                         rank = ganhas.groupby('vendedor_email').agg({'id':'count', 'valor_setup':'sum', 'valor_mensal':'sum'}).reset_index()
                         rank = rank.sort_values(by='valor_mensal', ascending=False)
-                        rank.columns = ['Vendedor (E-mail)', 'Total Contratos', 'Total Setup (R$)', 'Total MRR (R$)']
-                        rank['Total Setup (R$)'] = rank['Total Setup (R$)'].apply(lambda x: f"R$ {f_br(x)}")
-                        rank['Total MRR (R$)'] = rank['Total MRR (R$)'].apply(lambda x: f"R$ {f_br(x)}")
+                        rank.columns = ['Vendedor', 'Contratos', 'Setup Total', 'Mensalidade Total']
+                        rank['Setup Total'] = rank['Setup Total'].apply(lambda x: f"R$ {f_br(x)}")
+                        rank['Mensalidade Total'] = rank['Mensalidade Total'].apply(lambda x: f"R$ {f_br(x)}")
                         st.dataframe(rank, use_container_width=True, hide_index=True)
                     else:
                         st.info("Ainda não há contratos assinados para gerar o ranking.")
                         
                 with col_dash2:
-                    st.markdown("<h3 style='color:#262730;'>Resumo do Funil</h3>", unsafe_allow_html=True)
+                    st.markdown("### Resumo do Funil")
                     total_geral = len(df_dash)
                     taxa_conversao = (len(ganhas) / total_geral) * 100 if total_geral > 0 else 0
-                    
                     st.markdown(f"""
-                    <div style="background:#fff; padding:25px; border-radius:8px; border:1px solid #eee; box-shadow:0 4px 15px rgba(0,0,0,0.05);">
-                        <p style="margin-bottom:15px; border-bottom:1px solid #f0f0f0; padding-bottom:10px;"><strong style="color:#777; text-transform:uppercase; font-size:0.85rem;">Taxa de Conversão</strong><br> <span style="font-size:1.8rem; color:#22c55e; font-weight:900;">{taxa_conversao:.1f}%</span></p>
-                        <p style="margin-bottom:15px; border-bottom:1px solid #f0f0f0; padding-bottom:10px;"><strong style="color:#777; text-transform:uppercase; font-size:0.85rem;">Propostas Perdidas</strong><br> <span style="font-size:1.5rem; color:#ef4444; font-weight:900;">{len(perdidas)}</span></p>
-                        <p style="margin-bottom:5px;"><strong style="color:#777; text-transform:uppercase; font-size:0.85rem;">Ticket Médio (Mensalidade)</strong><br> <span style="font-size:1.5rem; color:#ff6600; font-weight:900;">R$ {f_br(ganhas['valor_mensal'].mean()) if len(ganhas)>0 else '0,00'}</span></p>
+                    <div style="background:#fff; padding:20px; border-radius:8px; border:1px solid #eee; box-shadow:0 2px 5px rgba(0,0,0,0.05);">
+                        <p style="margin-bottom:10px;"><strong style="color:#262730;">Taxa de Conversão:</strong> <span style="font-size:1.2rem; color:#22c55e; font-weight:bold;">{taxa_conversao:.1f}%</span></p>
+                        <p style="margin-bottom:10px;"><strong style="color:#262730;">Propostas Perdidas:</strong> <span style="font-size:1.2rem; color:#ef4444; font-weight:bold;">{len(perdidas)}</span></p>
+                        <p style="margin-bottom:10px;"><strong style="color:#262730;">Ticket Médio Mensal:</strong> <span style="font-size:1.2rem; color:#ff6600; font-weight:bold;">R$ {f_br(ganhas['valor_mensal'].mean()) if len(ganhas)>0 else '0,00'}</span></p>
                     </div>
                     """, unsafe_allow_html=True)
-                    
-                # --- MONITORAMENTO OPERACIONAL (TRACKING) ---
+
                 st.write("---")
-                st.markdown("<h3 style='color:#262730; margin-top:20px;'>Monitoramento de Atividade (Operacional)</h3>", unsafe_allow_html=True)
-                
+                st.markdown("### Engajamento e Cadência (Operacional)")
                 col_op1, col_op2 = st.columns(2)
                 
                 with col_op1:
-                    st.markdown("<h4 style='color:#777;'>Acessos ao Sistema (Logins)</h4>", unsafe_allow_html=True)
+                    st.markdown("**Acessos ao Sistema (Logins)**")
                     if not df_logs.empty:
-                        logins_por_user = df_logs.groupby('email_usuario').size().reset_index(name='Total de Acessos')
-                        logins_por_user = logins_por_user.sort_values(by='Total de Acessos', ascending=False)
-                        st.dataframe(logins_por_user, use_container_width=True, hide_index=True)
+                        logs_agg = df_logs.groupby('email_usuario').size().reset_index(name='Total de Logins')
+                        logs_agg = logs_agg.sort_values(by='Total de Logins', ascending=False)
+                        st.dataframe(logs_agg, use_container_width=True, hide_index=True)
                     else:
-                        st.warning("A tabela de logs está vazia ou o comando SQL 'CREATE TABLE logs_acesso' ainda não foi rodado no PostgreSQL.")
-                        
+                        st.warning("A tabela de logs_acesso está vazia ou ainda não foi criada no PostgreSQL.")
+                
                 with col_op2:
-                    st.markdown("<h4 style='color:#777;'>Ritmo: Propostas Geradas/Atualizadas por Dia</h4>", unsafe_allow_html=True)
+                    st.markdown("**Propostas Geradas por Dia**")
                     df_dash['data_curta'] = pd.to_datetime(df_dash['data_atualizacao']).dt.date
-                    prop_por_dia = df_dash.groupby(['data_curta', 'vendedor_email']).size().reset_index(name='Quantidade')
-                    prop_por_dia = prop_por_dia.sort_values(by='data_curta', ascending=False)
-                    prop_por_dia.columns = ['Data', 'E-mail do Vendedor', 'Propostas Movimentadas']
-                    st.dataframe(prop_por_dia, use_container_width=True, hide_index=True)
+                    prop_dia = df_dash.groupby(['data_curta', 'vendedor_email']).size().reset_index(name='Propostas Criadas/Atualizadas')
+                    prop_dia = prop_dia.sort_values(by='data_curta', ascending=False).head(15)
+                    prop_dia.columns = ['Data', 'Vendedor', 'Propostas Movimentadas']
+                    st.dataframe(prop_dia, use_container_width=True, hide_index=True)
 
         except Exception as e:
-            st.error("Falha ao comunicar com o Banco de Dados para gerar os Dashboards.")
+            st.error(f"Falha ao comunicar com o Banco de Dados para gerar os Dashboards. Erro Técnico: {e}")
 
 # ==========================================
 # ROTEADOR DE SEGURANÇA
