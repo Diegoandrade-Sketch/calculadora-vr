@@ -14,7 +14,7 @@ import base64
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-APP_VERSION = "v5.0.4 - Gamification & CPQ Master (Stable)"
+APP_VERSION = "v6.0.0 - Sales Intelligence & CPQ (Stable)"
 CACHE_FILE = "cache_vr.json"
 
 if 'perma_nome_cliente' not in st.session_state: st.session_state.perma_nome_cliente = ""
@@ -223,7 +223,8 @@ init_state = {
     'm_tef': "Nao utiliza", 'm_migracao': False, 'm_ecommerce': False, 'm_app': False, 'm_connect': False,
     'm_erp_pro': False, 'm_xml': False, 'm_escopo': False, 'm_controller': False, 'm_cartaz': False, 'm_masterfisco': False, 'm_backup': False,
     'auto_added': set(), 'sel_m': [], 'sel_i': [], 'sel_d': [],
-    'modo_desconto': "Total", 'g_desc_mensalidade': 0.0, 'g_parcelas_setup': 4, 'g_faturamento': "Na assinatura", 'g_regra_desp': "Faturamento na assinatura"
+    'modo_desconto': "Total", 'g_desc_mensalidade': 0.0, 'g_parcelas_setup': 4, 'g_faturamento': "Na assinatura", 'g_regra_desp': "Faturamento na assinatura",
+    'diag_pdv': 0, 'diag_fat': 0.0, 'diag_area': 0, 'diag_func': 0, 'diag_sku': 0
 }
 
 for k, v in init_state.items():
@@ -492,20 +493,24 @@ def aplicativo_principal():
             st.session_state.m_erp_pro = True; st.session_state.m_pdv_conv = 3; st.session_state.m_xml = True; st.session_state.m_mobile = 1; st.session_state.m_tef = "SiTef Express"; st.session_state.m_migracao = True; st.session_state.m_escopo = True
 
     # ==========================================
-    # SIDEBAR (NAVEGAÇÃO BLINDADA COM KEY)
+    # SIDEBAR E ROTEAMENTO (SEPARAÇÃO DE PERFIS)
     # ==========================================
     with st.sidebar:
         if os.path.exists("logo_vr.png"): st.image("logo_vr.png", width=180)
-        st.markdown(f"<div style='background-color:#f0f0f0; padding:10px; border-radius:5px; margin-bottom:15px; border-left:4px solid #ff6600;'><span style='font-weight:bold; color:#333;'>Vendedor: {st.session_state.user_name}</span></div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='background-color:#f0f0f0; padding:10px; border-radius:5px; margin-bottom:15px; border-left:4px solid #ff6600;'><span style='font-weight:bold; color:#333;'>Usuário: {st.session_state.user_name}</span></div>", unsafe_allow_html=True)
         
         if st.session_state.has_unsaved_changes and st.session_state.perma_nome_cliente:
             st.markdown("<div style='background-color:#fff3cd; color:#856404; padding:8px; border-radius:4px; font-size:0.8rem; border-left:3px solid #ffeeba; margin-bottom:15px;'>Atenção: Alterações não salvas</div>", unsafe_allow_html=True)
 
-        abas = ["Início", "Gerador de Proposta", "Minhas Propostas", "Consulta de Preco"]
-        if st.session_state.user_role in ["admin", "financeiro", "projetos", "consultor"] and not st.toggle("Simular Visão Vendedor"): 
-            abas.append("Painel Admin")
-            if st.session_state.user_role == "admin":
-                abas.append("Visão do Gestor")
+        # Regra de Roteamento de Segurança por Perfil
+        if st.session_state.user_role == "consultor":
+            abas = ["Diagnóstico"]
+        else:
+            abas = ["Início", "Diagnóstico", "Gerador de Proposta", "Minhas Propostas", "Consulta de Preco"]
+            if st.session_state.user_role in ["admin", "financeiro", "projetos"] and not st.toggle("Simular Visão Vendedor"): 
+                abas.append("Painel Admin")
+                if st.session_state.user_role == "admin":
+                    abas.append("Visão do Gestor")
         
         if st.session_state.aba_atual not in abas:
             st.session_state.aba_atual = abas[0]
@@ -664,6 +669,102 @@ def aplicativo_principal():
             if st.button("📂 Continuar Negociações", use_container_width=True):
                 st.session_state.aba_atual = "Minhas Propostas"
                 st.rerun()
+
+    # ==========================================
+    # TELA NOVA: DIAGNÓSTICO (ISOLADO E BLINDADO)
+    # ==========================================
+    elif tela == "Diagnóstico":
+        st.markdown("<h1 class='hero-title'>DIAGNÓSTICO DE OPERAÇÃO</h1>", unsafe_allow_html=True)
+        st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Sales Intelligence | Identificação de Gaps e Oportunidades</p>", unsafe_allow_html=True)
+
+        st.markdown("""<div class="cliente-container"><h3 style="margin:0; color:#262730;">Dados Estruturais do Supermercado</h3><p style='color:#777; font-size:0.9rem; margin-top:5px;'>Preencha gradualmente para revelar o diagnóstico. Os cruzamentos são feitos em tempo real.</p></div>""", unsafe_allow_html=True)
+
+        c_in1, c_in2, c_in3, c_in4, c_in5 = st.columns(5)
+        with c_in1: st.number_input("Qtd Checkouts (PDVs)", min_value=0, step=1, key="diag_pdv")
+        with c_in2: st.number_input("Faturamento Mensal (R$)", min_value=0.0, step=50000.0, key="diag_fat")
+        with c_in3: st.number_input("Área de Venda (m²)", min_value=0, step=50, key="diag_area")
+        with c_in4: st.number_input("Qtd de Funcionários", min_value=0, step=1, key="diag_func")
+        with c_in5: st.number_input("Mix de Produtos (SKU)", min_value=0, step=1000, key="diag_sku")
+
+        st.write("---")
+
+        pdvs = st.session_state.diag_pdv
+        fat = st.session_state.diag_fat
+        area = st.session_state.diag_area
+        func = st.session_state.diag_func
+        sku = st.session_state.diag_sku
+
+        def render_diag_card(title, value_text, subtitle, status_color, insight, recommendation=""):
+            html = f"""
+            <div style="background:#fff; border-top: 5px solid {status_color}; padding:25px; border-radius:10px; box-shadow:0 10px 25px rgba(0,0,0,0.08); height:100%; display:flex; flex-direction:column;">
+                <div style="font-size:0.85rem; font-weight:bold; color:#777; text-transform:uppercase;">{title}</div>
+                <div style="font-size:1.9rem; font-weight:900; color:#262730; margin:10px 0;">{value_text}</div>
+                <div style="font-size:1rem; font-weight:bold; color:{status_color}; margin-bottom:15px;">{subtitle}</div>
+                <div style="font-size:0.95rem; color:#444; line-height:1.5; margin-bottom:20px; flex-grow:1;">{insight}</div>
+            """
+            if recommendation:
+                html += f"""<div style="background:#f8f9fa; border-left:4px solid {status_color}; padding:15px; font-size:0.9rem; font-style:italic; color:#262730; border-radius:4px;">💡 <b>Solução VR:</b> {recommendation}</div>"""
+            html += "</div>"
+            return html
+
+        if pdvs == 0 and fat == 0 and area == 0 and func == 0 and sku == 0:
+            st.info("Preencha ao menos um dos campos estruturais acima para iniciar o mapeamento da Trinca de Ouro.")
+        else:
+            st.markdown("<h3 style='color:#262730; margin-bottom:20px;'>A Trinca de Ouro (Métricas de Saúde)</h3>", unsafe_allow_html=True)
+            c_p1, c_p2, c_p3 = st.columns(3)
+            
+            # PAINEL 1: Eficiência de Caixa (Ociosidade)
+            with c_p1:
+                if pdvs == 0:
+                    st.markdown(render_diag_card("Eficiência de Caixa", "Aguardando", "Dados Insuficientes", "#ccc", "Informe o número de PDVs e/ou Faturamento para medir a ociosidade."), unsafe_allow_html=True)
+                elif pdvs > 0 and fat == 0:
+                    potencial_min = pdvs * 150000
+                    potencial_max = pdvs * 250000
+                    st.markdown(render_diag_card("Eficiência de Caixa", "Projeção", f"Potencial: R$ {f_br(potencial_min)}/mês", "#3b82f6", f"Com {pdvs} PDVs, sua operação deveria faturar entre R$ {f_br(potencial_min)} e R$ {f_br(potencial_max)}. Informe o faturamento atual para descobrir se há ociosidade física."), unsafe_allow_html=True)
+                else:
+                    fat_pdv = fat / pdvs
+                    if fat_pdv < 150000:
+                        st.markdown(render_diag_card("Eficiência de Caixa", f"R$ {f_br(fat_pdv)}", "Abaixo do Ideal (Piso: R$ 150k)", "#ef4444", "Sua loja apresenta alta ociosidade de caixas ou fuga de receita grave. Custos fixos de hardware e operador não estão se pagando.", "Implantação do <b>VR Controller 360</b> para monitorar a produtividade por operador, identificar horários de pico reais e justificar cortes ou readequação de checkouts."), unsafe_allow_html=True)
+                    else:
+                        st.markdown(render_diag_card("Eficiência de Caixa", f"R$ {f_br(fat_pdv)}", "Operação Saudável", "#22c55e", "Seus checkouts possuem excelente giro e ticket médio adequado para a estrutura física relatada.", "Mantenha o acompanhamento em tempo real para evitar formação de filas no horário de pico."), unsafe_allow_html=True)
+
+            # PAINEL 2: Produtividade de Equipe
+            with c_p2:
+                if func == 0:
+                    st.markdown(render_diag_card("Produtividade de RH", "Aguardando", "Dados Insuficientes", "#ccc", "Informe o número de Funcionários para medir o impacto da folha de pagamento."), unsafe_allow_html=True)
+                elif func > 0 and fat == 0:
+                    potencial_min_rh = func * 25000
+                    st.markdown(render_diag_card("Produtividade de RH", "Projeção", "Potencial de Equipe", "#3b82f6", f"Pela régua saudável, sua equipe atual deveria estar entregando pelo menos R$ {f_br(potencial_min_rh)} de receita mensal."), unsafe_allow_html=True)
+                else:
+                    fat_func = fat / func
+                    if fat_func < 25000:
+                        st.markdown(render_diag_card("Produtividade de RH", f"R$ {f_br(fat_func)}", "Abaixo do Ideal (Piso: R$ 25k)", "#ef4444", "A folha de pagamento está excessivamente pesada para a receita gerada. Há ineficiência grave ou equipe superdimensionada, destruindo a margem líquida.", "Adoção de terminais de <b>VR PDV Self Checkout</b> para enxugar a linha de frente e <b>VR Controller</b> para criar metas de produtividade."), unsafe_allow_html=True)
+                    else:
+                        st.markdown(render_diag_card("Produtividade de RH", f"R$ {f_br(fat_func)}", "Eficiência Comprovada", "#22c55e", "A receita gerada por colaborador sustenta a folha de pagamento dentro de uma margem operacional extremamente segura.", "Utilize o Controller para bonificar os melhores operadores e reter talentos chave."), unsafe_allow_html=True)
+
+            # PAINEL 3: Risco Tributário e Furo de Margem (O Ralo Invisível)
+            with c_p3:
+                if sku == 0 and fat == 0:
+                    st.markdown(render_diag_card("Margem e Fisco", "Aguardando", "Dados Insuficientes", "#ccc", "Informe o Mix de Produtos (SKU) e Faturamento para projetar o risco financeiro oculto."), unsafe_allow_html=True)
+                else:
+                    itens_risco = sku * 0.18 if sku > 0 else 0
+                    furo_margem = fat * 0.04 if fat > 0 else 0
+                    
+                    if fat > 0 and sku > 0:
+                        titulo_risco = f"R$ {f_br(furo_margem)}"
+                        sub_risco = f"{int(itens_risco)} Itens Vulneráveis"
+                        insight = "Combinando a média do varejo (4% de perda financeira) com a taxa de 18% de cadastro defasado, sua operação está altamente exposta a tributação em duplicidade."
+                    elif sku > 0:
+                        titulo_risco = f"{int(itens_risco)} Itens"
+                        sub_risco = "Base Desatualizada"
+                        insight = "Historicamente, 18% da base de um mercado possui falhas (NCM, PIS/COFINS). Isso gera impostos pagos a mais ou margens furadas no PDV."
+                    else:
+                        titulo_risco = f"R$ {f_br(furo_margem)}"
+                        sub_risco = "Risco de Perda Mensal"
+                        insight = "Sem validação rigorosa, a média de sangria do mercado (quebra, validade, imposto) gira em 4% do faturamento."
+                        
+                    cor_alerta = "#f59e0b" if (sku > 0 and sku < 10000) else "#ef4444"
+                    st.markdown(render_diag_card("Margem e Fisco (O Ralo)", titulo_risco, sub_risco, cor_alerta, insight, "<b>VR Masterfisco</b> para higienização tributária automatizada, protegendo o caixa e recuperando margens silenciosamente todos os dias."), unsafe_allow_html=True)
 
     # ==========================================
     # TELA 1: PAINEL ADMIN
@@ -1140,7 +1241,6 @@ def aplicativo_principal():
                 st.markdown("""<div class="section-header"><span class="section-title">IMPLANTAÇÃO E SERVIÇOS</span></div>""", unsafe_allow_html=True)
                 st.multiselect("Serviços Manuais", list(servicos_db.keys()), key="sel_i", on_change=mark_unsaved)
                 
-                # ESCUDO DE INTEIROS E FIX DE DESSINCRONIZAÇÃO EM SERVIÇOS
                 for i in st.session_state.sel_i:
                     d_s = servicos_db[i]
                     v_u = d_s.get('valor_projeto', 0.0)
@@ -1169,7 +1269,6 @@ def aplicativo_principal():
                                     v_rate = d.get('valor_projeto', 0.0) or v_h_base_global
                                     nome_exib = "Projeto ERP PRO" if m == "VR ERP PRO" else f"Implantação {m}"
                                     
-                                    # ESCUDO DE INTEIROS E FIX DE DESSINCRONIZAÇÃO NO SETUP
                                     val_mem_setup = int(st.session_state.get(f"perm_val_setup_{m}", h_padrao))
                                     st.session_state[f"perm_val_setup_{m}"] = val_mem_setup
                                     st.number_input(f"{nome_exib} (R$ {f_br(v_rate)}/h)", min_value=0, step=1, key=f"perm_val_setup_{m}", on_change=mark_unsaved)
@@ -1227,7 +1326,6 @@ def aplicativo_principal():
         lista_setup_pre_ordenacao = []
         html_setup_digital = ""
 
-        # O CÁLCULO CEGO DOS SERVIÇOS NO RESUMO TOTALMENTE BLINDADO COM INT
         for n in st.session_state.sel_i:
             q = int(st.session_state.get(f"perm_val_{n}", 0))
             if q > 0:
@@ -1248,7 +1346,7 @@ def aplicativo_principal():
                 if name_to_id.get(n) not in vinculos_db:
                     if n in itens_isentos_setup: continue
                     d = sistemas_db[n]
-                    h = int(st.session_state.get(f"perm_val_setup_{n}", 0)) # A LÂMINA DO EXTERMINADOR DE ZEROS
+                    h = int(st.session_state.get(f"perm_val_setup_{n}", 0))
                     ads = d.get('adesao_vinculada', 0.0)
                     if h > 0:
                         v_rate = (d.get('valor_projeto', 0.0) or v_h_base_global)
