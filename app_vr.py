@@ -14,7 +14,7 @@ import base64
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-APP_VERSION = "v6.0.1 - Sales Intelligence & CPQ (Stable)"
+APP_VERSION = "v6.0.2 - Sales Intelligence & CPQ Master"
 CACHE_FILE = "cache_vr.json"
 
 if 'perma_nome_cliente' not in st.session_state: st.session_state.perma_nome_cliente = ""
@@ -77,7 +77,7 @@ def atualiza_cnpj_cliente():
     mark_unsaved()
 
 # ==========================================
-# MÓDULOS DO CRM (EMPACOTAMENTO JSON)
+# MÓDULOS DO CRM (EMPACOTAMENTO JSON COM DESPESAS)
 # ==========================================
 def empacotar_simulacao():
     payload = {
@@ -92,9 +92,11 @@ def empacotar_simulacao():
         'sel_i': st.session_state.sel_i,
         'sel_d': st.session_state.sel_d,
         'mapeamento': {k: st.session_state[k] for k in st.session_state.keys() if k.startswith('m_')},
-        'quantidades': {k: st.session_state[k] for k in st.session_state.keys() if k.startswith('perm_val_') and not k.startswith('perm_val_setup_')},
+        'quantidades': {k: st.session_state[k] for k in st.session_state.keys() if k.startswith('perm_val_') and not k.startswith('perm_val_setup_') and not k.startswith('perm_val_desp_unit_')},
         'descontos_itens': {k: st.session_state[k] for k in st.session_state.keys() if k.startswith('perm_desc_')},
-        'setup_sistemas': {k: st.session_state[k] for k in st.session_state.keys() if k.startswith('perm_val_setup_')}
+        'setup_sistemas': {k: st.session_state[k] for k in st.session_state.keys() if k.startswith('perm_val_setup_')},
+        # Nova Gaveta: Salva o valor unitário das despesas caso o vendedor tenha editado
+        'despesas_valores': {k: st.session_state.get(f"perm_val_desp_unit_{k}", 0.0) for k in st.session_state.sel_d}
     }
     return json.dumps(payload)
 
@@ -127,6 +129,10 @@ def desempacotar_simulacao(json_data, prop_id):
                 st.session_state[f"negociar_{nome_item}"] = True
                 
         for k, v in dados.get('setup_sistemas', {}).items(): st.session_state[k] = int(float(v))
+        
+        # Recupera as despesas editadas
+        for k, v in dados.get('despesas_valores', {}).items(): 
+            st.session_state[f"perm_val_desp_unit_{k}"] = float(v)
         
         st.session_state.proposta_carregada_id = prop_id
         st.session_state.show_digital_proposal = False
@@ -238,6 +244,8 @@ for nome in full_db.keys():
     if f"perm_desc_{nome}" not in st.session_state: st.session_state[f"perm_desc_{nome}"] = 0.0
     if f"negociar_{nome}" not in st.session_state: st.session_state[f"negociar_{nome}"] = False
     if f"perm_val_setup_{nome}" not in st.session_state: st.session_state[f"perm_val_setup_{nome}"] = int(full_db[nome].get('horas_padrao', 0))
+    # Inicializa a memória dos valores flutuantes das despesas
+    if f"perm_val_desp_unit_{nome}" not in st.session_state: st.session_state[f"perm_val_desp_unit_{nome}"] = float(full_db[nome].get('valor', 0.0))
 
 # ==========================================
 # BLOCO 1: LOGIN E LOGS
@@ -482,6 +490,7 @@ def aplicativo_principal():
             st.session_state[f"perm_desc_{nome}"] = 0.0
             st.session_state[f"negociar_{nome}"] = False
             st.session_state[f"perm_val_setup_{nome}"] = int(full_db[nome].get('horas_padrao', 0))
+            st.session_state[f"perm_val_desp_unit_{nome}"] = float(full_db[nome].get('valor', 0.0))
             
         st.session_state.perma_nome_cliente = ""; st.session_state.perma_cnpj_cliente = ""; st.session_state.proposta_carregada_id = None
         if 'widget_nome' in st.session_state: st.session_state.widget_nome = ""
@@ -679,7 +688,6 @@ def aplicativo_principal():
         st.markdown("<h1 class='hero-title'>DIAGNÓSTICO DE OPERAÇÃO</h1>", unsafe_allow_html=True)
         st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Sales Intelligence | Identificação de Gaps e Oportunidades</p>", unsafe_allow_html=True)
 
-        # ENGRENAGEM DE PARAMETRIZAÇÃO
         with st.expander("⚙️ Parâmetros do Diagnóstico (Benchmarks da VR)"):
             st.markdown("Ajuste as réguas ideais para refletir a realidade do formato da loja (Bairro, Atacarejo, Express, etc).")
             cp1, cp2, cp3, cp4 = st.columns(4)
@@ -692,17 +700,13 @@ def aplicativo_principal():
 
         c_in1, c_in2, c_in3, c_in4, c_in5 = st.columns(5)
         
-        # CAMPO DE FATURAMENTO COM MÁSCARA INTELIGENTE (SEM QUEBRAR O NÚMERO)
         with c_in2: 
             fat_str = st.text_input("Faturamento Mensal", value=st.session_state.get('diag_fat_str', ""), placeholder="Ex: 1500000")
             fat_val = 0.0
             if fat_str:
-                # Remove tudo que não for dígito
                 numeros = re.sub(r'\D', '', fat_str) 
-                if numeros:
-                    fat_val = float(numeros)
+                if numeros: fat_val = float(numeros)
             st.session_state.diag_fat_str = fat_str
-            # Exibe o valor elegantemente formatado logo abaixo da caixa de texto
             st.markdown(f"<div style='font-size:1.1rem; font-weight:900; color:#2e7d32; margin-top:-15px; margin-bottom:15px;'>R$ {f_br(fat_val)}</div>", unsafe_allow_html=True)
 
         with c_in1: st.session_state.diag_pdv = st.number_input("Qtd Checkouts (PDVs)", min_value=0, step=1, value=st.session_state.get('diag_pdv', 0))
@@ -718,7 +722,6 @@ def aplicativo_principal():
         func = st.session_state.diag_func
         sku = st.session_state.diag_sku
 
-        # Resgate dos Parâmetros Dinâmicos
         piso_pdv = st.session_state.param_piso_pdv
         piso_rh = st.session_state.param_piso_rh
         taxa_perda = st.session_state.param_perda / 100.0
@@ -743,7 +746,6 @@ def aplicativo_principal():
             st.markdown("<h3 style='color:#262730; margin-bottom:20px;'>A Trinca de Ouro (Métricas de Saúde)</h3>", unsafe_allow_html=True)
             c_p1, c_p2, c_p3 = st.columns(3)
             
-            # PAINEL 1: Eficiência de Caixa (Ociosidade)
             with c_p1:
                 if pdvs == 0:
                     st.markdown(render_diag_card("Eficiência de Caixa", "Aguardando", "Dados Insuficientes", "#ccc", "Informe o número de PDVs e/ou Faturamento para medir a ociosidade."), unsafe_allow_html=True)
@@ -757,7 +759,6 @@ def aplicativo_principal():
                     else:
                         st.markdown(render_diag_card("Eficiência de Caixa", f"R$ {f_br(fat_pdv)}", "Operação Saudável", "#22c55e", "Seus checkouts possuem excelente giro e ticket médio adequado para a estrutura física relatada.", "Mantenha o acompanhamento em tempo real para evitar formação de filas no horário de pico."), unsafe_allow_html=True)
 
-            # PAINEL 2: Produtividade de Equipe
             with c_p2:
                 if func == 0:
                     st.markdown(render_diag_card("Produtividade de RH", "Aguardando", "Dados Insuficientes", "#ccc", "Informe o número de Funcionários para medir o impacto da folha de pagamento."), unsafe_allow_html=True)
@@ -771,7 +772,6 @@ def aplicativo_principal():
                     else:
                         st.markdown(render_diag_card("Produtividade de RH", f"R$ {f_br(fat_func)}", "Eficiência Comprovada", "#22c55e", "A receita gerada por colaborador sustenta a folha de pagamento dentro de uma margem operacional extremamente segura.", "Utilize o Controller para bonificar os melhores operadores e reter talentos chave."), unsafe_allow_html=True)
 
-            # PAINEL 3: Risco Tributário e Furo de Margem (O Ralo Invisível)
             with c_p3:
                 if sku == 0 and fat == 0:
                     st.markdown(render_diag_card("Margem e Fisco", "Aguardando", "Dados Insuficientes", "#ccc", "Informe o Mix de Produtos (SKU) e Faturamento para projetar o risco financeiro oculto."), unsafe_allow_html=True)
@@ -1261,8 +1261,6 @@ def aplicativo_principal():
                 b2.button("Limpar Tudo", on_click=limpar_tudo, use_container_width=True)
             st.write("---")
 
-        processar_regras_colaterais()
-
         if not modo_apresentacao:
             c1, c2, c3 = st.columns(3) if perfil_venda == "Com Despesas" else (*st.columns(2), None)
             
@@ -1327,11 +1325,21 @@ def aplicativo_principal():
                     st.markdown("""<div class="section-header"><span class="section-title">DESPESAS DO PROJETO</span></div>""", unsafe_allow_html=True)
                     st.multiselect("Despesas", list(despesas_db.keys()), key="sel_d", on_change=mark_unsaved)
                     for i in st.session_state.sel_d:
-                        v_u = despesas_db[i]['valor']
+                        v_u_padrao = despesas_db[i]['valor']
                         
+                        # Garante as quantidades inteiras na memória
                         val_mem_desp = int(st.session_state.get(f"perm_val_{i}", 0))
                         st.session_state[f"perm_val_{i}"] = val_mem_desp
-                        st.number_input(f"{i} (R$ {f_br(v_u)}/un)", min_value=0, step=1, key=f"perm_val_{i}", on_change=mark_unsaved)
+                        
+                        # Garante os valores unitários (flutuantes e editáveis)
+                        val_unit_mem = float(st.session_state.get(f"perm_val_desp_unit_{i}", v_u_padrao))
+                        st.session_state[f"perm_val_desp_unit_{i}"] = val_unit_mem
+                        
+                        st.markdown(f"<div style='font-size:0.85rem; font-weight:bold; color:#444; margin-bottom:2px;'>{i}</div>", unsafe_allow_html=True)
+                        cd1, cd2 = st.columns([1, 1.2])
+                        cd1.number_input(f"Qtd", min_value=0, step=1, key=f"perm_val_{i}", on_change=mark_unsaved)
+                        cd2.number_input(f"R$ Unit.", min_value=0.0, step=10.0, key=f"perm_val_desp_unit_{i}", on_change=mark_unsaved)
+                        st.markdown("<div style='margin-bottom:10px;'></div>", unsafe_allow_html=True)
 
         st.markdown("""<h2 style='text-align:center; font-weight:800; margin-top:30px;'>RESUMO DO INVESTIMENTO</h2>""", unsafe_allow_html=True)
         res_cols = st.columns(3) if perfil_venda == "Com Despesas" else st.columns([1, 2, 2, 1])[1:3]
@@ -1439,7 +1447,8 @@ def aplicativo_principal():
             for n in st.session_state.sel_d:
                 q = int(st.session_state.get(f"perm_val_{n}", 0))
                 if q > 0:
-                    v_u = despesas_db[n]['valor']; t_d += (q * v_u)
+                    v_u = float(st.session_state.get(f"perm_val_desp_unit_{n}", despesas_db[n]['valor']))
+                    t_d += (q * v_u)
                     h_d += f"<li><span class='item-name'>{n}</span><span class='item-detalhe'>{q} un x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_u)}</span></li>"
                     html_desp_digital += f"<li><strong>{n}</strong><span class='detail'>{q} un x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_u)}</span></li>"
             with res_cols[2]:
