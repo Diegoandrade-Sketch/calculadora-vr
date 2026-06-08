@@ -14,7 +14,7 @@ import base64
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-APP_VERSION = "v6.0.4 - Core Stability & State Vault"
+APP_VERSION = "v6.0.5 - Core Stability & State Decoupling"
 CACHE_FILE = "cache_vr.json"
 
 # ==========================================
@@ -1138,7 +1138,7 @@ def aplicativo_principal():
             st.session_state.sel_i = _sel_i
             st.session_state.sel_d = _sel_d
             
-            # ATENÇÃO: O Rolo Compressor agora SÓ RODA AQUI, quando o mapeamento é aplicado.
+            # ATENÇÃO: O Rolo Compressor agora SÓ RODA AQUI, quando o mapeamento é aplicado manualmente.
             processar_regras_colaterais()
             st.session_state.has_unsaved_changes = True
 
@@ -1278,15 +1278,14 @@ def aplicativo_principal():
             
             with c1:
                 st.markdown("""<div class="section-header"><span class="section-title">IMPLANTAÇÃO E SERVIÇOS</span></div>""", unsafe_allow_html=True)
+                # Filtro absoluto contra crash de multiselect
+                st.session_state.sel_i = [x for x in st.session_state.get('sel_i', []) if x in servicos_db]
                 st.multiselect("Serviços Manuais", list(servicos_db.keys()), key="sel_i", on_change=mark_unsaved)
                 
                 for i in st.session_state.sel_i:
                     d_s = servicos_db[i]
                     v_u = d_s.get('valor_projeto', 0.0)
                     if v_u <= 0: v_u = d_s.get('valor', 0.0)
-                    
-                    val_mem = int(st.session_state.get(f"perm_val_{i}", 0))
-                    st.session_state[f"perm_val_{i}"] = val_mem
                     st.number_input(f"{i} (R$ {f_br(v_u)}/h)", min_value=0, step=1, key=f"perm_val_{i}", on_change=mark_unsaved)
                     
                 has_sistemas_com_setup = any(
@@ -1307,22 +1306,16 @@ def aplicativo_principal():
                                 if h_padrao > 0:
                                     v_rate = d.get('valor_projeto', 0.0) or v_h_base_global
                                     nome_exib = "Projeto ERP PRO" if m == "VR ERP PRO" else f"Implantação {m}"
-                                    
-                                    val_mem_setup = int(st.session_state.get(f"perm_val_setup_{m}", h_padrao))
-                                    st.session_state[f"perm_val_setup_{m}"] = val_mem_setup
                                     st.number_input(f"{nome_exib} (R$ {f_br(v_rate)}/h)", min_value=0, step=1, key=f"perm_val_setup_{m}", on_change=mark_unsaved)
 
             with c2:
                 st.markdown("""<div class="section-header"><span class="section-title">MENSALIDADES SISTEMAS</span></div>""", unsafe_allow_html=True)
-                st.multiselect("Sistemas", list(sistemas_db.keys()), key="sel_m", on_change=mark_unsaved) # Não chama mais as regras colaterais
+                # Filtro absoluto contra crash de multiselect
+                st.session_state.sel_m = [x for x in st.session_state.get('sel_m', []) if x in sistemas_db]
+                st.multiselect("Sistemas", list(sistemas_db.keys()), key="sel_m", on_change=mark_unsaved)
                 
                 for i in st.session_state.sel_m:
                     v_u = sistemas_db[i]['valor']
-                    
-                    val_mem_sist = int(st.session_state.get(f"perm_val_{i}", 0))
-                    st.session_state[f"perm_val_{i}"] = val_mem_sist
-                    
-                    # CEREJA DO BOLO (Ajuste Visual): O nome do produto em NEGRITO destacado
                     st.number_input(f"**{i}** (R$ {f_br(v_u)}/un)", min_value=0, step=1, key=f"perm_val_{i}", on_change=mark_unsaved)
                     
                     if st.session_state.modo_desconto == "Item":
@@ -1338,16 +1331,10 @@ def aplicativo_principal():
             if c3:
                 with c3:
                     st.markdown("""<div class="section-header"><span class="section-title">DESPESAS DO PROJETO</span></div>""", unsafe_allow_html=True)
+                    # Filtro absoluto contra crash de multiselect
+                    st.session_state.sel_d = [x for x in st.session_state.get('sel_d', []) if x in despesas_db]
                     st.multiselect("Despesas", list(despesas_db.keys()), key="sel_d", on_change=mark_unsaved)
                     for i in st.session_state.sel_d:
-                        v_u_padrao = despesas_db[i]['valor']
-                        
-                        val_mem_desp = int(st.session_state.get(f"perm_val_{i}", 0))
-                        st.session_state[f"perm_val_{i}"] = val_mem_desp
-                        
-                        val_unit_mem = float(st.session_state.get(f"perm_val_desp_unit_{i}", v_u_padrao))
-                        st.session_state[f"perm_val_desp_unit_{i}"] = val_unit_mem
-                        
                         st.markdown(f"<div style='font-size:0.85rem; font-weight:bold; color:#444; margin-bottom:2px;'>{i}</div>", unsafe_allow_html=True)
                         cd1, cd2 = st.columns([1, 1.2])
                         cd1.number_input(f"Qtd", min_value=0, step=1, key=f"perm_val_{i}", on_change=mark_unsaved)
@@ -1593,7 +1580,6 @@ def aplicativo_principal():
 # ==========================================
 # O COFRE DE MEMÓRIA (FASE DE BACKUP DE SEGURANÇA)
 # ==========================================
-# Este bloco executa sempre no final, garantindo que as edições manuais sejam seladas na memória antes do lixeiro agir.
 for k in list(st.session_state.keys()):
     if k.startswith(chaves_protegidas):
         st.session_state.my_vault[k] = st.session_state[k]
