@@ -14,8 +14,26 @@ import base64
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-APP_VERSION = "v6.0.3 - State Vault & DB Armor"
+APP_VERSION = "v6.0.4 - Core Stability & State Vault"
 CACHE_FILE = "cache_vr.json"
+
+# ==========================================
+# O COFRE DE MEMÓRIA INFALÍVEL (ANTI-GARBAGE COLLECTOR)
+# ==========================================
+if 'my_vault' not in st.session_state:
+    st.session_state.my_vault = {}
+
+# Prefixos e chaves exatas que o sistema é PROIBIDO de apagar
+chaves_protegidas = (
+    'perm_', 'sel_', 'm_', 'g_', 'diag_', 'param_', 'negociar_', 
+    'perma_', 'proposta_carregada_id', 'show_digital_proposal', 
+    'has_unsaved_changes', 'modo_apresentacao'
+)
+
+# FASE DE RESTAURAÇÃO: Executa antes de qualquer renderização
+for k, v in st.session_state.my_vault.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
 
 if 'perma_nome_cliente' not in st.session_state: st.session_state.perma_nome_cliente = ""
 if 'perma_cnpj_cliente' not in st.session_state: st.session_state.perma_cnpj_cliente = ""
@@ -102,7 +120,7 @@ def empacotar_simulacao():
 
 def desempacotar_simulacao(json_data, prop_id):
     try:
-        st.session_state.state_vault.clear() # Limpa o cofre para não dar conflito com a proposta velha
+        st.session_state.my_vault.clear() # Limpa o cofre para não herdar fantasmas da proposta anterior
         dados = json.loads(json_data) if isinstance(json_data, str) else json_data
         
         st.session_state.perma_nome_cliente = dados.get('perma_nome_cliente', '')
@@ -137,6 +155,7 @@ def desempacotar_simulacao(json_data, prop_id):
         st.session_state.proposta_carregada_id = prop_id
         st.session_state.show_digital_proposal = False
         st.session_state.has_unsaved_changes = False
+        st.session_state.modo_apresentacao = False
         st.session_state.aba_atual = "Gerador de Proposta"
     except Exception as e:
         st.error(f"Falha ao ler os dados do histórico.")
@@ -240,23 +259,6 @@ for nome in full_db.keys():
     if f"negociar_{nome}" not in st.session_state: st.session_state[f"negociar_{nome}"] = False
     if f"perm_val_setup_{nome}" not in st.session_state: st.session_state[f"perm_val_setup_{nome}"] = int(full_db[nome].get('horas_padrao', 0))
     if f"perm_val_desp_unit_{nome}" not in st.session_state: st.session_state[f"perm_val_desp_unit_{nome}"] = float(full_db[nome].get('valor', 0.0))
-
-# ==========================================
-# COFRE DE MEMÓRIA (STATE VAULT - ANTI-LIXEIRO)
-# ==========================================
-if 'state_vault' not in st.session_state:
-    st.session_state.state_vault = {}
-
-tela_oculta = st.session_state.get('modo_apresentacao', False) or st.session_state.get('show_digital_proposal', False)
-chaves_protegidas = [k for k in st.session_state.keys() if k.startswith(('perm_', 'sel_', 'm_', 'g_', 'diag_', 'param_', 'negociar_'))]
-
-if not tela_oculta:
-    for k in chaves_protegidas:
-        st.session_state.state_vault[k] = st.session_state[k]
-else:
-    for k, v in st.session_state.state_vault.items():
-        if k not in st.session_state:
-            st.session_state[k] = v
 
 # ==========================================
 # BLOCO 1: LOGIN E LOGS
@@ -454,6 +456,7 @@ def aplicativo_principal():
         </style>
     """, unsafe_allow_html=True)
 
+    # O "Rolo Compressor" agora é EXCLUSIVO do Mapeamento Inteligente, libertando o usuário
     def processar_regras_colaterais():
         novos_auto = {}
         for m_nome in st.session_state.sel_m:
@@ -485,16 +488,8 @@ def aplicativo_principal():
             
         st.session_state.sel_i = lista_servicos_atual
 
-    def sync_qtd_sistema():
-        processar_regras_colaterais()
-        mark_unsaved()
-
-    def atualiza_sistemas():
-        processar_regras_colaterais()
-        mark_unsaved()
-
     def limpar_tudo():
-        st.session_state.state_vault.clear() # Limpa o cofre para o botão funcionar 100%
+        st.session_state.my_vault.clear() # Limpa o cofre para o botão funcionar 100%
         for k, v in init_state.items(): 
             st.session_state[k] = v if not isinstance(v, list) else []
         for nome in full_db.keys(): 
@@ -929,20 +924,17 @@ def aplicativo_principal():
         
         try:
             engine = get_db_engine()
-            condicoes = []
-            params = {}
-            if st.session_state.user_role != "admin":
-                condicoes.append("vendedor_email = :e")
-                params["e"] = st.session_state.user_email
-            if not exibir_excluidas:
-                condicoes.append("status != 'Excluída'")
-                
-            where_clause = "WHERE " + " AND ".join(condicoes) if condicoes else ""
-            query_hist = f"SELECT id, nome_cliente, cnpj_cliente, valor_setup, valor_mensal, status, TO_CHAR(data_atualizacao, 'DD/MM/YYYY HH24:MI') as data_fmt, dados_simulacao FROM propostas {where_clause} ORDER BY data_atualizacao DESC"
-            
             with engine.connect() as conn:
-                # Blindagem 1: Fetchall bruto em vez de pandas query para forçar o bindparam absoluto do email
-                result = conn.execute(text(query_hist), params)
+                cond_status = "" if exibir_excluidas else "AND status != 'Excluída'"
+                
+                # BLINDAGEM SQL: Execução direta no SQLAlchemy, impossível ignorar o WHERE
+                if st.session_state.user_role == 'admin':
+                    q = text(f"SELECT id, nome_cliente, cnpj_cliente, valor_setup, valor_mensal, status, TO_CHAR(data_atualizacao, 'DD/MM/YYYY HH24:MI') as data_fmt, dados_simulacao FROM propostas WHERE 1=1 {cond_status} ORDER BY data_atualizacao DESC")
+                    result = conn.execute(q)
+                else:
+                    q = text(f"SELECT id, nome_cliente, cnpj_cliente, valor_setup, valor_mensal, status, TO_CHAR(data_atualizacao, 'DD/MM/YYYY HH24:MI') as data_fmt, dados_simulacao FROM propostas WHERE vendedor_email = :e {cond_status} ORDER BY data_atualizacao DESC")
+                    result = conn.execute(q, {"e": st.session_state.user_email})
+
                 rows = result.fetchall()
                 if rows:
                     df_hist = pd.DataFrame([dict(r._mapping) for r in rows])
@@ -1145,6 +1137,8 @@ def aplicativo_principal():
             st.session_state.sel_m = _sel_m
             st.session_state.sel_i = _sel_i
             st.session_state.sel_d = _sel_d
+            
+            # ATENÇÃO: O Rolo Compressor agora SÓ RODA AQUI, quando o mapeamento é aplicado.
             processar_regras_colaterais()
             st.session_state.has_unsaved_changes = True
 
@@ -1320,13 +1314,16 @@ def aplicativo_principal():
 
             with c2:
                 st.markdown("""<div class="section-header"><span class="section-title">MENSALIDADES SISTEMAS</span></div>""", unsafe_allow_html=True)
-                st.multiselect("Sistemas", list(sistemas_db.keys()), key="sel_m", on_change=atualiza_sistemas)
+                st.multiselect("Sistemas", list(sistemas_db.keys()), key="sel_m", on_change=mark_unsaved) # Não chama mais as regras colaterais
+                
                 for i in st.session_state.sel_m:
                     v_u = sistemas_db[i]['valor']
                     
                     val_mem_sist = int(st.session_state.get(f"perm_val_{i}", 0))
                     st.session_state[f"perm_val_{i}"] = val_mem_sist
-                    st.number_input(f"{i} (R$ {f_br(v_u)}/un)", min_value=0, step=1, key=f"perm_val_{i}", on_change=sync_qtd_sistema)
+                    
+                    # CEREJA DO BOLO (Ajuste Visual): O nome do produto em NEGRITO destacado
+                    st.number_input(f"**{i}** (R$ {f_br(v_u)}/un)", min_value=0, step=1, key=f"perm_val_{i}", on_change=mark_unsaved)
                     
                     if st.session_state.modo_desconto == "Item":
                         def sync_negociacao(item_name):
@@ -1334,9 +1331,9 @@ def aplicativo_principal():
                             if not st.session_state[f"negociar_{item_name}"]:
                                 st.session_state[f"perm_desc_{item_name}"] = 0.0
                                 
-                        neg = st.checkbox(f"⚙️ Negociar {i}", key=f"negociar_{i}", on_change=sync_negociacao, args=(i,))
+                        neg = st.checkbox(f"⚙️ Negociar Desconto", key=f"negociar_{i}", on_change=sync_negociacao, args=(i,))
                         if neg:
-                            st.number_input(f"↳ Desconto % ({i})", 0.0, 100.0, key=f"perm_desc_{i}", on_change=mark_unsaved)
+                            st.number_input(f"↳ Desconto %", 0.0, 100.0, key=f"perm_desc_{i}", on_change=mark_unsaved)
             
             if c3:
                 with c3:
@@ -1592,6 +1589,14 @@ def aplicativo_principal():
 
         except Exception as e:
             st.error(f"Falha ao comunicar com o Banco de Dados. Erro Técnico: {e}")
+
+# ==========================================
+# O COFRE DE MEMÓRIA (FASE DE BACKUP DE SEGURANÇA)
+# ==========================================
+# Este bloco executa sempre no final, garantindo que as edições manuais sejam seladas na memória antes do lixeiro agir.
+for k in list(st.session_state.keys()):
+    if k.startswith(chaves_protegidas):
+        st.session_state.my_vault[k] = st.session_state[k]
 
 # ==========================================
 # ROTEADOR DE SEGURANÇA
