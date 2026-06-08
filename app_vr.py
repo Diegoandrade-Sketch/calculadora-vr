@@ -14,7 +14,7 @@ import base64
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-APP_VERSION = "v6.1.0 - Decoupled Architecture (Estável)"
+APP_VERSION = "v6.1.1 - Decoupled Architecture (Limpa e Estável)"
 CACHE_FILE = "cache_vr.json"
 
 # ==========================================
@@ -500,6 +500,12 @@ def aplicativo_principal():
         st.session_state.show_digital_proposal = False
         st.session_state.has_unsaved_changes = False
 
+    def sync_combo():
+        mark_unsaved()
+        if st.session_state.m_combo == "Padrao Pequeno Porte":
+            st.session_state.m_pdv_touch = 0; st.session_state.m_pdv_self = 0; st.session_state.m_ecommerce = False; st.session_state.m_app = False; st.session_state.m_connect = False; st.session_state.m_controller = False; st.session_state.m_cartaz = False; st.session_state.m_masterfisco = False; st.session_state.m_backup = False; st.session_state.m_semanas = 0
+            st.session_state.m_erp_pro = True; st.session_state.m_pdv_conv = 3; st.session_state.m_xml = True; st.session_state.m_mobile = 1; st.session_state.m_tef = "SiTef Express"; st.session_state.m_migracao = True; st.session_state.m_escopo = True
+
     # ==========================================
     # SIDEBAR E ROTEAMENTO
     # ==========================================
@@ -814,7 +820,7 @@ def aplicativo_principal():
         with t_cat: st.dataframe(df_raw, use_container_width=True)
 
     # ==========================================
-    # TELA 2: MINHAS PROPOSTAS (DB ARMOR ATIVADO)
+    # TELA 2: MINHAS PROPOSTAS
     # ==========================================
     elif tela == "Minhas Propostas":
         st.markdown("""<h1 class="hero-title">MEU HISTÓRICO</h1>""", unsafe_allow_html=True)
@@ -829,7 +835,6 @@ def aplicativo_principal():
             with engine.connect() as conn:
                 cond_status = "" if exibir_excluidas else "AND status != 'Excluída'"
                 
-                # BLINDAGEM ABSOLUTA DE SQL
                 if st.session_state.user_role == 'admin':
                     q = text(f"SELECT id, nome_cliente, cnpj_cliente, valor_setup, valor_mensal, status, TO_CHAR(data_atualizacao, 'DD/MM/YYYY HH24:MI') as data_fmt, dados_simulacao FROM propostas WHERE 1=1 {cond_status} ORDER BY data_atualizacao DESC")
                     result = conn.execute(q)
@@ -936,19 +941,28 @@ def aplicativo_principal():
         
         if p_sel:
             d = full_db[p_sel]
-            v_b = d.get('valor_projeto', 0.0) if (d.get('typeproductid') == 606 and d.get('valor_projeto', 0.0) > 0) else d.get('valor', 0.0)
+            
+            v_b = d.get('valor', 0.0)
+            if d.get('typeproductid') == 606 and d.get('valor_projeto', 0.0) > 0:
+                v_b = d.get('valor_projeto', 0.0)
+                
             v_l = v_b * (1 - (desc_s/100))
             p_id = name_to_id.get(p_sel)
             is_sistema = (d.get('typeproductid') == 604)
             
-            t_s, h_s = 0.0, ""
+            t_s = 0.0
+            h_s = ""
             
             if p_id in vinculos_db and any(v['tipo'] in ['projeto', 'adesao'] for v in vinculos_db[p_id]):
                 for r in vinculos_db[p_id]:
                     if r['tipo'] in ['projeto', 'adesao']:
                         f_nm = id_to_name.get(r['id_filho'])
                         d_f = full_db.get(f_nm, {})
-                        f_val = d_f.get('valor_projeto', 0.0) if (d_f.get('typeproductid') == 606 and d_f.get('valor_projeto', 0.0) > 0) else d_f.get('valor', 0.0)
+                        
+                        f_val = d_f.get('valor', 0.0)
+                        if d_f.get('typeproductid') == 606 and d_f.get('valor_projeto', 0.0) > 0:
+                            f_val = d_f.get('valor_projeto', 0.0)
+                            
                         f_q = int(r['qtd'])
                         t_s += (f_q * f_val); uni = "h" if r['tipo'] == 'projeto' else "un"
                         h_s += f"<li><span class='item-name'>{f_nm}</span><span class='item-detalhe'>{f_q}{uni} x R$ {f_br(f_val)} | Total: R$ {f_br(f_q*f_val)}</span></li>"
@@ -1495,13 +1509,6 @@ def aplicativo_principal():
 
         except Exception as e:
             st.error(f"Falha ao comunicar com o Banco de Dados. Erro Técnico: {e}")
-
-# ==========================================
-# O COFRE DE MEMÓRIA (FASE DE BACKUP DE SEGURANÇA)
-# ==========================================
-for k in list(st.session_state.keys()):
-    if k.startswith(chaves_protegidas):
-        st.session_state.my_vault[k] = st.session_state[k]
 
 # ==========================================
 # ROTEADOR DE SEGURANÇA
