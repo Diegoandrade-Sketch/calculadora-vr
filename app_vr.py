@@ -1,25 +1,3 @@
-1. Ao carregar a proposta, o servidor preenchia a tela.
-2. Quando você alterava um número ou clicava no botão "Gerar PDF", a tela tentava enviar o novo clique para o servidor.
-3. No meio do caminho, o servidor tentava empurrar os dados velhos de volta para a tela.
-4. Ocorria um "acidente fatal" (Crash de Widget). O motor visual não sabia a quem obedecer e entrava em modo de segurança, abortando a renderização e **devolvendo a tela em branco**.
-
-### A Solução Estrutural (Arquitetura "Data-Vault" Desacoplada)
-
-Para curar isso definitivamente (e garantir que nunca mais aconteça), eu joguei a estrutura de memória antiga fora e reconstruí a aba inteira usando a melhor prática de engenharia global: **Desacoplamento de Estado**.
-
-O que isso significa na prática:
-
-* **Fim da Amarra:** A partir desta versão, as caixinhas visuais na tela ganharam "independência". Elas não tentam mais brigar com o servidor.
-* **O Cofre Inquebrável:** Todo o "cérebro" da sua proposta (quantidades, horas, descontos) agora fica trancado num cofre inacessível à interface (`data_vault`).
-* **A Matemática Perfeita:** Quando a tela é desenhada, ela apenas "lê" o cofre. Se você digitar algo novo, ela avisa o cofre. Se você clicar em "Gerar PDF", o cofre garante os números e a tela desenha o documento em paz, sem apagões.
-
-**Bônus:** Essa mesma arquitetura curou automaticamente o erro que você achou de "a mensalidade alterar o setup". Como as caixinhas agora são independentes, você pode cravar `150h` no Projeto ERP e `5` na mensalidade. Um não enxerga o outro.
-
----
-
-Abaixo está a versão **v6.1.0** (O Marco da Estabilidade). Substitua todo o seu arquivo `app_vr.py` e faça o teste final do carregamento e do PDF.
-
-```python
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
