@@ -14,7 +14,7 @@ import base64
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-APP_VERSION = "v6.0.2 - Sales Intelligence & CPQ Master"
+APP_VERSION = "v6.0.3 - State Vault & DB Armor"
 CACHE_FILE = "cache_vr.json"
 
 if 'perma_nome_cliente' not in st.session_state: st.session_state.perma_nome_cliente = ""
@@ -23,6 +23,7 @@ if 'aba_atual' not in st.session_state: st.session_state.aba_atual = "Início"
 if 'proposta_carregada_id' not in st.session_state: st.session_state.proposta_carregada_id = None
 if 'show_digital_proposal' not in st.session_state: st.session_state.show_digital_proposal = False
 if 'has_unsaved_changes' not in st.session_state: st.session_state.has_unsaved_changes = False
+if 'modo_apresentacao' not in st.session_state: st.session_state.modo_apresentacao = False
 
 try:
     DB_USER = st.secrets["DB_USER"]
@@ -95,13 +96,13 @@ def empacotar_simulacao():
         'quantidades': {k: st.session_state[k] for k in st.session_state.keys() if k.startswith('perm_val_') and not k.startswith('perm_val_setup_') and not k.startswith('perm_val_desp_unit_')},
         'descontos_itens': {k: st.session_state[k] for k in st.session_state.keys() if k.startswith('perm_desc_')},
         'setup_sistemas': {k: st.session_state[k] for k in st.session_state.keys() if k.startswith('perm_val_setup_')},
-        # Nova Gaveta: Salva o valor unitário das despesas caso o vendedor tenha editado
         'despesas_valores': {k: st.session_state.get(f"perm_val_desp_unit_{k}", 0.0) for k in st.session_state.sel_d}
     }
     return json.dumps(payload)
 
 def desempacotar_simulacao(json_data, prop_id):
     try:
+        st.session_state.state_vault.clear() # Limpa o cofre para não dar conflito com a proposta velha
         dados = json.loads(json_data) if isinstance(json_data, str) else json_data
         
         st.session_state.perma_nome_cliente = dados.get('perma_nome_cliente', '')
@@ -130,7 +131,6 @@ def desempacotar_simulacao(json_data, prop_id):
                 
         for k, v in dados.get('setup_sistemas', {}).items(): st.session_state[k] = int(float(v))
         
-        # Recupera as despesas editadas
         for k, v in dados.get('despesas_valores', {}).items(): 
             st.session_state[f"perm_val_desp_unit_{k}"] = float(v)
         
@@ -201,9 +201,6 @@ def carregar_dados_vendas():
 
 sistemas_db, servicos_db, despesas_db, full_db, id_to_name, name_to_id, vinculos_db, db_status, db_cor, df_raw, df_vinc = carregar_dados_vendas()
 
-# ==========================================
-# CÁLCULO GERAL DA HORA TÉCNICA (TRAVA DE SEGURANÇA)
-# ==========================================
 v_h_base_global = 161.60
 for k_serv, v_serv in servicos_db.items():
     if "treinamento" in k_serv.lower():
@@ -230,8 +227,6 @@ init_state = {
     'm_erp_pro': False, 'm_xml': False, 'm_escopo': False, 'm_controller': False, 'm_cartaz': False, 'm_masterfisco': False, 'm_backup': False,
     'auto_added': set(), 'sel_m': [], 'sel_i': [], 'sel_d': [],
     'modo_desconto': "Total", 'g_desc_mensalidade': 0.0, 'g_parcelas_setup': 4, 'g_faturamento': "Na assinatura", 'g_regra_desp': "Faturamento na assinatura",
-    
-    # VARIÁVEIS ISOLADAS DO MÓDULO DIAGNÓSTICO (v6.0)
     'diag_pdv': 0, 'diag_fat_str': "", 'diag_area': 0, 'diag_func': 0, 'diag_sku': 0,
     'param_piso_pdv': 150000.0, 'param_piso_rh': 25000.0, 'param_perda': 4.0, 'param_risco_trib': 18.0
 }
@@ -244,8 +239,24 @@ for nome in full_db.keys():
     if f"perm_desc_{nome}" not in st.session_state: st.session_state[f"perm_desc_{nome}"] = 0.0
     if f"negociar_{nome}" not in st.session_state: st.session_state[f"negociar_{nome}"] = False
     if f"perm_val_setup_{nome}" not in st.session_state: st.session_state[f"perm_val_setup_{nome}"] = int(full_db[nome].get('horas_padrao', 0))
-    # Inicializa a memória dos valores flutuantes das despesas
     if f"perm_val_desp_unit_{nome}" not in st.session_state: st.session_state[f"perm_val_desp_unit_{nome}"] = float(full_db[nome].get('valor', 0.0))
+
+# ==========================================
+# COFRE DE MEMÓRIA (STATE VAULT - ANTI-LIXEIRO)
+# ==========================================
+if 'state_vault' not in st.session_state:
+    st.session_state.state_vault = {}
+
+tela_oculta = st.session_state.get('modo_apresentacao', False) or st.session_state.get('show_digital_proposal', False)
+chaves_protegidas = [k for k in st.session_state.keys() if k.startswith(('perm_', 'sel_', 'm_', 'g_', 'diag_', 'param_', 'negociar_'))]
+
+if not tela_oculta:
+    for k in chaves_protegidas:
+        st.session_state.state_vault[k] = st.session_state[k]
+else:
+    for k, v in st.session_state.state_vault.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
 
 # ==========================================
 # BLOCO 1: LOGIN E LOGS
@@ -483,6 +494,7 @@ def aplicativo_principal():
         mark_unsaved()
 
     def limpar_tudo():
+        st.session_state.state_vault.clear() # Limpa o cofre para o botão funcionar 100%
         for k, v in init_state.items(): 
             st.session_state[k] = v if not isinstance(v, list) else []
         for nome in full_db.keys(): 
@@ -531,7 +543,7 @@ def aplicativo_principal():
         if tela == "Gerador de Proposta":
             st.write("---")
             mapeamento_ativo = st.toggle("Mapeamento Inteligente", value=False)
-            modo_apresentacao = st.toggle("Modo Apresentação", value=False)
+            st.toggle("Modo Apresentação", key="modo_apresentacao")
             
             perfil_venda = st.selectbox("Perfil do Cliente", ["Com Despesas", "Sem Despesas"])
             
@@ -905,7 +917,7 @@ def aplicativo_principal():
         with t_cat: st.dataframe(df_raw, use_container_width=True)
 
     # ==========================================
-    # TELA 2: MINHAS PROPOSTAS
+    # TELA 2: MINHAS PROPOSTAS (DB ARMOR ATIVADO)
     # ==========================================
     elif tela == "Minhas Propostas":
         st.markdown("""<h1 class="hero-title">MEU HISTÓRICO</h1>""", unsafe_allow_html=True)
@@ -926,10 +938,16 @@ def aplicativo_principal():
                 condicoes.append("status != 'Excluída'")
                 
             where_clause = "WHERE " + " AND ".join(condicoes) if condicoes else ""
-            query_hist = text(f"SELECT id, nome_cliente, cnpj_cliente, valor_setup, valor_mensal, status, TO_CHAR(data_atualizacao, 'DD/MM/YYYY HH24:MI') as data_fmt, dados_simulacao FROM propostas {where_clause} ORDER BY data_atualizacao DESC")
+            query_hist = f"SELECT id, nome_cliente, cnpj_cliente, valor_setup, valor_mensal, status, TO_CHAR(data_atualizacao, 'DD/MM/YYYY HH24:MI') as data_fmt, dados_simulacao FROM propostas {where_clause} ORDER BY data_atualizacao DESC"
             
             with engine.connect() as conn:
-                df_hist = pd.read_sql(query_hist, conn, params=params)
+                # Blindagem 1: Fetchall bruto em vez de pandas query para forçar o bindparam absoluto do email
+                result = conn.execute(text(query_hist), params)
+                rows = result.fetchall()
+                if rows:
+                    df_hist = pd.DataFrame([dict(r._mapping) for r in rows])
+                else:
+                    df_hist = pd.DataFrame()
             
             if df_hist.empty:
                 st.info("O seu histórico de propostas está vazio.")
@@ -1138,7 +1156,7 @@ def aplicativo_principal():
         
         with col_hdr2:
             st.write("")
-            if not modo_apresentacao:
+            if not st.session_state.modo_apresentacao:
                 if st.button("Salvar no CRM", use_container_width=True, type="primary"):
                     if not st.session_state.perma_nome_cliente:
                         st.error("Preencha o Nome do Cliente.")
@@ -1180,7 +1198,7 @@ def aplicativo_principal():
                         
         with col_hdr3:
             st.write("")
-            if not modo_apresentacao and st.session_state.proposta_carregada_id:
+            if not st.session_state.modo_apresentacao and st.session_state.proposta_carregada_id:
                 if st.button("Duplicar como Nova", use_container_width=True):
                     if not st.session_state.perma_nome_cliente:
                         st.error("Preencha o Nome.")
@@ -1214,7 +1232,7 @@ def aplicativo_principal():
                             st.success(f"Cópia criada! (ID: #{st.session_state.proposta_carregada_id})")
                         except Exception: st.error("Erro interno ao duplicar.")
 
-        if modo_apresentacao:
+        if st.session_state.modo_apresentacao:
             st.markdown(f"""
             <div style="background-color:#ffffff; border-left: 10px solid #262730; padding: 20px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
                 <span style="color:#ff6600; font-size:0.9rem; text-transform:uppercase; font-weight:bold;">Apresentação para o cliente:</span>
@@ -1229,7 +1247,7 @@ def aplicativo_principal():
             with col_cli2: st.text_input("CNPJ", value=st.session_state.perma_cnpj_cliente, key="widget_cnpj", on_change=atualiza_cnpj_cliente, placeholder="Apenas números", max_chars=18)
             st.write("---")
 
-        if mapeamento_ativo and not modo_apresentacao:
+        if mapeamento_ativo and not st.session_state.modo_apresentacao:
             st.markdown("""<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">Mapeamento da Operacao</h3></div>""", unsafe_allow_html=True)
             
             st.selectbox("Combo Rápido", ["Montar Manualmente", "Padrao Pequeno Porte"], key="m_combo", on_change=sync_combo)
@@ -1261,7 +1279,7 @@ def aplicativo_principal():
                 b2.button("Limpar Tudo", on_click=limpar_tudo, use_container_width=True)
             st.write("---")
 
-        if not modo_apresentacao:
+        if not st.session_state.modo_apresentacao:
             c1, c2, c3 = st.columns(3) if perfil_venda == "Com Despesas" else (*st.columns(2), None)
             
             with c1:
@@ -1327,11 +1345,9 @@ def aplicativo_principal():
                     for i in st.session_state.sel_d:
                         v_u_padrao = despesas_db[i]['valor']
                         
-                        # Garante as quantidades inteiras na memória
                         val_mem_desp = int(st.session_state.get(f"perm_val_{i}", 0))
                         st.session_state[f"perm_val_{i}"] = val_mem_desp
                         
-                        # Garante os valores unitários (flutuantes e editáveis)
                         val_unit_mem = float(st.session_state.get(f"perm_val_desp_unit_{i}", v_u_padrao))
                         st.session_state[f"perm_val_desp_unit_{i}"] = val_unit_mem
                         
@@ -1464,7 +1480,7 @@ def aplicativo_principal():
                 if perfil_venda == "Com Despesas":
                     with m_cols[2]: st.markdown(f"""<div style="background-color:#ffffff; border-left: 6px solid #1976d2; padding:15px; border-radius:5px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);"><span style="font-size:0.85rem; font-weight:bold; color:#777;">DESPESAS POR LOJA</span><br><span style="font-size:1.6rem; font-weight:900; color:#333;">R$ {f_br(t_d / qtd_lojas)}</span></div>""", unsafe_allow_html=True)
 
-        if not modo_apresentacao:
+        if not st.session_state.modo_apresentacao:
             st.write("---")
             if not st.session_state.perma_nome_cliente:
                 st.info("Preencha o nome do cliente no cabeçalho da página para liberar a emissão de proposta digital.")
@@ -1489,7 +1505,7 @@ def aplicativo_principal():
                         st.session_state.show_digital_proposal = True
                         st.rerun()
                         
-        if st.session_state.get('show_digital_proposal', False) and not modo_apresentacao:
+        if st.session_state.get('show_digital_proposal', False) and not st.session_state.modo_apresentacao:
             st.markdown("---")
             st.markdown("<h2 style='text-align:center; color:#ff6600;'>Visualização da Proposta Digital</h2>", unsafe_allow_html=True)
             st.info("Clique no botão laranja 'Salvar como PDF' dentro do quadro abaixo.")
