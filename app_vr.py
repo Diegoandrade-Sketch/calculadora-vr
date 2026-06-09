@@ -14,7 +14,7 @@ import base64
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-APP_VERSION = "v6.1.1 - Decoupled Architecture (Limpa e Estável)"
+APP_VERSION = "v6.2.0 - Finance Module & Core Stability"
 CACHE_FILE = "cache_vr.json"
 
 # ==========================================
@@ -40,6 +40,7 @@ if 'perma_cnpj_cliente' not in st.session_state: st.session_state.perma_cnpj_cli
 if 'aba_atual' not in st.session_state: st.session_state.aba_atual = "Início"
 if 'proposta_carregada_id' not in st.session_state: st.session_state.proposta_carregada_id = None
 if 'show_digital_proposal' not in st.session_state: st.session_state.show_digital_proposal = False
+if 'show_welcome_pack' not in st.session_state: st.session_state.show_welcome_pack = False
 if 'has_unsaved_changes' not in st.session_state: st.session_state.has_unsaved_changes = False
 if 'modo_apresentacao' not in st.session_state: st.session_state.modo_apresentacao = False
 
@@ -113,6 +114,11 @@ def empacotar_simulacao():
 
 def desempacotar_simulacao(json_data, prop_id):
     try:
+        # EXTERMÍNIO DOS FANTASMAS VISUAIS
+        for k in list(st.session_state.keys()):
+            if k.startswith("ui_"):
+                del st.session_state[k]
+
         dados = json.loads(json_data) if isinstance(json_data, str) else json_data
         
         st.session_state.perma_nome_cliente = dados.get('perma_nome_cliente', '')
@@ -123,36 +129,25 @@ def desempacotar_simulacao(json_data, prop_id):
         st.session_state.g_faturamento = dados.get('g_faturamento', "Na assinatura")
         st.session_state.g_regra_desp = dados.get('g_regra_desp', "Faturamento na assinatura")
         
-        # Módulo de Migração de Propostas Antigas (Garante retrocompatibilidade)
         if 'data_vault' in dados:
             st.session_state.data_vault = dados['data_vault']
         else:
             dv = {
-                'sel_m': dados.get('sel_m', []),
-                'sel_i': dados.get('sel_i', []),
-                'sel_d': dados.get('sel_d', []),
-                'auto_added': [],
-                'quantidades': {},
-                'setup_sistemas': {},
-                'descontos_itens': {},
-                'despesas_valores': {},
-                'negociar': {},
+                'sel_m': dados.get('sel_m', []), 'sel_i': dados.get('sel_i', []), 'sel_d': dados.get('sel_d', []),
+                'auto_added': [], 'quantidades': {}, 'setup_sistemas': {}, 'descontos_itens': {}, 'despesas_valores': {}, 'negociar': {},
                 'mapeamento': {
                     'm_combo': "Montar Manualmente", 'm_pdv_conv': 0, 'm_pdv_touch': 0, 'm_pdv_self': 0, 'm_semanas': 0, 'm_mobile': 0,
                     'm_tef': "Nao utiliza", 'm_migracao': False, 'm_ecommerce': False, 'm_app': False, 'm_connect': False,
                     'm_erp_pro': False, 'm_xml': False, 'm_escopo': False, 'm_controller': False, 'm_cartaz': False, 'm_masterfisco': False, 'm_backup': False,
                 }
             }
-            for k, v in dados.get('quantidades', {}).items():
-                dv['quantidades'][k.replace('perm_val_', '')] = int(float(v))
-            for k, v in dados.get('setup_sistemas', {}).items():
-                dv['setup_sistemas'][k.replace('perm_val_setup_', '')] = int(float(v))
+            for k, v in dados.get('quantidades', {}).items(): dv['quantidades'][k.replace('perm_val_', '')] = int(float(v))
+            for k, v in dados.get('setup_sistemas', {}).items(): dv['setup_sistemas'][k.replace('perm_val_setup_', '')] = int(float(v))
             for k, v in dados.get('descontos_itens', {}).items():
                 nome = k.replace('perm_desc_', '')
                 dv['descontos_itens'][nome] = float(v)
                 if float(v) > 0: dv['negociar'][nome] = True
-            for k, v in dados.get('despesas_valores', {}).items():
-                dv['despesas_valores'][k.replace('perm_val_desp_unit_', '')] = float(v)
+            for k, v in dados.get('despesas_valores', {}).items(): dv['despesas_valores'][k.replace('perm_val_desp_unit_', '')] = float(v)
             for k, v in dados.get('mapeamento', {}).items():
                 if k in dv['mapeamento']: dv['mapeamento'][k] = v
             st.session_state.data_vault = dv
@@ -313,7 +308,7 @@ def tela_login():
                         except Exception: st.error("Ocorreu um erro ao validar os dados.")
 
 # ==========================================
-# BLOCO 2: RENDERIZADOR HTML (PDF)
+# BLOCO 2: RENDERIZADORES HTML (PDFs)
 # ==========================================
 def renderizar_proposta_digital(dados):
     validade_str = (datetime.date.today() + datetime.timedelta(days=15)).strftime("%d/%m/%Y")
@@ -423,6 +418,82 @@ def renderizar_proposta_digital(dados):
     """
     return html_content
 
+def renderizar_welcome_pack(nome, cnpjs, val_setup, val_mensal, parcelas_html):
+    logo_b64 = get_logo_base64()
+    logo_html = f'<img src="data:image/png;base64,{logo_b64}" style="max-width:180px; margin-bottom:20px;">' if logo_b64 else '<div class="brand" style="font-size:24px; font-weight:bold; color:#ff6600; margin-bottom:20px;">VR SOFTWARE</div>'
+    
+    return f"""
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+            body {{ font-family: 'Inter', sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; color: #333; }}
+            .container {{ max-width: 900px; margin: 0 auto; background: #fff; box-shadow: 0 10px 30px rgba(0,0,0,0.1); border-radius: 12px; overflow: hidden; padding: 50px; border-top: 15px solid #262730; }}
+            @media print {{ body {{ background: #fff; padding: 0; }} .container {{ box-shadow: none; max-width: 100%; border-radius: 0; padding: 20px; border-top:none; }} .no-print {{ display: none !important; }} }}
+            .print-btn {{ background: #ff6600; color: white; border: none; padding: 12px 24px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; margin: 20px auto; transition: 0.3s; }}
+            h1 {{ color: #262730; font-size: 36px; margin-bottom: 5px; }}
+            h2 {{ color: #ff6600; font-size: 18px; text-transform: uppercase; margin-top: 30px; border-bottom: 2px solid #eee; padding-bottom: 10px; }}
+            .info-box {{ background: #fafafa; border: 1px solid #eee; padding: 20px; border-radius: 8px; margin-bottom: 20px; }}
+            table {{ width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 14px; }}
+            th, td {{ border: 1px solid #e0e0e0; padding: 12px; text-align: center; }}
+            th {{ background-color: #262730; color: white; text-transform: uppercase; font-size: 12px; }}
+            td {{ background-color: #fff; color: #444; font-weight: bold; }}
+            .highlight {{ color: #ff6600; }}
+        </style>
+    </head>
+    <body>
+        <div class="no-print" style="text-align: center;">
+            <button class="print-btn" onclick="window.print()">Salvar PDF do Financeiro / Imprimir</button>
+        </div>
+        <div class="container">
+            {logo_html}
+            <h1>SEJA BEM-VINDO</h1>
+            <p style="color:#555; font-size:16px; line-height: 1.6;">A VR Software tem o prazer de lhe dar as boas-vindas e lhe parabenizar pela sua recente inclusão em nosso portfólio de clientes.<br>Trabalharemos juntos para lhe oferecer a cada dia os melhores produtos e serviços.</p>
+            
+            <div class="info-box">
+                <strong style="color:#262730;">Cliente:</strong> <span style="color:#555;">{nome}</span><br><br>
+                <strong style="color:#262730;">CNPJ(s) do Contrato:</strong> <span style="color:#555;">{cnpjs}</span>
+            </div>
+            
+            <h2>RESUMO DO FATURAMENTO</h2>
+            <div style="display:flex; gap: 20px;">
+                <div class="info-box" style="flex:1; text-align:center; border-top: 4px solid #ff6600;">
+                    <span style="color:#777; font-size:12px; font-weight:bold;">INVESTIMENTO ERP (SETUP)</span><br>
+                    <strong style="font-size:28px; color:#ff6600;">R$ {f_br(val_setup)}</strong>
+                </div>
+                <div class="info-box" style="flex:1; text-align:center; border-top: 4px solid #2e7d32;">
+                    <span style="color:#777; font-size:12px; font-weight:bold;">MENSALIDADE ERP RECORRENTE</span><br>
+                    <strong style="font-size:28px; color:#2e7d32;">R$ {f_br(val_mensal)}</strong>
+                </div>
+            </div>
+            
+            <h2>CRONOGRAMA DE BOLETOS (RATEIO DE SETUP)</h2>
+            <p style="color:#555; font-size:14px;">De acordo com os valores acordados em contrato, a cobrança será dividida entre a VR Software Filial e a VR Software Matriz (inovação tecnológica). Veja o detalhamento de parcelamento abaixo:</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Parcela</th>
+                        <th>Boleto VR Matriz</th>
+                        <th>Boleto VR Filial</th>
+                        <th>Total do Mês</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {parcelas_html}
+                </tbody>
+            </table>
+            
+            <div style="margin-top: 50px; font-size: 12px; color: #888; text-align: center; border-top: 1px solid #eee; padding-top: 20px;">
+                <strong>VR SOFTWARE</strong><br>
+                É nosso dever e compromisso; transformar grandes, médias e pequenas empresas.
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
 # ==========================================
 # BLOCO 3: APLICATIVO PRINCIPAL (UI E LÓGICA)
 # ==========================================
@@ -484,6 +555,11 @@ def aplicativo_principal():
         dv['sel_i'] = lista_servicos_atual
 
     def limpar_tudo():
+        # EXTERMÍNIO DOS FANTASMAS VISUAIS
+        for k in list(st.session_state.keys()):
+            if k.startswith("ui_"):
+                del st.session_state[k]
+                
         st.session_state.data_vault = {
             'sel_m': [], 'sel_i': [], 'sel_d': [], 'auto_added': [],
             'quantidades': {}, 'setup_sistemas': {}, 'descontos_itens': {},
@@ -502,9 +578,17 @@ def aplicativo_principal():
 
     def sync_combo():
         mark_unsaved()
-        if st.session_state.m_combo == "Padrao Pequeno Porte":
-            st.session_state.m_pdv_touch = 0; st.session_state.m_pdv_self = 0; st.session_state.m_ecommerce = False; st.session_state.m_app = False; st.session_state.m_connect = False; st.session_state.m_controller = False; st.session_state.m_cartaz = False; st.session_state.m_masterfisco = False; st.session_state.m_backup = False; st.session_state.m_semanas = 0
-            st.session_state.m_erp_pro = True; st.session_state.m_pdv_conv = 3; st.session_state.m_xml = True; st.session_state.m_mobile = 1; st.session_state.m_tef = "SiTef Express"; st.session_state.m_migracao = True; st.session_state.m_escopo = True
+        dv = st.session_state.data_vault
+        n_combo = st.session_state.ui_m_combo
+        dv['mapeamento']['m_combo'] = n_combo
+        if n_combo == "Padrao Pequeno Porte":
+            dv['mapeamento'].update({
+                'm_pdv_touch': 0, 'm_pdv_self': 0, 'm_ecommerce': False, 'm_app': False, 'm_connect': False, 'm_controller': False, 'm_cartaz': False, 'm_masterfisco': False, 'm_backup': False, 'm_semanas': 0,
+                'm_erp_pro': True, 'm_pdv_conv': 3, 'm_xml': True, 'm_mobile': 1, 'm_tef': "SiTef Express", 'm_migracao': True, 'm_escopo': True
+            })
+            # FORÇA A TELA A ATUALIZAR (Correção do Ghosting do Combo)
+            st.session_state['ui_m_pdv_touch'] = 0; st.session_state['ui_m_pdv_self'] = 0; st.session_state['ui_m_ecommerce'] = False; st.session_state['ui_m_app'] = False; st.session_state['ui_m_connect'] = False; st.session_state['ui_m_controller'] = False; st.session_state['ui_m_cartaz'] = False; st.session_state['ui_m_masterfisco'] = False; st.session_state['ui_m_backup'] = False; st.session_state['ui_m_semanas'] = 0
+            st.session_state['ui_m_erp_pro'] = True; st.session_state['ui_m_pdv_conv'] = 3; st.session_state['ui_m_xml'] = True; st.session_state['ui_m_mobile'] = 1; st.session_state['ui_m_tef'] = "SiTef Express"; st.session_state['ui_m_migracao'] = True; st.session_state['ui_m_escopo'] = True
 
     # ==========================================
     # SIDEBAR E ROTEAMENTO
@@ -522,6 +606,8 @@ def aplicativo_principal():
             abas = ["Início", "Diagnóstico", "Gerador de Proposta", "Minhas Propostas", "Consulta de Preco"]
             if st.session_state.user_role in ["admin", "financeiro", "projetos"] and not st.toggle("Simular Visão Vendedor"): 
                 abas.append("Painel Admin")
+                if st.session_state.user_role in ["admin", "financeiro"]:
+                    abas.append("Faturamento")
                 if st.session_state.user_role == "admin":
                     abas.append("Visão do Gestor")
         
@@ -835,6 +921,7 @@ def aplicativo_principal():
             with engine.connect() as conn:
                 cond_status = "" if exibir_excluidas else "AND status != 'Excluída'"
                 
+                # BLINDAGEM ABSOLUTA DE SQL
                 if st.session_state.user_role == 'admin':
                     q = text(f"SELECT id, nome_cliente, cnpj_cliente, valor_setup, valor_mensal, status, TO_CHAR(data_atualizacao, 'DD/MM/YYYY HH24:MI') as data_fmt, dados_simulacao FROM propostas WHERE 1=1 {cond_status} ORDER BY data_atualizacao DESC")
                     result = conn.execute(q)
@@ -942,10 +1029,7 @@ def aplicativo_principal():
         if p_sel:
             d = full_db[p_sel]
             
-            v_b = d.get('valor', 0.0)
-            if d.get('typeproductid') == 606 and d.get('valor_projeto', 0.0) > 0:
-                v_b = d.get('valor_projeto', 0.0)
-                
+            v_b = d.get('valor_projeto', 0.0) if (d.get('typeproductid') == 606 and d.get('valor_projeto', 0.0) > 0) else d.get('valor', 0.0)
             v_l = v_b * (1 - (desc_s/100))
             p_id = name_to_id.get(p_sel)
             is_sistema = (d.get('typeproductid') == 604)
@@ -959,10 +1043,7 @@ def aplicativo_principal():
                         f_nm = id_to_name.get(r['id_filho'])
                         d_f = full_db.get(f_nm, {})
                         
-                        f_val = d_f.get('valor', 0.0)
-                        if d_f.get('typeproductid') == 606 and d_f.get('valor_projeto', 0.0) > 0:
-                            f_val = d_f.get('valor_projeto', 0.0)
-                            
+                        f_val = d_f.get('valor_projeto', 0.0) if (d_f.get('typeproductid') == 606 and d_f.get('valor_projeto', 0.0) > 0) else d_f.get('valor', 0.0)
                         f_q = int(r['qtd'])
                         t_s += (f_q * f_val); uni = "h" if r['tipo'] == 'projeto' else "un"
                         h_s += f"<li><span class='item-name'>{f_nm}</span><span class='item-detalhe'>{f_q}{uni} x R$ {f_br(f_val)} | Total: R$ {f_br(f_q*f_val)}</span></li>"
@@ -1153,14 +1234,7 @@ def aplicativo_principal():
         if mapeamento_ativo and not st.session_state.modo_apresentacao:
             st.markdown("""<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">Mapeamento da Operacao</h3></div>""", unsafe_allow_html=True)
             
-            n_combo = st.selectbox("Combo Rápido", ["Montar Manualmente", "Padrao Pequeno Porte"], index=0 if md.get('m_combo') == "Montar Manualmente" else 1, key="ui_m_combo")
-            if n_combo != md.get('m_combo'):
-                md['m_combo'] = n_combo
-                mark_unsaved()
-                if n_combo == "Padrao Pequeno Porte":
-                    md['m_pdv_touch'] = 0; md['m_pdv_self'] = 0; md['m_ecommerce'] = False; md['m_app'] = False; md['m_connect'] = False; md['m_controller'] = False; md['m_cartaz'] = False; md['m_masterfisco'] = False; md['m_backup'] = False; md['m_semanas'] = 0
-                    md['m_erp_pro'] = True; md['m_pdv_conv'] = 3; md['m_xml'] = True; md['m_mobile'] = 1; md['m_tef'] = "SiTef Express"; md['m_migracao'] = True; md['m_escopo'] = True
-                    st.rerun()
+            n_combo = st.selectbox("Combo Rápido", ["Montar Manualmente", "Padrao Pequeno Porte"], index=0 if md.get('m_combo') == "Montar Manualmente" else 1, key="ui_m_combo", on_change=sync_combo)
 
             c1, c2, c3 = st.columns(3)
             with c1:
@@ -1262,6 +1336,11 @@ def aplicativo_principal():
                     new_sel_d = st.multiselect("Despesas", list(despesas_db.keys()), default=valid_d, key="ui_sel_d", on_change=mark_unsaved)
                     dv['sel_d'] = new_sel_d
                     
+                    if dv['sel_d']:
+                        cd1, cd2 = st.columns([1, 1.2])
+                        cd1.markdown("<span style='font-size:0.85rem; font-weight:bold; color:#777;'>Qtd</span>", unsafe_allow_html=True)
+                        cd2.markdown("<span style='font-size:0.85rem; font-weight:bold; color:#777;'>R$ Unit.</span>", unsafe_allow_html=True)
+
                     for i in dv['sel_d']:
                         v_u_padrao = despesas_db[i]['valor']
                         c_qty = int(dv['quantidades'].get(i, 0))
@@ -1269,8 +1348,8 @@ def aplicativo_principal():
                         
                         st.markdown(f"<div style='font-size:0.85rem; font-weight:bold; color:#444; margin-bottom:2px;'>{i}</div>", unsafe_allow_html=True)
                         cd1, cd2 = st.columns([1, 1.2])
-                        n_qty = cd1.number_input(f"Qtd", min_value=0, step=1, value=c_qty, key=f"ui_qty_{i}", on_change=mark_unsaved)
-                        n_unit = cd2.number_input(f"R$ Unit.", min_value=0.0, step=10.0, value=c_unit, key=f"ui_unit_{i}", on_change=mark_unsaved)
+                        n_qty = cd1.number_input(f"Qtd_{i}", min_value=0, step=1, value=c_qty, key=f"ui_qty_{i}", on_change=mark_unsaved, label_visibility="collapsed")
+                        n_unit = cd2.number_input(f"R$_{i}", min_value=0.0, step=10.0, value=c_unit, key=f"ui_unit_{i}", on_change=mark_unsaved, label_visibility="collapsed")
                         dv['quantidades'][i] = n_qty
                         dv['despesas_valores'][i] = n_unit
                         st.markdown("<div style='margin-bottom:10px;'></div>", unsafe_allow_html=True)
@@ -1430,6 +1509,116 @@ def aplicativo_principal():
             col_f1, col_f2, col_f3 = st.columns([1, 1, 1])
             if col_f2.button("Fechar Visualização", use_container_width=True): 
                 st.session_state.show_digital_proposal = False
+                st.rerun()
+
+    # ==========================================
+    # TELA NOVA: MÓDULO FINANCEIRO (FATURAMENTO)
+    # ==========================================
+    elif tela == "Faturamento":
+        st.markdown("<h1 class='hero-title'>CENTRAL DE FATURAMENTO</h1>", unsafe_allow_html=True)
+        st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Geração do Welcome Pack e Rateio Automático de Contratos</p>", unsafe_allow_html=True)
+
+        st.markdown("""<div class="cliente-container"><h3 style="margin:0; color:#262730;">1. Dados da Operação</h3></div>""", unsafe_allow_html=True)
+        
+        c1, c2 = st.columns(2)
+        nome_fin = c1.text_input("Nome do Cliente", placeholder="Ex: Supermercados Dois Irmãos")
+        cnpj_fin = c2.text_area("CNPJs do Contrato", placeholder="Insira um ou mais CNPJs", height=68)
+
+        c3, c4, c5 = st.columns(3)
+        val_setup_fin = c3.number_input("Valor Total do Setup / Implantação (R$)", min_value=0.0, step=100.0)
+        val_mensal_fin = c4.number_input("Valor Total da Mensalidade (R$)", min_value=0.0, step=100.0)
+        qtd_parcelas_fin = c5.number_input("Qtd. de Parcelas do Setup", min_value=1, max_value=36, value=6, step=1)
+
+        st.markdown("""<br><div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">2. Motor de Rateio</h3></div>""", unsafe_allow_html=True)
+        
+        tipo_rateio = st.radio("Selecione a regra de divisão:", ["Padrão da Franquia (Ex: Matriz 30% / Filial 70%)", "Ajuste Manual / Flexível"], horizontal=True)
+
+        if "Padrão" in tipo_rateio:
+            pct_matriz = 30.0
+            pct_filial = 70.0
+            st.info(f"O sistema calculará automaticamente **{pct_matriz}%** para a Matriz e **{pct_filial}%** para a Filial.")
+        else:
+            cr1, cr2 = st.columns(2)
+            pct_matriz = cr1.number_input("% Rateio Matriz", min_value=0.0, max_value=100.0, value=30.0, step=1.0)
+            pct_filial = cr2.number_input("% Rateio Filial", min_value=0.0, max_value=100.0, value=100.0 - pct_matriz, step=1.0)
+            if pct_matriz + pct_filial != 100.0:
+                st.warning("⚠️ Atenção: A soma dos percentuais deve fechar exatamente em 100%.")
+
+        if st.button("Gerar Simulação Financeira", type="primary", use_container_width=True):
+            if val_setup_fin == 0 and val_mensal_fin == 0:
+                st.error("Insira o valor do Setup ou da Mensalidade para simular.")
+            elif pct_matriz + pct_filial == 100.0:
+                st.markdown("<hr><h2 style='text-align:center; color:#262730;'>ESPELHO DE FATURAMENTO</h2>", unsafe_allow_html=True)
+                
+                mensal_matriz = val_mensal_fin * (pct_matriz / 100.0)
+                mensal_filial = val_mensal_fin * (pct_filial / 100.0)
+                setup_matriz = val_setup_fin * (pct_matriz / 100.0)
+                setup_filial = val_setup_fin * (pct_filial / 100.0)
+                
+                parcela_matriz_base = round(setup_matriz / qtd_parcelas_fin, 2)
+                parcela_filial_base = round(setup_filial / qtd_parcelas_fin, 2)
+                
+                ultima_matriz = round(setup_matriz - (parcela_matriz_base * (qtd_parcelas_fin - 1)), 2)
+                ultima_filial = round(setup_filial - (parcela_filial_base * (qtd_parcelas_fin - 1)), 2)
+
+                col_res1, col_res2 = st.columns(2)
+                with col_res1:
+                    st.markdown(f"""
+                    <div style="background-color:#ffffff; border-top: 6px solid #262730; padding:20px; border-radius:8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+                        <h4 style="margin:0; color:#262730;">VR SOFTWARE MATRIZ ({pct_matriz}%)</h4>
+                        <hr>
+                        <p style="margin:0; color:#777; font-size:0.9rem;">Mensalidade Recorrente:</p>
+                        <h3 style="margin:0 0 15px 0; color:#2e7d32;">R$ {f_br(mensal_matriz)}</h3>
+                        <p style="margin:0; color:#777; font-size:0.9rem;">Total Implantação (Setup):</p>
+                        <h3 style="margin:0 0 15px 0; color:#ff6600;">R$ {f_br(setup_matriz)}</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                with col_res2:
+                    st.markdown(f"""
+                    <div style="background-color:#ffffff; border-top: 6px solid #ff6600; padding:20px; border-radius:8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+                        <h4 style="margin:0; color:#ff6600;">VR SOFTWARE FILIAL ({pct_filial}%)</h4>
+                        <hr>
+                        <p style="margin:0; color:#777; font-size:0.9rem;">Mensalidade Recorrente:</p>
+                        <h3 style="margin:0 0 15px 0; color:#2e7d32;">R$ {f_br(mensal_filial)}</h3>
+                        <p style="margin:0; color:#777; font-size:0.9rem;">Total Implantação (Setup):</p>
+                        <h3 style="margin:0 0 15px 0; color:#ff6600;">R$ {f_br(setup_filial)}</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                st.markdown("<br><h4>Cronograma de Boletos (Setup)</h4>", unsafe_allow_html=True)
+                
+                lista_parcelas = []
+                html_linhas_tabela = ""
+                for i in range(1, qtd_parcelas_fin + 1):
+                    v_matriz = ultima_matriz if i == qtd_parcelas_fin else parcela_matriz_base
+                    v_filial = ultima_filial if i == qtd_parcelas_fin else parcela_filial_base
+                    lista_parcelas.append({
+                        "Parcela": f"{i}/{qtd_parcelas_fin}",
+                        "Boleto VR Matriz": f"R$ {f_br(v_matriz)}",
+                        "Boleto VR Filial": f"R$ {f_br(v_filial)}",
+                        "Total Mês": f"R$ {f_br(v_matriz + v_filial)}"
+                    })
+                    html_linhas_tabela += f"<tr><td>{i}/{qtd_parcelas_fin}</td><td class='highlight'>R$ {f_br(v_matriz)}</td><td class='highlight'>R$ {f_br(v_filial)}</td><td>R$ {f_br(v_matriz + v_filial)}</td></tr>"
+                
+                st.dataframe(pd.DataFrame(lista_parcelas), use_container_width=True, hide_index=True)
+
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button("🖨️ Gerar PDF de Boas-Vindas (Welcome Pack)", use_container_width=True):
+                    st.session_state.html_welcome_pack = renderizar_welcome_pack(
+                        nome=nome_fin, cnpjs=cnpj_fin, val_setup=val_setup_fin, val_mensal=val_mensal_fin, parcelas_html=html_linhas_tabela
+                    )
+                    st.session_state.show_welcome_pack = True
+                    st.rerun()
+
+        if st.session_state.get('show_welcome_pack', False):
+            st.markdown("---")
+            st.markdown("<h2 style='text-align:center; color:#ff6600;'>Visualização do Welcome Pack Digital</h2>", unsafe_allow_html=True)
+            st.info("Clique no botão laranja 'Salvar PDF do Financeiro / Imprimir' dentro do quadro abaixo.")
+            components.html(st.session_state.html_welcome_pack, height=1000, scrolling=True)
+            col_fw1, col_fw2, col_fw3 = st.columns([1, 1, 1])
+            if col_fw2.button("Fechar Visualização Financeira", use_container_width=True): 
+                st.session_state.show_welcome_pack = False
                 st.rerun()
 
     # ==========================================
