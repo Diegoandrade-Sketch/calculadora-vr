@@ -14,7 +14,7 @@ import base64
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-APP_VERSION = "v6.2.0 - Finance Module & Core Stability"
+APP_VERSION = "v6.2.1 - Central Financeira Blindada"
 CACHE_FILE = "cache_vr.json"
 
 # ==========================================
@@ -41,6 +41,7 @@ if 'aba_atual' not in st.session_state: st.session_state.aba_atual = "Início"
 if 'proposta_carregada_id' not in st.session_state: st.session_state.proposta_carregada_id = None
 if 'show_digital_proposal' not in st.session_state: st.session_state.show_digital_proposal = False
 if 'show_welcome_pack' not in st.session_state: st.session_state.show_welcome_pack = False
+if 'fin_sim_ativa' not in st.session_state: st.session_state.fin_sim_ativa = False
 if 'has_unsaved_changes' not in st.session_state: st.session_state.has_unsaved_changes = False
 if 'modo_apresentacao' not in st.session_state: st.session_state.modo_apresentacao = False
 
@@ -469,14 +470,14 @@ def renderizar_welcome_pack(nome, cnpjs, val_setup, val_mensal, parcelas_html):
                 </div>
             </div>
             
-            <h2>CRONOGRAMA DE BOLETOS (RATEIO DE SETUP)</h2>
-            <p style="color:#555; font-size:14px;">De acordo com os valores acordados em contrato, a cobrança será dividida entre a VR Software Filial e a VR Software Matriz (inovação tecnológica). Veja o detalhamento de parcelamento abaixo:</p>
+            <h2>CRONOGRAMA DE FATURAMENTO (IMPLANTAÇÃO)</h2>
+            <p style="color:#555; font-size:14px;">De acordo com os valores acordados em contrato, a cobrança será dividida entre a VR Recife e a VR Software Matriz (inovação tecnológica). Veja o detalhamento de parcelamento abaixo:</p>
             <table>
                 <thead>
                     <tr>
                         <th>Parcela</th>
-                        <th>Boleto VR Matriz</th>
-                        <th>Boleto VR Filial</th>
+                        <th>Cobrança VR Matriz</th>
+                        <th>Cobrança VR Recife</th>
                         <th>Total do Mês</th>
                     </tr>
                 </thead>
@@ -586,7 +587,7 @@ def aplicativo_principal():
                 'm_pdv_touch': 0, 'm_pdv_self': 0, 'm_ecommerce': False, 'm_app': False, 'm_connect': False, 'm_controller': False, 'm_cartaz': False, 'm_masterfisco': False, 'm_backup': False, 'm_semanas': 0,
                 'm_erp_pro': True, 'm_pdv_conv': 3, 'm_xml': True, 'm_mobile': 1, 'm_tef': "SiTef Express", 'm_migracao': True, 'm_escopo': True
             })
-            # FORÇA A TELA A ATUALIZAR (Correção do Ghosting do Combo)
+            # FORÇA A TELA A ATUALIZAR
             st.session_state['ui_m_pdv_touch'] = 0; st.session_state['ui_m_pdv_self'] = 0; st.session_state['ui_m_ecommerce'] = False; st.session_state['ui_m_app'] = False; st.session_state['ui_m_connect'] = False; st.session_state['ui_m_controller'] = False; st.session_state['ui_m_cartaz'] = False; st.session_state['ui_m_masterfisco'] = False; st.session_state['ui_m_backup'] = False; st.session_state['ui_m_semanas'] = 0
             st.session_state['ui_m_erp_pro'] = True; st.session_state['ui_m_pdv_conv'] = 3; st.session_state['ui_m_xml'] = True; st.session_state['ui_m_mobile'] = 1; st.session_state['ui_m_tef'] = "SiTef Express"; st.session_state['ui_m_migracao'] = True; st.session_state['ui_m_escopo'] = True
 
@@ -1525,96 +1526,125 @@ def aplicativo_principal():
         cnpj_fin = c2.text_area("CNPJs do Contrato", placeholder="Insira um ou mais CNPJs", height=68)
 
         c3, c4, c5 = st.columns(3)
-        val_setup_fin = c3.number_input("Valor Total do Setup / Implantação (R$)", min_value=0.0, step=100.0)
-        val_mensal_fin = c4.number_input("Valor Total da Mensalidade (R$)", min_value=0.0, step=100.0)
-        qtd_parcelas_fin = c5.number_input("Qtd. de Parcelas do Setup", min_value=1, max_value=36, value=6, step=1)
+        with c3:
+            setup_str = st.text_input("Valor Total do Setup (R$)", value=st.session_state.get('fin_setup_str', ""), placeholder="Ex: 15000,00")
+            st.session_state.fin_setup_str = setup_str
+            val_setup_fin = 0.0
+            if setup_str:
+                num = re.sub(r'[^\d,]', '', setup_str).replace(',', '.')
+                if num: val_setup_fin = float(num)
+            st.markdown(f"<div style='font-size:1rem; font-weight:bold; color:#ff6600; margin-top:-10px; margin-bottom:15px;'>R$ {f_br(val_setup_fin)}</div>", unsafe_allow_html=True)
 
-        st.markdown("""<br><div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">2. Motor de Rateio</h3></div>""", unsafe_allow_html=True)
+        with c4:
+            mensal_str = st.text_input("Valor Total da Mensalidade (R$)", value=st.session_state.get('fin_mensal_str', ""), placeholder="Ex: 2500,00")
+            st.session_state.fin_mensal_str = mensal_str
+            val_mensal_fin = 0.0
+            if mensal_str:
+                num = re.sub(r'[^\d,]', '', mensal_str).replace(',', '.')
+                if num: val_mensal_fin = float(num)
+            st.markdown(f"<div style='font-size:1rem; font-weight:bold; color:#2e7d32; margin-top:-10px; margin-bottom:15px;'>R$ {f_br(val_mensal_fin)}</div>", unsafe_allow_html=True)
+
+        with c5:
+            qtd_parcelas_fin = st.number_input("Qtd. de Parcelas do Setup", min_value=1, max_value=36, value=6, step=1)
+
+        st.markdown("""<br><div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">2. Parâmetros de Faturamento</h3></div>""", unsafe_allow_html=True)
         
-        tipo_rateio = st.radio("Selecione a regra de divisão:", ["Padrão da Franquia (Ex: Matriz 30% / Filial 70%)", "Ajuste Manual / Flexível"], horizontal=True)
+        tipo_rateio = st.radio("Selecione a regra de divisão de faturamento:", ["Padrão da Unidade (Matriz 10% / VR Recife 90%)", "Ajuste Personalizado de Rateio"], horizontal=True)
 
         if "Padrão" in tipo_rateio:
-            pct_matriz = 30.0
-            pct_filial = 70.0
-            st.info(f"O sistema calculará automaticamente **{pct_matriz}%** para a Matriz e **{pct_filial}%** para a Filial.")
+            pct_matriz_setup = 10.0
+            pct_filial_setup = 90.0
+            pct_matriz_mensal = 10.0
+            pct_filial_mensal = 90.0
+            st.info("O sistema calculará automaticamente o repasse de 10% para a Matriz e 90% para a VR Recife.")
         else:
-            cr1, cr2 = st.columns(2)
-            pct_matriz = cr1.number_input("% Rateio Matriz", min_value=0.0, max_value=100.0, value=30.0, step=1.0)
-            pct_filial = cr2.number_input("% Rateio Filial", min_value=0.0, max_value=100.0, value=100.0 - pct_matriz, step=1.0)
-            if pct_matriz + pct_filial != 100.0:
-                st.warning("⚠️ Atenção: A soma dos percentuais deve fechar exatamente em 100%.")
+            st.markdown("<strong style='color:#262730;'>Composição do Setup (Implantação)</strong>", unsafe_allow_html=True)
+            crs1, crs2 = st.columns(2)
+            pct_matriz_setup = crs1.number_input("% Rateio Matriz (Setup)", min_value=0.0, max_value=100.0, value=10.0, step=1.0)
+            pct_filial_setup = crs2.number_input("% Rateio VR Recife (Setup)", min_value=0.0, max_value=100.0, value=100.0 - pct_matriz_setup, step=1.0)
+            
+            st.markdown("<strong style='color:#262730;'>Composição da Mensalidade (Recorrente)</strong>", unsafe_allow_html=True)
+            crm1, crm2 = st.columns(2)
+            pct_matriz_mensal = crm1.number_input("% Rateio Matriz (Mensalidade)", min_value=0.0, max_value=100.0, value=10.0, step=1.0)
+            pct_filial_mensal = crm2.number_input("% Rateio VR Recife (Mensalidade)", min_value=0.0, max_value=100.0, value=100.0 - pct_matriz_mensal, step=1.0)
 
-        if st.button("Gerar Simulação Financeira", type="primary", use_container_width=True):
+            if pct_matriz_setup + pct_filial_setup != 100.0 or pct_matriz_mensal + pct_filial_mensal != 100.0:
+                st.warning("Atenção: A soma dos percentuais deve fechar exatamente em 100%.")
+
+        if st.button("Processar Composição Financeira", type="primary", use_container_width=True):
             if val_setup_fin == 0 and val_mensal_fin == 0:
-                st.error("Insira o valor do Setup ou da Mensalidade para simular.")
-            elif pct_matriz + pct_filial == 100.0:
-                st.markdown("<hr><h2 style='text-align:center; color:#262730;'>ESPELHO DE FATURAMENTO</h2>", unsafe_allow_html=True)
+                st.error("Insira o valor do Setup ou da Mensalidade para processar.")
+            elif pct_matriz_setup + pct_filial_setup == 100.0 and pct_matriz_mensal + pct_filial_mensal == 100.0:
+                st.session_state.fin_sim_ativa = True
                 
-                mensal_matriz = val_mensal_fin * (pct_matriz / 100.0)
-                mensal_filial = val_mensal_fin * (pct_filial / 100.0)
-                setup_matriz = val_setup_fin * (pct_matriz / 100.0)
-                setup_filial = val_setup_fin * (pct_filial / 100.0)
-                
-                parcela_matriz_base = round(setup_matriz / qtd_parcelas_fin, 2)
-                parcela_filial_base = round(setup_filial / qtd_parcelas_fin, 2)
-                
-                ultima_matriz = round(setup_matriz - (parcela_matriz_base * (qtd_parcelas_fin - 1)), 2)
-                ultima_filial = round(setup_filial - (parcela_filial_base * (qtd_parcelas_fin - 1)), 2)
+        if st.session_state.get('fin_sim_ativa'):
+            st.markdown("<hr><h2 style='text-align:center; color:#262730;'>ESPELHO DE FATURAMENTO</h2>", unsafe_allow_html=True)
+            
+            mensal_matriz = val_mensal_fin * (pct_matriz_mensal / 100.0)
+            mensal_filial = val_mensal_fin * (pct_filial_mensal / 100.0)
+            setup_matriz = val_setup_fin * (pct_matriz_setup / 100.0)
+            setup_filial = val_setup_fin * (pct_filial_setup / 100.0)
+            
+            parcela_matriz_base = round(setup_matriz / qtd_parcelas_fin, 2)
+            parcela_filial_base = round(setup_filial / qtd_parcelas_fin, 2)
+            
+            ultima_matriz = round(setup_matriz - (parcela_matriz_base * (qtd_parcelas_fin - 1)), 2)
+            ultima_filial = round(setup_filial - (parcela_filial_base * (qtd_parcelas_fin - 1)), 2)
 
-                col_res1, col_res2 = st.columns(2)
-                with col_res1:
-                    st.markdown(f"""
-                    <div style="background-color:#ffffff; border-top: 6px solid #262730; padding:20px; border-radius:8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
-                        <h4 style="margin:0; color:#262730;">VR SOFTWARE MATRIZ ({pct_matriz}%)</h4>
-                        <hr>
-                        <p style="margin:0; color:#777; font-size:0.9rem;">Mensalidade Recorrente:</p>
-                        <h3 style="margin:0 0 15px 0; color:#2e7d32;">R$ {f_br(mensal_matriz)}</h3>
-                        <p style="margin:0; color:#777; font-size:0.9rem;">Total Implantação (Setup):</p>
-                        <h3 style="margin:0 0 15px 0; color:#ff6600;">R$ {f_br(setup_matriz)}</h3>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                with col_res2:
-                    st.markdown(f"""
-                    <div style="background-color:#ffffff; border-top: 6px solid #ff6600; padding:20px; border-radius:8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
-                        <h4 style="margin:0; color:#ff6600;">VR SOFTWARE FILIAL ({pct_filial}%)</h4>
-                        <hr>
-                        <p style="margin:0; color:#777; font-size:0.9rem;">Mensalidade Recorrente:</p>
-                        <h3 style="margin:0 0 15px 0; color:#2e7d32;">R$ {f_br(mensal_filial)}</h3>
-                        <p style="margin:0; color:#777; font-size:0.9rem;">Total Implantação (Setup):</p>
-                        <h3 style="margin:0 0 15px 0; color:#ff6600;">R$ {f_br(setup_filial)}</h3>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-                st.markdown("<br><h4>Cronograma de Boletos (Setup)</h4>", unsafe_allow_html=True)
+            col_res1, col_res2 = st.columns(2)
+            with col_res1:
+                st.markdown(f"""
+                <div style="background-color:#ffffff; border-top: 6px solid #262730; padding:20px; border-radius:8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+                    <h4 style="margin:0; color:#262730;">VR SOFTWARE MATRIZ</h4>
+                    <hr>
+                    <p style="margin:0; color:#777; font-size:0.9rem;">Mensalidade Recorrente ({pct_matriz_mensal}%):</p>
+                    <h3 style="margin:0 0 15px 0; color:#2e7d32;">R$ {f_br(mensal_matriz)}</h3>
+                    <p style="margin:0; color:#777; font-size:0.9rem;">Total Implantação Setup ({pct_matriz_setup}%):</p>
+                    <h3 style="margin:0 0 15px 0; color:#ff6600;">R$ {f_br(setup_matriz)}</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 
-                lista_parcelas = []
-                html_linhas_tabela = ""
-                for i in range(1, qtd_parcelas_fin + 1):
-                    v_matriz = ultima_matriz if i == qtd_parcelas_fin else parcela_matriz_base
-                    v_filial = ultima_filial if i == qtd_parcelas_fin else parcela_filial_base
-                    lista_parcelas.append({
-                        "Parcela": f"{i}/{qtd_parcelas_fin}",
-                        "Boleto VR Matriz": f"R$ {f_br(v_matriz)}",
-                        "Boleto VR Filial": f"R$ {f_br(v_filial)}",
-                        "Total Mês": f"R$ {f_br(v_matriz + v_filial)}"
-                    })
-                    html_linhas_tabela += f"<tr><td>{i}/{qtd_parcelas_fin}</td><td class='highlight'>R$ {f_br(v_matriz)}</td><td class='highlight'>R$ {f_br(v_filial)}</td><td>R$ {f_br(v_matriz + v_filial)}</td></tr>"
-                
-                st.dataframe(pd.DataFrame(lista_parcelas), use_container_width=True, hide_index=True)
+            with col_res2:
+                st.markdown(f"""
+                <div style="background-color:#ffffff; border-top: 6px solid #ff6600; padding:20px; border-radius:8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+                    <h4 style="margin:0; color:#ff6600;">VR RECIFE</h4>
+                    <hr>
+                    <p style="margin:0; color:#777; font-size:0.9rem;">Mensalidade Recorrente ({pct_filial_mensal}%):</p>
+                    <h3 style="margin:0 0 15px 0; color:#2e7d32;">R$ {f_br(mensal_filial)}</h3>
+                    <p style="margin:0; color:#777; font-size:0.9rem;">Total Implantação Setup ({pct_filial_setup}%):</p>
+                    <h3 style="margin:0 0 15px 0; color:#ff6600;">R$ {f_br(setup_filial)}</h3>
+                </div>
+                """, unsafe_allow_html=True)
 
-                st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("🖨️ Gerar PDF de Boas-Vindas (Welcome Pack)", use_container_width=True):
-                    st.session_state.html_welcome_pack = renderizar_welcome_pack(
-                        nome=nome_fin, cnpjs=cnpj_fin, val_setup=val_setup_fin, val_mensal=val_mensal_fin, parcelas_html=html_linhas_tabela
-                    )
-                    st.session_state.show_welcome_pack = True
-                    st.rerun()
+            st.markdown("<br><h4 style='color:#262730;'>Cronograma de Faturamento (Setup)</h4>", unsafe_allow_html=True)
+            
+            lista_parcelas = []
+            html_linhas_tabela = ""
+            for i in range(1, qtd_parcelas_fin + 1):
+                v_matriz = ultima_matriz if i == qtd_parcelas_fin else parcela_matriz_base
+                v_filial = ultima_filial if i == qtd_parcelas_fin else parcela_filial_base
+                lista_parcelas.append({
+                    "Parcela": f"{i}/{qtd_parcelas_fin}",
+                    "Cobrança VR Matriz": f"R$ {f_br(v_matriz)}",
+                    "Cobrança VR Recife": f"R$ {f_br(v_filial)}",
+                    "Total Mês": f"R$ {f_br(v_matriz + v_filial)}"
+                })
+                html_linhas_tabela += f"<tr><td>{i}/{qtd_parcelas_fin}</td><td class='highlight'>R$ {f_br(v_matriz)}</td><td class='highlight'>R$ {f_br(v_filial)}</td><td>R$ {f_br(v_matriz + v_filial)}</td></tr>"
+            
+            st.dataframe(pd.DataFrame(lista_parcelas), use_container_width=True, hide_index=True)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("Gerar Documento de Boas-Vindas (PDF)", use_container_width=True):
+                st.session_state.html_welcome_pack = renderizar_welcome_pack(
+                    nome=nome_fin, cnpjs=cnpj_fin, val_setup=val_setup_fin, val_mensal=val_mensal_fin, parcelas_html=html_linhas_tabela
+                )
+                st.session_state.show_welcome_pack = True
+                st.rerun()
 
         if st.session_state.get('show_welcome_pack', False):
             st.markdown("---")
-            st.markdown("<h2 style='text-align:center; color:#ff6600;'>Visualização do Welcome Pack Digital</h2>", unsafe_allow_html=True)
-            st.info("Clique no botão laranja 'Salvar PDF do Financeiro / Imprimir' dentro do quadro abaixo.")
+            st.markdown("<h2 style='text-align:center; color:#ff6600;'>Visualização do Documento Digital</h2>", unsafe_allow_html=True)
+            st.info("Clique no botão 'Salvar PDF do Financeiro / Imprimir' dentro do quadro abaixo.")
             components.html(st.session_state.html_welcome_pack, height=1000, scrolling=True)
             col_fw1, col_fw2, col_fw3 = st.columns([1, 1, 1])
             if col_fw2.button("Fechar Visualização Financeira", use_container_width=True): 
