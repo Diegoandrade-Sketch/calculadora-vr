@@ -522,6 +522,8 @@ def aplicativo_principal():
             abas = ["Início", "Diagnóstico", "Gerador de Proposta", "Minhas Propostas", "Consulta de Preco"]
             if st.session_state.user_role in ["admin", "financeiro", "projetos"] and not st.toggle("Simular Visão Vendedor"): 
                 abas.append("Painel Admin")
+                if st.session_state.user_role in ["admin", "financeiro"]:
+                    abas.append("Faturamento")
                 if st.session_state.user_role == "admin":
                     abas.append("Visão do Gestor")
         
