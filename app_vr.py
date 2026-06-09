@@ -1513,6 +1513,108 @@ def aplicativo_principal():
             st.error(f"Falha ao comunicar com o Banco de Dados. Erro Técnico: {e}")
 
 # ==========================================
+    # TELA NOVA: MÓDULO FINANCEIRO (FATURAMENTO)
+    # ==========================================
+    elif tela == "Faturamento":
+        st.markdown("<h1 class='hero-title'>CENTRAL DE FATURAMENTO</h1>", unsafe_allow_html=True)
+        st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Geração do Welcome Pack e Rateio Automático de Contratos</p>", unsafe_allow_html=True)
+
+        # Container Isolado (Não usa o data_vault)
+        st.markdown("""<div class="cliente-container"><h3 style="margin:0; color:#262730;">1. Dados da Operação</h3></div>""", unsafe_allow_html=True)
+        
+        c1, c2 = st.columns(2)
+        nome_fin = c1.text_input("Nome do Cliente", placeholder="Ex: Supermercados Dois Irmãos")
+        cnpj_fin = c2.text_area("CNPJs do Contrato", placeholder="Insira um ou mais CNPJs", height=68)
+
+        c3, c4, c5 = st.columns(3)
+        val_setup_fin = c3.number_input("Valor Total do Setup / Implantação (R$)", min_value=0.0, step=100.0)
+        val_mensal_fin = c4.number_input("Valor Total da Mensalidade (R$)", min_value=0.0, step=100.0)
+        qtd_parcelas_fin = c5.number_input("Qtd. de Parcelas do Setup", min_value=1, max_value=36, value=6, step=1)
+
+        st.markdown("""<br><div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">2. Motor de Rateio</h3></div>""", unsafe_allow_html=True)
+        
+        tipo_rateio = st.radio("Selecione a regra de divisão:", ["Padrão da Franquia (Ex: Matriz 30% / Filial 70%)", "Ajuste Manual / Flexível"], horizontal=True)
+
+        if "Padrão" in tipo_rateio:
+            pct_matriz = 30.0
+            pct_filial = 70.0
+            st.info(f"O sistema calculará automaticamente **{pct_matriz}%** para a Matriz e **{pct_filial}%** para a Filial.")
+        else:
+            cr1, cr2 = st.columns(2)
+            pct_matriz = cr1.number_input("% Rateio Matriz", min_value=0.0, max_value=100.0, value=30.0, step=1.0)
+            pct_filial = cr2.number_input("% Rateio Filial", min_value=0.0, max_value=100.0, value=100.0 - pct_matriz, step=1.0)
+            if pct_matriz + pct_filial != 100.0:
+                st.warning("⚠️ Atenção: A soma dos percentuais deve fechar exatamente em 100%.")
+
+        if st.button("Gerar Simulação Financeira", type="primary", use_container_width=True):
+            if val_setup_fin == 0 and val_mensal_fin == 0:
+                st.error("Insira o valor do Setup ou da Mensalidade para simular.")
+            elif pct_matriz + pct_filial == 100.0:
+                st.markdown("<hr><h2 style='text-align:center; color:#262730;'>ESPELHO DE FATURAMENTO</h2>", unsafe_allow_html=True)
+                
+                # --- MATEMÁTICA DE RATEIO (MENSALIDADE) ---
+                mensal_matriz = val_mensal_fin * (pct_matriz / 100.0)
+                mensal_filial = val_mensal_fin * (pct_filial / 100.0)
+                
+                # --- MATEMÁTICA DE RATEIO (SETUP E DÍZIMAS) ---
+                setup_matriz = val_setup_fin * (pct_matriz / 100.0)
+                setup_filial = val_setup_fin * (pct_filial / 100.0)
+                
+                parcela_matriz_base = round(setup_matriz / qtd_parcelas_fin, 2)
+                parcela_filial_base = round(setup_filial / qtd_parcelas_fin, 2)
+                
+                # Ajuste dos centavos perdidos sempre na última parcela
+                ultima_matriz = round(setup_matriz - (parcela_matriz_base * (qtd_parcelas_fin - 1)), 2)
+                ultima_filial = round(setup_filial - (parcela_filial_base * (qtd_parcelas_fin - 1)), 2)
+
+                # --- RENDERIZAÇÃO NA TELA ---
+                col_res1, col_res2 = st.columns(2)
+                
+                with col_res1:
+                    st.markdown(f"""
+                    <div style="background-color:#ffffff; border-top: 6px solid #262730; padding:20px; border-radius:8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+                        <h4 style="margin:0; color:#262730;">VR SOFTWARE MATRIZ ({pct_matriz}%)</h4>
+                        <hr>
+                        <p style="margin:0; color:#777; font-size:0.9rem;">Mensalidade Recorrente:</p>
+                        <h3 style="margin:0 0 15px 0; color:#2e7d32;">R$ {f_br(mensal_matriz)}</h3>
+                        <p style="margin:0; color:#777; font-size:0.9rem;">Total Implantação (Setup):</p>
+                        <h3 style="margin:0 0 15px 0; color:#ff6600;">R$ {f_br(setup_matriz)}</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                with col_res2:
+                    st.markdown(f"""
+                    <div style="background-color:#ffffff; border-top: 6px solid #ff6600; padding:20px; border-radius:8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+                        <h4 style="margin:0; color:#ff6600;">VR SOFTWARE FILIAL ({pct_filial}%)</h4>
+                        <hr>
+                        <p style="margin:0; color:#777; font-size:0.9rem;">Mensalidade Recorrente:</p>
+                        <h3 style="margin:0 0 15px 0; color:#2e7d32;">R$ {f_br(mensal_filial)}</h3>
+                        <p style="margin:0; color:#777; font-size:0.9rem;">Total Implantação (Setup):</p>
+                        <h3 style="margin:0 0 15px 0; color:#ff6600;">R$ {f_br(setup_filial)}</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                st.markdown("<br><h4>Cronograma de Boletos (Setup)</h4>", unsafe_allow_html=True)
+                
+                # Geração da Tabela de Parcelas
+                lista_parcelas = []
+                for i in range(1, qtd_parcelas_fin + 1):
+                    v_matriz = ultima_matriz if i == qtd_parcelas_fin else parcela_matriz_base
+                    v_filial = ultima_filial if i == qtd_parcelas_fin else parcela_filial_base
+                    lista_parcelas.append({
+                        "Parcela": f"{i}/{qtd_parcelas_fin}",
+                        "Boleto VR Matriz": f"R$ {f_br(v_matriz)}",
+                        "Boleto VR Filial": f"R$ {f_br(v_filial)}",
+                        "Total Mês": f"R$ {f_br(v_matriz + v_filial)}"
+                    })
+                
+                st.dataframe(pd.DataFrame(lista_parcelas), use_container_width=True, hide_index=True)
+
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button("🖨️ Gerar PDF de Boas-Vindas (Welcome Pack)", use_container_width=True):
+                    st.success("Simulação validada! O motor de geração de PDF será conectado a esta tela na próxima etapa.")
+
+# ==========================================
 # ROTEADOR DE SEGURANÇA
 # ==========================================
 if not st.session_state.logged_in: tela_login()
