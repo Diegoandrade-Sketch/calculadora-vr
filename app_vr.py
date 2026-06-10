@@ -14,11 +14,14 @@ import base64
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-APP_VERSION = "v6.2.2 - Finance Module (Stable & Isolated)"
+APP_VERSION = "v6.2.3 - Clean Architecture & Bulletproof UI"
 CACHE_FILE = "cache_vr.json"
 
+# Contador Mestre para evitar o Crash de Tela Branca (React Desync)
+if 'form_rc' not in st.session_state: st.session_state.form_rc = 0
+
 # ==========================================
-# O NOVO COFRE DE DADOS (DATA VAULT) - DESACOPLADO
+# O NOVO COFRE DE DADOS (DATA VAULT)
 # ==========================================
 if 'data_vault' not in st.session_state:
     st.session_state.data_vault = {
@@ -126,9 +129,8 @@ def empacotar_simulacao():
 
 def desempacotar_simulacao(json_data, prop_id):
     try:
-        for k in list(st.session_state.keys()):
-            if k.startswith("ui_"):
-                del st.session_state[k]
+        # Incrementa o contador para forçar o recarregamento limpo das caixinhas (sem crash)
+        st.session_state.form_rc += 1
 
         dados = json.loads(json_data) if isinstance(json_data, str) else json_data
         
@@ -567,9 +569,8 @@ def aplicativo_principal():
         dv['sel_i'] = lista_servicos_atual
 
     def limpar_tudo():
-        for k in list(st.session_state.keys()):
-            if k.startswith("ui_"):
-                del st.session_state[k]
+        # Solução para o Crash de UI: O Reset Counter força o Streamlit a criar caixinhas novas e limpas
+        st.session_state.form_rc += 1
                 
         st.session_state.data_vault = {
             'sel_m': [], 'sel_i': [], 'sel_d': [], 'auto_added': [],
@@ -590,19 +591,22 @@ def aplicativo_principal():
 
     def sync_combo():
         mark_unsaved()
+        rc = st.session_state.form_rc
         dv = st.session_state.data_vault
-        n_combo = st.session_state.ui_m_combo
+        n_combo = st.session_state.get(f"ui_m_combo_{rc}", "Montar Manualmente")
         dv['mapeamento']['m_combo'] = n_combo
+        
         if n_combo == "Padrao Pequeno Porte":
             dv['mapeamento'].update({
                 'm_pdv_touch': 0, 'm_pdv_self': 0, 'm_ecommerce': False, 'm_app': False, 'm_connect': False, 'm_controller': False, 'm_cartaz': False, 'm_masterfisco': False, 'm_backup': False, 'm_semanas': 0,
                 'm_erp_pro': True, 'm_pdv_conv': 3, 'm_xml': True, 'm_mobile': 1, 'm_tef': "SiTef Express", 'm_migracao': True, 'm_escopo': True
             })
-            st.session_state['ui_m_pdv_touch'] = 0; st.session_state['ui_m_pdv_self'] = 0; st.session_state['ui_m_ecommerce'] = False; st.session_state['ui_m_app'] = False; st.session_state['ui_m_connect'] = False; st.session_state['ui_m_controller'] = False; st.session_state['ui_m_cartaz'] = False; st.session_state['ui_m_masterfisco'] = False; st.session_state['ui_m_backup'] = False; st.session_state['ui_m_semanas'] = 0
-            st.session_state['ui_m_erp_pro'] = True; st.session_state['ui_m_pdv_conv'] = 3; st.session_state['ui_m_xml'] = True; st.session_state['ui_m_mobile'] = 1; st.session_state['ui_m_tef'] = "SiTef Express"; st.session_state['ui_m_migracao'] = True; st.session_state['ui_m_escopo'] = True
+            st.session_state.form_rc += 1
+
+    rc = st.session_state.form_rc
 
     # ==========================================
-    # SIDEBAR E ROTEAMENTO (BLINDADO)
+    # SIDEBAR E ROTEAMENTO BLINDADO
     # ==========================================
     with st.sidebar:
         if os.path.exists("logo_vr.png"): st.image("logo_vr.png", width=180)
@@ -611,7 +615,6 @@ def aplicativo_principal():
         if st.session_state.has_unsaved_changes and st.session_state.perma_nome_cliente:
             st.markdown("<div style='background-color:#fff3cd; color:#856404; padding:8px; border-radius:4px; font-size:0.8rem; border-left:3px solid #ffeeba; margin-bottom:15px;'>Atenção: Alterações não salvas</div>", unsafe_allow_html=True)
 
-        # Regra Estrita de Controle de Acesso
         if st.session_state.user_role == "consultor":
             abas = ["Diagnóstico"]
         elif st.session_state.user_role == "financeiro":
@@ -634,12 +637,12 @@ def aplicativo_principal():
             perfil_venda = st.selectbox("Perfil do Cliente", ["Com Despesas", "Sem Despesas"])
             
             c_md = st.session_state.get('modo_desconto', 'Total')
-            n_md = st.radio("Modo de Desconto", ["Total", "Item"], index=0 if c_md == "Total" else 1, key="ui_modo_desconto", on_change=mark_unsaved)
+            n_md = st.radio("Modo de Desconto", ["Total", "Item"], index=0 if c_md == "Total" else 1, key=f"ui_modo_desconto_{rc}", on_change=mark_unsaved)
             st.session_state.modo_desconto = n_md
             
             if st.session_state.modo_desconto == "Total":
                 c_desc = float(st.session_state.get('g_desc_mensalidade', 0.0))
-                n_desc = st.number_input("Desconto Total Mensalidade (%)", 0.0, 100.0, value=c_desc, step=0.5, key="ui_g_desc_mensalidade", on_change=mark_unsaved)
+                n_desc = st.number_input("Desconto Total Mensalidade (%)", 0.0, 100.0, value=c_desc, step=0.5, key=f"ui_g_desc_mensalidade_{rc}", on_change=mark_unsaved)
                 st.session_state.g_desc_mensalidade = n_desc
             else:
                 st.info("Desconto Ativado por Item (Acesse as engrenagens na coluna de Sistemas).")
@@ -650,17 +653,17 @@ def aplicativo_principal():
             
             c_fat = st.session_state.get('g_faturamento', "Na assinatura")
             op_fat = ["Na assinatura", "30 dias", "60 dias", "Após implantação"]
-            n_fat = st.selectbox("Início Mensalidade", op_fat, index=op_fat.index(c_fat) if c_fat in op_fat else 0, key="ui_g_faturamento", on_change=mark_unsaved)
+            n_fat = st.selectbox("Início Mensalidade", op_fat, index=op_fat.index(c_fat) if c_fat in op_fat else 0, key=f"ui_g_faturamento_{rc}", on_change=mark_unsaved)
             st.session_state.g_faturamento = n_fat
             
             c_parc = int(st.session_state.get('g_parcelas_setup', 4))
             op_parc = [1, 2, 3, 4, 5, 6, 10, 12]
-            n_parc = st.selectbox("Parcelas Setup", op_parc, index=op_parc.index(c_parc) if c_parc in op_parc else 3, key="ui_g_parcelas", on_change=mark_unsaved)
+            n_parc = st.selectbox("Parcelas Setup", op_parc, index=op_parc.index(c_parc) if c_parc in op_parc else 3, key=f"ui_g_parcelas_{rc}", on_change=mark_unsaved)
             st.session_state.g_parcelas_setup = n_parc
             
             c_reg = st.session_state.get('g_regra_desp', "Faturamento na assinatura")
             op_reg = ["Faturamento na assinatura", "Faturamento pós Implantação"]
-            n_reg = st.selectbox("Faturamento Despesas", op_reg, index=op_reg.index(c_reg) if c_reg in op_reg else 0, key="ui_g_regra_desp", on_change=mark_unsaved)
+            n_reg = st.selectbox("Faturamento Despesas", op_reg, index=op_reg.index(c_reg) if c_reg in op_reg else 0, key=f"ui_g_regra_desp_{rc}", on_change=mark_unsaved)
             st.session_state.g_regra_desp = n_reg
             
         st.write("---")
@@ -668,12 +671,11 @@ def aplicativo_principal():
         st.markdown(f"""<hr><div style="font-size:0.8rem; color:{db_cor};">{db_status}</div><div style="font-size:0.7rem; color:#888;">{APP_VERSION}</div>""", unsafe_allow_html=True)
 
     # ==========================================
-    # TELA 0: INÍCIO (BIFURCADA PARA FINANCEIRO)
+    # TELA 0: INÍCIO
     # ==========================================
     if tela == "Início":
         st.markdown(f"""<h1 class="hero-title">BEM-VINDO(A), {str(st.session_state.user_name).split()[0].upper()}!</h1>""", unsafe_allow_html=True)
         
-        # Bifurcação: Se for Financeiro, não mostra gamificação comercial.
         if st.session_state.user_role == "financeiro":
             st.markdown(f"""<p style="color:#777; font-size:1.2rem; margin-bottom:30px;"><b>Controladoria e Faturamento</b> | VR Software</p>""", unsafe_allow_html=True)
             st.info("Utilize o menu lateral para acessar a Central de Faturamento e gerar os documentos financeiros para os clientes.")
@@ -754,7 +756,7 @@ def aplicativo_principal():
     # ==========================================
     elif tela == "Faturamento":
         st.markdown("<h1 class='hero-title'>CENTRAL DE FATURAMENTO</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Geração do Welcome Pack e Rateio Automático de Contratos</p>", unsafe_allow_html=True)
+        st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Geração do Documento Financeiro e Rateio Automático de Contratos</p>", unsafe_allow_html=True)
 
         st.markdown("""<div class="cliente-container"><h3 style="margin:0; color:#262730;">1. Dados da Operação</h3></div>""", unsafe_allow_html=True)
         
@@ -852,7 +854,6 @@ def aplicativo_principal():
             lista_parcelas = []
             html_linhas_tabela = ""
             
-            # Laço de repetição do Setup
             if qtd_parcelas_fin > 0 and val_setup_fin > 0:
                 for i in range(1, qtd_parcelas_fin + 1):
                     v_matriz = ultima_matriz if i == qtd_parcelas_fin else parcela_matriz_base
@@ -865,7 +866,6 @@ def aplicativo_principal():
                     })
                     html_linhas_tabela += f"<tr><td>{i}/{qtd_parcelas_fin}</td><td class='highlight'>R$ {f_br(v_matriz)}</td><td class='highlight'>R$ {f_br(v_filial)}</td><td>R$ {f_br(v_matriz + v_filial)}</td></tr>"
             
-            # Adição da Linha Fixa da Mensalidade Recorrente
             if val_mensal_fin > 0:
                 lista_parcelas.append({
                     "Parcela": "Mensalidade (Após Implantação)",
@@ -960,7 +960,7 @@ def aplicativo_principal():
                     else: st.markdown(render_diag_card("Margem e Fisco", f"R$ {f_br(fat*taxa_perda)}", "Risco de Perda Mensal", "#ef4444", "Média de sangria do mercado.", "<b>VR Masterfisco</b> para higienização."), unsafe_allow_html=True)
 
     # ==========================================
-    # TELA PAINEL ADMIN
+    # TELA PAINEL ADMIN E OUTRAS (ISOLADAS)
     # ==========================================
     elif tela == "Painel Admin":
         st.markdown("""<h1 class="hero-title">BACKOFFICE</h1>""", unsafe_allow_html=True)
@@ -1068,9 +1068,6 @@ def aplicativo_principal():
                     
         with t_cat: st.dataframe(df_raw, use_container_width=True)
 
-    # ==========================================
-    # TELA MINHAS PROPOSTAS
-    # ==========================================
     elif tela == "Minhas Propostas":
         st.markdown("""<h1 class="hero-title">MEU HISTÓRICO</h1>""", unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
@@ -1178,9 +1175,6 @@ def aplicativo_principal():
 
         except Exception: st.error("Serviço indisponível no momento.")
 
-    # ==========================================
-    # TELA CONSULTA DE PREÇO
-    # ==========================================
     elif tela == "Consulta de Preco":
         st.markdown(f"""<h1 class="hero-title">ANÁLISE TÉCNICA</h1>""", unsafe_allow_html=True)
         st.markdown(f"""<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">Simulador de Negociação Individual</h3></div>""", unsafe_allow_html=True)
@@ -1190,21 +1184,17 @@ def aplicativo_principal():
         
         if p_sel:
             d = full_db[p_sel]
-            
             v_b = d.get('valor_projeto', 0.0) if (d.get('typeproductid') == 606 and d.get('valor_projeto', 0.0) > 0) else d.get('valor', 0.0)
             v_l = v_b * (1 - (desc_s/100))
             p_id = name_to_id.get(p_sel)
             is_sistema = (d.get('typeproductid') == 604)
-            
-            t_s = 0.0
-            h_s = ""
+            t_s, h_s = 0.0, ""
             
             if p_id in vinculos_db and any(v['tipo'] in ['projeto', 'adesao'] for v in vinculos_db[p_id]):
                 for r in vinculos_db[p_id]:
                     if r['tipo'] in ['projeto', 'adesao']:
                         f_nm = id_to_name.get(r['id_filho'])
                         d_f = full_db.get(f_nm, {})
-                        
                         f_val = d_f.get('valor_projeto', 0.0) if (d_f.get('typeproductid') == 606 and d_f.get('valor_projeto', 0.0) > 0) else d_f.get('valor', 0.0)
                         f_q = int(r['qtd'])
                         t_s += (f_q * f_val); uni = "h" if r['tipo'] == 'projeto' else "un"
@@ -1222,15 +1212,13 @@ def aplicativo_principal():
                 with c2:
                     html_b = f"""<span style="text-decoration: line-through; color: #777; font-size: 0.9rem;">R$ {f_br(v_b)}</span>""" if desc_s > 0 else ""
                     st.markdown(f"""<div class="resumo-card" style="border-top-color:#2e7d32;"><span class="resumo-label" style="font-size:0.8rem; font-weight:bold; color:#777;">Investimento Mensal</span><div class="resumo-valor" style="color:#2e7d32;">R$ {f_br(v_l)}</div>{html_b}<div class="resumo-subtitulo" style="font-weight:bold; color:#444; margin-top:10px;">DETALHE</div><ul class="lista-itens"><li><span class='item-name'>Desconto Aplicado</span><span class="item-detalhe">{f_pct(desc_s)}%</span></li></ul></div>""", unsafe_allow_html=True)
-                with c3:
-                    st.markdown(f"""<div class="resumo-card" style="border-top-color:#262730; min-height: auto;"><span class="resumo-label" style="font-size:0.8rem; font-weight:bold; color:#777;">Resumo Anual</span><div style="margin-top:15px;"><p><b>Economia Mensal:</b> R$ {f_br(v_b-v_l)}</p><p><b>Economia Anual:</b> R$ {f_br((v_b-v_l)*12)}</p></div></div>""", unsafe_allow_html=True)
+                with c3: st.markdown(f"""<div class="resumo-card" style="border-top-color:#262730; min-height: auto;"><span class="resumo-label" style="font-size:0.8rem; font-weight:bold; color:#777;">Resumo Anual</span><div style="margin-top:15px;"><p><b>Economia Mensal:</b> R$ {f_br(v_b-v_l)}</p><p><b>Economia Anual:</b> R$ {f_br((v_b-v_l)*12)}</p></div></div>""", unsafe_allow_html=True)
             else:
                 c1, c2 = st.columns(2)
                 with c1:
                     html_b = f"""<span style="text-decoration: line-through; color: #777; font-size: 0.9rem;">R$ {f_br(v_b)}</span>""" if desc_s > 0 else ""
                     st.markdown(f"""<div class="resumo-card"><span class="resumo-label" style="font-size:0.8rem; font-weight:bold; color:#777;">Setup / Serviço Único</span><div class="resumo-valor">R$ {f_br(v_l)}</div>{html_b}<div class="resumo-subtitulo" style="font-weight:bold; color:#444; margin-top:10px;">DETALHE</div><ul class="lista-itens"><li><span class='item-name'>Desconto Aplicado</span><span class="item-detalhe">{f_pct(desc_s)}%</span></li></ul></div>""", unsafe_allow_html=True)
-                with c2:
-                    st.markdown(f"""<div class="resumo-card" style="border-top-color:#262730; min-height: auto;"><span class="resumo-label" style="font-size:0.8rem; font-weight:bold; color:#777;">Resumo do Desconto</span><div style="margin-top:15px;"><p><b>Economia Total Gerada:</b> R$ {f_br(v_b-v_l)}</p><p style="color:#777; font-size:0.85rem;">*Este item não possui faturamento recorrente mensal.</p></div></div>""", unsafe_allow_html=True)
+                with c2: st.markdown(f"""<div class="resumo-card" style="border-top-color:#262730; min-height: auto;"><span class="resumo-label" style="font-size:0.8rem; font-weight:bold; color:#777;">Resumo do Desconto</span><div style="margin-top:15px;"><p><b>Economia Total Gerada:</b> R$ {f_br(v_b-v_l)}</p><p style="color:#777; font-size:0.85rem;">*Este item não possui faturamento recorrente mensal.</p></div></div>""", unsafe_allow_html=True)
 
     # ==========================================
     # TELA VISÃO DO GESTOR
@@ -1242,10 +1230,8 @@ def aplicativo_principal():
             engine = get_db_engine()
             with engine.connect() as conn:
                 df_dash = pd.read_sql("SELECT * FROM propostas WHERE status != 'Excluída'", conn)
-                try:
-                    df_logs = pd.read_sql("SELECT email_usuario, DATE(data_acesso) as data FROM logs_acesso", conn)
-                except Exception:
-                    df_logs = pd.DataFrame()
+                try: df_logs = pd.read_sql("SELECT email_usuario, DATE(data_acesso) as data FROM logs_acesso", conn)
+                except: df_logs = pd.DataFrame()
             
             if df_dash.empty:
                 st.info("O CRM ainda não possui propostas para gerar indicadores.")
@@ -1271,8 +1257,7 @@ def aplicativo_principal():
                         rank['Setup Total'] = rank['Setup Total'].apply(lambda x: f"R$ {f_br(x)}")
                         rank['Mensalidade Total'] = rank['Mensalidade Total'].apply(lambda x: f"R$ {f_br(x)}")
                         st.dataframe(rank, use_container_width=True, hide_index=True)
-                    else:
-                        st.info("Ainda não há contratos assinados para gerar o ranking.")
+                    else: st.info("Ainda não há contratos assinados para gerar o ranking.")
                         
                 with col_dash2:
                     st.markdown("### Resumo do Funil")
@@ -1296,8 +1281,7 @@ def aplicativo_principal():
                         logs_agg = df_logs.groupby('email_usuario').size().reset_index(name='Total de Logins')
                         logs_agg = logs_agg.sort_values(by='Total de Logins', ascending=False)
                         st.dataframe(logs_agg, use_container_width=True, hide_index=True)
-                    else:
-                        st.warning("A tabela de logs_acesso está vazia ou ainda não foi criada no PostgreSQL.")
+                    else: st.warning("A tabela de logs_acesso está vazia ou ainda não foi criada.")
                 
                 with col_op2:
                     st.markdown("**Propostas Geradas por Dia**")
@@ -1313,5 +1297,7 @@ def aplicativo_principal():
 # ==========================================
 # ROTEADOR DE SEGURANÇA
 # ==========================================
-if not st.session_state.logged_in: tela_login()
-else: aplicativo_principal()
+if not st.session_state.logged_in: 
+    tela_login()
+else: 
+    aplicativo_principal()
