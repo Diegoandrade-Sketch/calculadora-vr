@@ -14,7 +14,7 @@ import base64
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-APP_VERSION = "v6.2.3 - Clean Architecture & Bulletproof UI"
+APP_VERSION = "v6.2.4 - Ultimate Stability & Finance Hub"
 CACHE_FILE = "cache_vr.json"
 
 # Contador Mestre para evitar o Crash de Tela Branca (React Desync)
@@ -26,11 +26,8 @@ if 'form_rc' not in st.session_state: st.session_state.form_rc = 0
 if 'data_vault' not in st.session_state:
     st.session_state.data_vault = {
         'sel_m': [], 'sel_i': [], 'sel_d': [], 'auto_added': [],
-        'quantidades': {},
-        'setup_sistemas': {},
-        'descontos_itens': {},
-        'despesas_valores': {},
-        'negociar': {},
+        'quantidades': {}, 'setup_sistemas': {}, 'descontos_itens': {},
+        'despesas_valores': {}, 'negociar': {},
         'mapeamento': {
             'm_combo': "Montar Manualmente", 'm_pdv_conv': 0, 'm_pdv_touch': 0, 'm_pdv_self': 0, 'm_semanas': 0, 'm_mobile': 0,
             'm_tef': "Nao utiliza", 'm_migracao': False, 'm_ecommerce': False, 'm_app': False, 'm_connect': False,
@@ -81,10 +78,8 @@ def f_pct(valor):
 def parse_currency(val_str):
     if not val_str: return 0.0
     v = str(val_str).upper().replace('R$', '').strip()
-    if '.' in v and ',' in v:
-        v = v.replace('.', '').replace(',', '.')
-    elif ',' in v:
-        v = v.replace(',', '.')
+    if '.' in v and ',' in v: v = v.replace('.', '').replace(',', '.')
+    elif ',' in v: v = v.replace(',', '.')
     v = re.sub(r'[^\d.]', '', v)
     try: return float(v)
     except: return 0.0
@@ -129,9 +124,12 @@ def empacotar_simulacao():
 
 def desempacotar_simulacao(json_data, prop_id):
     try:
-        # Incrementa o contador para forçar o recarregamento limpo das caixinhas (sem crash)
-        st.session_state.form_rc += 1
+        # Destruir UI ghosts
+        for k in list(st.session_state.keys()):
+            if k.startswith("ui_"):
+                del st.session_state[k]
 
+        st.session_state.form_rc += 1 # Incrementa contador global de front-end
         dados = json.loads(json_data) if isinstance(json_data, str) else json_data
         
         st.session_state.perma_nome_cliente = dados.get('perma_nome_cliente', '')
@@ -569,9 +567,7 @@ def aplicativo_principal():
         dv['sel_i'] = lista_servicos_atual
 
     def limpar_tudo():
-        # Solução para o Crash de UI: O Reset Counter força o Streamlit a criar caixinhas novas e limpas
-        st.session_state.form_rc += 1
-                
+        st.session_state.form_rc += 1 # Blindagem contra ui ghosting
         st.session_state.data_vault = {
             'sel_m': [], 'sel_i': [], 'sel_d': [], 'auto_added': [],
             'quantidades': {}, 'setup_sistemas': {}, 'descontos_itens': {},
@@ -601,12 +597,12 @@ def aplicativo_principal():
                 'm_pdv_touch': 0, 'm_pdv_self': 0, 'm_ecommerce': False, 'm_app': False, 'm_connect': False, 'm_controller': False, 'm_cartaz': False, 'm_masterfisco': False, 'm_backup': False, 'm_semanas': 0,
                 'm_erp_pro': True, 'm_pdv_conv': 3, 'm_xml': True, 'm_mobile': 1, 'm_tef': "SiTef Express", 'm_migracao': True, 'm_escopo': True
             })
-            st.session_state.form_rc += 1
+            st.session_state.form_rc += 1 # Força atualização visual blindada
 
     rc = st.session_state.form_rc
 
     # ==========================================
-    # SIDEBAR E ROTEAMENTO BLINDADO
+    # SIDEBAR E ROTEAMENTO (BLINDADO PARA FINANÇAS)
     # ==========================================
     with st.sidebar:
         if os.path.exists("logo_vr.png"): st.image("logo_vr.png", width=180)
@@ -891,8 +887,460 @@ def aplicativo_principal():
             st.info("Clique no botão 'Salvar PDF / Imprimir' dentro do quadro abaixo.")
             components.html(st.session_state.html_welcome_pack, height=1000, scrolling=True)
             col_fw1, col_fw2, col_fw3 = st.columns([1, 1, 1])
-            if col_fw2.button("Fechar Visualização Financeira", use_container_width=True): 
+            if col_fw2.button("Fechar Visualização", use_container_width=True): 
                 st.session_state.show_welcome_pack = False
+                st.rerun()
+
+    # ==========================================
+    # TELA GERADOR DE PROPOSTA (BLINDADA CONTRA ERRO DE PRODUTO OBSOLETO)
+    # ==========================================
+    elif tela == "Gerador de Proposta":
+        dv = st.session_state.data_vault
+        md = dv['mapeamento']
+
+        def aplicar_mapeamento():
+            _sel_m, _sel_i, _sel_d = [], [], []
+            for k in full_db.keys(): dv['quantidades'][k] = 0
+
+            for p_name in sistemas_db.keys():
+                qtd = 0
+                if p_name == "VR PDV Convencional": qtd = int(md.get('m_pdv_conv', 0))
+                elif p_name == "VR PDV Touchscreen": qtd = int(md.get('m_pdv_touch', 0))
+                elif p_name == "VR PDV Self Checkout": qtd = int(md.get('m_pdv_self', 0))
+                elif p_name == "VR ERP PRO" and md.get('m_erp_pro'): qtd = 1
+                elif p_name == "VR Gerenciador Xml" and md.get('m_xml'): qtd = 1
+                elif p_name == "VR Connect (Android/IOS)" and md.get('m_connect'): qtd = 1
+                elif p_name == "VR Backup 050 Gb" and md.get('m_backup'): qtd = 1
+                elif p_name == "VR Cartaz" and md.get('m_cartaz'): qtd = 1
+                elif p_name == "VR E-Commerce" and md.get('m_ecommerce'): qtd = 1
+                elif p_name == "VR Controller 360 ( 1 CNPJ )" and md.get('m_controller'): qtd = 1
+                elif p_name == "VR Masterfisco Brasil" and md.get('m_masterfisco'): qtd = 1
+                elif p_name == "VR M-Commerce" and md.get('m_app'): qtd = 1
+                elif p_name == "VR Mobile (Smartphone/Android)": qtd = int(md.get('m_mobile', 0))
+
+                if md.get('m_tef') == "SiTef Express":
+                    tot = int(md.get('m_pdv_conv',0)) + int(md.get('m_pdv_touch',0)) + int(md.get('m_pdv_self',0))
+                    if tot <= 3 and p_name == "VR Sitef Express ate 3 PDVs": qtd = 1
+                    elif 3 < tot <= 6 and p_name == "VR Sitef Express ate 6 PDVs": qtd = 1
+                    elif 6 < tot <= 8 and p_name == "VR Sitef Express ate 8 PDVs": qtd = 1
+                    elif tot > 8 and p_name == "VR Sitef Express a partir 9 PDVs": qtd = 1
+                elif md.get('m_tef') == "VR TEF" and p_name.lower() == "vr tef": qtd = 1
+
+                if qtd > 0: 
+                    dv['quantidades'][p_name] = qtd
+                    _sel_m.append(p_name)
+
+            sem = int(md.get('m_semanas', 0))
+            for s_name in servicos_db.keys():
+                s_low = s_name.lower()
+                qtd = 0
+                if "implanta" in s_low and "treinamento" in s_low: qtd = sem * 44
+                elif md.get('m_escopo') and "escopo" in s_low: qtd = 8
+                elif md.get('m_migracao') and s_name == "Migracao de Dados Padrao": qtd = 8
+                if qtd > 0: 
+                    dv['quantidades'][s_name] = qtd
+                    _sel_i.append(s_name)
+
+            if sem > 0:
+                for d_name in despesas_db.keys():
+                    d_low = d_name.lower()
+                    qtd = 0
+                    if "alimenta" in d_low: qtd = sem * 10
+                    elif "hospedagem" in d_low: qtd = sem * 4
+                    if qtd > 0: 
+                        dv['quantidades'][d_name] = qtd
+                        _sel_d.append(d_name)
+                        
+            dv['sel_m'] = _sel_m
+            dv['sel_i'] = _sel_i
+            dv['sel_d'] = _sel_d
+            processar_regras_colaterais()
+            st.session_state.has_unsaved_changes = True
+            st.session_state.form_rc += 1 # Sync forçado visual
+
+        col_hdr1, col_hdr2, col_hdr3 = st.columns([2, 1, 1])
+        with col_hdr1:
+            st.markdown("""<h1 class="hero-title">PROPOSTA COMERCIAL</h1>""", unsafe_allow_html=True)
+            if st.session_state.proposta_carregada_id:
+                st.markdown(f"<span style='color:#ff6600; font-weight:bold;'>Editando a Proposta do CRM: #{st.session_state.proposta_carregada_id}</span>", unsafe_allow_html=True)
+        
+        with col_hdr2:
+            st.write("")
+            if not st.session_state.modo_apresentacao:
+                if st.button("Salvar no CRM", use_container_width=True, type="primary"):
+                    if not st.session_state.perma_nome_cliente:
+                        st.error("Preencha o Nome do Cliente no cabeçalho.")
+                    else:
+                        try:
+                            t_setup_b, t_mensal_b = 0.0, 0.0
+                            for n in dv['sel_i']: 
+                                q_i = int(dv['quantidades'].get(n, 0))
+                                if q_i > 0 and n in servicos_db:
+                                    d_serv = servicos_db.get(n, {})
+                                    val_u = d_serv.get('valor_projeto', 0.0)
+                                    if val_u <= 0: val_u = d_serv.get('valor', 0.0)
+                                    t_setup_b += q_i * val_u
+                                
+                            for n in dv['sel_m']:
+                                q_m = int(dv['quantidades'].get(n, 0))
+                                if q_m > 0 and n in sistemas_db:
+                                    desc_bd = st.session_state.g_desc_mensalidade if st.session_state.modo_desconto == "Total" else dv['descontos_itens'].get(n, 0.0)
+                                    t_setup_b += sistemas_db[n].get('adesao_vinculada', 0.0)
+                                    t_mensal_b += (q_m * sistemas_db[n].get('valor', 0.0)) * (1 - (desc_bd/100))
+                                    if name_to_id.get(n) not in vinculos_db and n not in ["VR Mobile (Smartphone/Android)", "VR PDV Touchscreen", "VR PDV Self Checkout"]:
+                                        h_sist = int(dv['setup_sistemas'].get(n, 0))
+                                        if h_sist > 0: t_setup_b += (h_sist * (sistemas_db[n].get('valor_projeto', 0.0) or v_h_base_global))
+                            
+                            payload_json = empacotar_simulacao()
+                            engine = get_db_engine()
+                            with engine.begin() as conn:
+                                if st.session_state.proposta_carregada_id:
+                                    conn.execute(text("UPDATE propostas SET nome_cliente = :n, cnpj_cliente = :c, valor_setup = :vs, valor_mensal = :vm, dados_simulacao = :ds, data_atualizacao = CURRENT_TIMESTAMP WHERE id = :id"), {"n": st.session_state.perma_nome_cliente, "c": st.session_state.perma_cnpj_cliente, "vs": t_setup_b, "vm": t_mensal_b, "ds": payload_json, "id": st.session_state.proposta_carregada_id})
+                                    st.success(f"Proposta #{st.session_state.proposta_carregada_id} atualizada com sucesso no CRM!")
+                                else:
+                                    res = conn.execute(text("INSERT INTO propostas (vendedor_email, nome_cliente, cnpj_cliente, valor_setup, valor_mensal, dados_simulacao) VALUES (:e, :n, :c, :vs, :vm, :ds) RETURNING id"), {"e": st.session_state.user_email, "n": st.session_state.perma_nome_cliente, "c": st.session_state.perma_cnpj_cliente, "vs": t_setup_b, "vm": t_mensal_b, "ds": payload_json})
+                                    st.session_state.proposta_carregada_id = res.scalar()
+                                    st.success(f"Nova proposta guardada! (ID: #{st.session_state.proposta_carregada_id})")
+                            st.session_state.has_unsaved_changes = False
+                        except Exception: st.error("Erro interno. Tente de novo.")
+                        
+        with col_hdr3:
+            st.write("")
+            if not st.session_state.modo_apresentacao and st.session_state.proposta_carregada_id:
+                if st.button("Duplicar Nova", use_container_width=True):
+                    if not st.session_state.perma_nome_cliente:
+                        st.error("Preencha o Nome do Cliente.")
+                    else:
+                        try:
+                            t_setup_b, t_mensal_b = 0.0, 0.0
+                            for n in dv['sel_i']: 
+                                q_i = int(dv['quantidades'].get(n, 0))
+                                if q_i > 0 and n in servicos_db:
+                                    d_serv = servicos_db.get(n, {})
+                                    val_u = d_serv.get('valor_projeto', 0.0)
+                                    if val_u <= 0: val_u = d_serv.get('valor', 0.0)
+                                    t_setup_b += q_i * val_u
+                            for n in dv['sel_m']:
+                                q_m = int(dv['quantidades'].get(n, 0))
+                                if q_m > 0 and n in sistemas_db:
+                                    desc_bd = st.session_state.g_desc_mensalidade if st.session_state.modo_desconto == "Total" else dv['descontos_itens'].get(n, 0.0)
+                                    t_setup_b += sistemas_db[n].get('adesao_vinculada', 0.0); t_mensal_b += (q_m * sistemas_db[n].get('valor', 0.0)) * (1 - (desc_bd/100))
+                                    if name_to_id.get(n) not in vinculos_db and n not in ["VR Mobile (Smartphone/Android)", "VR PDV Touchscreen", "VR PDV Self Checkout"]:
+                                        h_sist = int(dv['setup_sistemas'].get(n, 0))
+                                        if h_sist > 0: t_setup_b += (h_sist * (sistemas_db[n].get('valor_projeto', 0.0) or v_h_base_global))
+                            
+                            payload_json = empacotar_simulacao()
+                            engine = get_db_engine()
+                            with engine.begin() as conn:
+                                res = conn.execute(text("INSERT INTO propostas (vendedor_email, nome_cliente, cnpj_cliente, valor_setup, valor_mensal, dados_simulacao) VALUES (:e, :n, :c, :vs, :vm, :ds) RETURNING id"), {"e": st.session_state.user_email, "n": st.session_state.perma_nome_cliente, "c": st.session_state.perma_cnpj_cliente, "vs": t_setup_b, "vm": t_mensal_b, "ds": payload_json})
+                                st.session_state.proposta_carregada_id = res.scalar()
+                            st.session_state.has_unsaved_changes = False
+                            st.success(f"Cópia criada! (ID: #{st.session_state.proposta_carregada_id})")
+                        except Exception: st.error("Erro ao duplicar.")
+
+        if st.session_state.modo_apresentacao:
+            st.markdown(f"""
+            <div style="background-color:#ffffff; border-left: 10px solid #262730; padding: 20px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
+                <span style="color:#ff6600; font-size:0.9rem; text-transform:uppercase; font-weight:bold;">Apresentação para o cliente:</span>
+                <h2 style="margin:5px 0; color:#262730;">{st.session_state.perma_nome_cliente or "Cliente Não Informado"}</h2>
+                <span style="color:#777; font-size:1.1rem; font-weight:bold;">CNPJ: {st.session_state.perma_cnpj_cliente if st.session_state.perma_cnpj_cliente else "Não informado"}</span>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("""<div class="cliente-container"><h3 style="margin:0; color:#262730;">Dados do Cliente</h3></div>""", unsafe_allow_html=True)
+            col_cli1, col_cli2 = st.columns([2, 1])
+            with col_cli1: st.text_input("Razão Social / Nome Fantasia", value=st.session_state.perma_nome_cliente, key="widget_nome", on_change=atualiza_nome_cliente, placeholder="Ex: Supermercados Dois Irmãos")
+            with col_cli2: st.text_input("CNPJ", value=st.session_state.perma_cnpj_cliente, key="widget_cnpj", on_change=atualiza_cnpj_cliente, placeholder="Apenas números", max_chars=18)
+            st.write("---")
+
+        if mapeamento_ativo and not st.session_state.modo_apresentacao:
+            st.markdown("""<div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">Mapeamento da Operacao</h3></div>""", unsafe_allow_html=True)
+            
+            n_combo = st.selectbox("Combo Rápido", ["Montar Manualmente", "Padrao Pequeno Porte"], index=0 if md.get('m_combo') == "Montar Manualmente" else 1, key=f"ui_m_combo_{rc}", on_change=sync_combo)
+
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                md['m_pdv_conv'] = st.number_input("PDV Convencional", value=int(md.get('m_pdv_conv',0)), step=1, key=f"ui_m_pdv_conv_{rc}")
+                md['m_pdv_touch'] = st.number_input("PDV Touch", value=int(md.get('m_pdv_touch',0)), step=1, key=f"ui_m_pdv_touch_{rc}")
+                md['m_pdv_self'] = st.number_input("PDV Selfcheckout", value=int(md.get('m_pdv_self',0)), step=1, key=f"ui_m_pdv_self_{rc}")
+            with c2:
+                op_tef = ["Nao utiliza", "SiTef Express", "VR TEF"]
+                c_tef = md.get('m_tef', "Nao utiliza")
+                md['m_tef'] = st.selectbox("TEF", op_tef, index=op_tef.index(c_tef) if c_tef in op_tef else 0, key=f"ui_m_tef_{rc}")
+                md['m_semanas'] = st.number_input("Semanas", value=int(md.get('m_semanas',0)), step=1, key=f"ui_m_semanas_{rc}")
+                md['m_migracao'] = st.checkbox("Migração?", value=md.get('m_migracao', False), key=f"ui_m_migracao_{rc}")
+                md['m_escopo'] = st.checkbox("Escopo?", value=md.get('m_escopo', False), key=f"ui_m_escopo_{rc}")
+            with c3:
+                md['m_mobile'] = st.number_input("VR Mobile", value=int(md.get('m_mobile',0)), step=1, key=f"ui_m_mobile_{rc}")
+                sc1, sc2, sc3 = st.columns(3)
+                md['m_erp_pro'] = sc1.toggle("VR ERP PRO", value=md.get('m_erp_pro', False), key=f"ui_m_erp_pro_{rc}")
+                md['m_xml'] = sc1.toggle("G. XML", value=md.get('m_xml', False), key=f"ui_m_xml_{rc}")
+                md['m_connect'] = sc1.toggle("Connect", value=md.get('m_connect', False), key=f"ui_m_connect_{rc}")
+                md['m_backup'] = sc2.toggle("VR Backup", value=md.get('m_backup', False), key=f"ui_m_backup_{rc}")
+                md['m_cartaz'] = sc2.toggle("VR Cartaz", value=md.get('m_cartaz', False), key=f"ui_m_cartaz_{rc}")
+                md['m_ecommerce'] = sc2.toggle("E-Commerce", value=md.get('m_ecommerce', False), key=f"ui_m_ecommerce_{rc}")
+                md['m_controller'] = sc3.toggle("C. 360", value=md.get('m_controller', False), key=f"ui_m_controller_{rc}")
+                md['m_masterfisco'] = sc3.toggle("MasterFisco", value=md.get('m_masterfisco', False), key=f"ui_m_masterfisco_{rc}")
+                md['m_app'] = sc3.toggle("M-Commerce", value=md.get('m_app', False), key=f"ui_m_app_{rc}")
+                b1, b2 = st.columns(2)
+                if b1.button("Aplicar Inteligência", use_container_width=True): aplicar_mapeamento(); st.rerun()
+                if b2.button("Limpar Tudo", use_container_width=True): limpar_tudo(); st.rerun()
+            st.write("---")
+
+        if not st.session_state.modo_apresentacao:
+            if perfil_venda == "Com Despesas":
+                c1, c2, c3 = st.columns(3)
+            else:
+                c_cols = st.columns(2)
+                c1, c2 = c_cols[0], c_cols[1]
+                c3 = None
+            
+            with c1:
+                st.markdown("""<div class="section-header"><span class="section-title">IMPLANTAÇÃO E SERVIÇOS</span></div>""", unsafe_allow_html=True)
+                valid_i = [x for x in dv['sel_i'] if x in servicos_db]
+                new_sel_i = st.multiselect("Serviços Manuais", list(servicos_db.keys()), default=valid_i, key=f"ui_sel_i_{rc}", on_change=mark_unsaved)
+                dv['sel_i'] = new_sel_i
+                
+                for i in dv['sel_i']:
+                    if i in servicos_db:
+                        d_s = servicos_db[i]
+                        v_u = d_s.get('valor_projeto', 0.0)
+                        if v_u <= 0: v_u = d_s.get('valor', 0.0)
+                        
+                        c_qty = int(dv['quantidades'].get(i, 0))
+                        n_qty = st.number_input(f"{i} (R$ {f_br(v_u)}/h)", min_value=0, step=1, value=c_qty, key=f"ui_qty_{i}_{rc}", on_change=mark_unsaved)
+                        dv['quantidades'][i] = n_qty
+                    
+                has_sistemas_com_setup = any(
+                    m in sistemas_db and
+                    name_to_id.get(m) not in vinculos_db and 
+                    m not in ["VR Mobile (Smartphone/Android)", "VR PDV Touchscreen", "VR PDV Self Checkout"] and 
+                    int(sistemas_db[m].get('horas_padrao', 0)) > 0 and 
+                    int(dv['quantidades'].get(m, 0)) > 0 
+                    for m in dv['sel_m']
+                )
+                
+                if has_sistemas_com_setup:
+                    st.markdown("<div style='margin-top:15px; font-weight:bold; font-size:0.9rem; color:#ff6600; border-bottom:1px solid #eee; padding-bottom:5px;'>Setup Automático (Sistemas)</div>", unsafe_allow_html=True)
+                    for m in dv['sel_m']:
+                        if m in sistemas_db and int(dv['quantidades'].get(m, 0)) > 0: 
+                            if name_to_id.get(m) not in vinculos_db and m not in ["VR Mobile (Smartphone/Android)", "VR PDV Touchscreen", "VR PDV Self Checkout"]:
+                                d_sist = sistemas_db[m]
+                                h_padrao = int(d_sist.get('horas_padrao', 0))
+                                if h_padrao > 0:
+                                    v_rate = d_sist.get('valor_projeto', 0.0) or v_h_base_global
+                                    nome_exib = "Projeto ERP PRO" if m == "VR ERP PRO" else f"Implantação {m}"
+                                    
+                                    c_set = int(dv['setup_sistemas'].get(m, h_padrao))
+                                    n_set = st.number_input(f"{nome_exib} (R$ {f_br(v_rate)}/h)", min_value=0, step=1, value=c_set, key=f"ui_setup_{m}_{rc}", on_change=mark_unsaved)
+                                    dv['setup_sistemas'][m] = n_set
+
+            with c2:
+                st.markdown("""<div class="section-header"><span class="section-title">MENSALIDADES SISTEMAS</span></div>""", unsafe_allow_html=True)
+                valid_m = [x for x in dv['sel_m'] if x in sistemas_db]
+                new_sel_m = st.multiselect("Sistemas", list(sistemas_db.keys()), default=valid_m, key=f"ui_sel_m_{rc}", on_change=mark_unsaved)
+                dv['sel_m'] = new_sel_m
+                
+                for i in dv['sel_m']:
+                    if i in sistemas_db:
+                        v_u = sistemas_db[i].get('valor', 0.0)
+                        c_qty = int(dv['quantidades'].get(i, 0))
+                        n_qty = st.number_input(f"**{i}** (R$ {f_br(v_u)}/un)", min_value=0, step=1, value=c_qty, key=f"ui_qty_{i}_{rc}", on_change=mark_unsaved)
+                        dv['quantidades'][i] = n_qty
+                        
+                        if st.session_state.modo_desconto == "Item":
+                            c_neg = dv['negociar'].get(i, False)
+                            n_neg = st.checkbox(f"⚙️ Negociar Desconto", value=c_neg, key=f"ui_neg_{i}_{rc}")
+                            dv['negociar'][i] = n_neg
+                            if n_neg:
+                                c_desc = float(dv['descontos_itens'].get(i, 0.0))
+                                n_desc = st.number_input(f"↳ Desconto %", 0.0, 100.0, value=c_desc, key=f"ui_desc_{i}_{rc}", on_change=mark_unsaved)
+                                dv['descontos_itens'][i] = n_desc
+                            else:
+                                dv['descontos_itens'][i] = 0.0
+            
+            if c3:
+                with c3:
+                    st.markdown("""<div class="section-header"><span class="section-title">DESPESAS DO PROJETO</span></div>""", unsafe_allow_html=True)
+                    valid_d = [x for x in dv['sel_d'] if x in despesas_db]
+                    new_sel_d = st.multiselect("Despesas", list(despesas_db.keys()), default=valid_d, key=f"ui_sel_d_{rc}", on_change=mark_unsaved)
+                    dv['sel_d'] = new_sel_d
+                    
+                    if dv['sel_d']:
+                        cd1, cd2 = st.columns([1, 1.2])
+                        cd1.markdown("<span style='font-size:0.85rem; font-weight:bold; color:#777;'>Qtd</span>", unsafe_allow_html=True)
+                        cd2.markdown("<span style='font-size:0.85rem; font-weight:bold; color:#777;'>R$ Unit.</span>", unsafe_allow_html=True)
+
+                    for i in dv['sel_d']:
+                        if i in despesas_db:
+                            v_u_padrao = despesas_db[i].get('valor', 0.0)
+                            c_qty = int(dv['quantidades'].get(i, 0))
+                            c_unit = float(dv['despesas_valores'].get(i, v_u_padrao))
+                            
+                            st.markdown(f"<div style='font-size:0.85rem; font-weight:bold; color:#444; margin-bottom:2px;'>{i}</div>", unsafe_allow_html=True)
+                            cd1, cd2 = st.columns([1, 1.2])
+                            n_qty = cd1.number_input(f"Qtd_{i}", min_value=0, step=1, value=c_qty, key=f"ui_qty_{i}_{rc}", on_change=mark_unsaved, label_visibility="collapsed")
+                            n_unit = cd2.number_input(f"R$_{i}", min_value=0.0, step=10.0, value=c_unit, key=f"ui_unit_{i}_{rc}", on_change=mark_unsaved, label_visibility="collapsed")
+                            dv['quantidades'][i] = n_qty
+                            dv['despesas_valores'][i] = n_unit
+                            st.markdown("<div style='margin-bottom:10px;'></div>", unsafe_allow_html=True)
+
+        st.markdown("""<h2 style='text-align:center; font-weight:800; margin-top:30px;'>RESUMO DO INVESTIMENTO</h2>""", unsafe_allow_html=True)
+        res_cols = st.columns(3) if perfil_venda == "Com Despesas" else st.columns([1, 2, 2, 1])[1:3]
+        
+        def get_prioridade_mensal(item_name):
+            if item_name == "VR ERP PRO": return 1
+            if item_name == "VR PDV Convencional": return 2
+            if "VR Sitef Express" in item_name: return 3
+            if item_name == "VR Gerenciador Xml": return 4
+            if "VR Mobile" in item_name: return 5
+            return 99
+
+        def get_prioridade_setup(obj_item):
+            nome = obj_item['nome_exibicao']
+            if "Projeto ERP PRO" in nome: return 1
+            if "Migracao" in nome: return 2
+            if "Escopo" in nome: return 3
+            return 99
+
+        t_setup = 0.0
+        lista_setup_pre_ordenacao = []
+        html_setup_digital = ""
+
+        for n in dv['sel_i']:
+            q = int(dv['quantidades'].get(n, 0))
+            if q > 0 and n in servicos_db:
+                d_serv = servicos_db[n]
+                v_u = d_serv.get('valor_projeto', 0.0)
+                if v_u <= 0: v_u = d_serv.get('valor', 0.0)
+                
+                t_setup += (q * v_u)
+                html_linha = f"<li><span class='item-name'>{n}</span><span class='item-detalhe'>{q}h x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_u)}</span></li>"
+                html_digital = f"<li><strong>{n}</strong><span class='detail'>{q}h x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_u)}</span></li>"
+                lista_setup_pre_ordenacao.append({'nome_exibicao': n, 'html': html_linha, 'html_dig': html_digital})
+        
+        itens_isentos_setup = ["VR Mobile (Smartphone/Android)", "VR PDV Touchscreen", "VR PDV Self Checkout"]
+
+        for n in dv['sel_m']:
+            q_m = int(dv['quantidades'].get(n, 0))
+            if q_m > 0 and n in sistemas_db:
+                if name_to_id.get(n) not in vinculos_db:
+                    if n in itens_isentos_setup: continue
+                    d_s = sistemas_db[n]
+                    h = int(dv['setup_sistemas'].get(n, 0))
+                    ads = d_s.get('adesao_vinculada', 0.0)
+                    if h > 0:
+                        v_rate = (d_s.get('valor_projeto', 0.0) or v_h_base_global)
+                        t_setup += (h * v_rate)
+                        nome_exibicao = "Projeto ERP PRO" if n == "VR ERP PRO" else f"Implantacao {n}"
+                        html_linha = f"<li><span class='item-name'>{nome_exibicao}</span><span class='item-detalhe'>{h}h x R$ {f_br(v_rate)} | Total: R$ {f_br(h*v_rate)}</span></li>"
+                        html_digital = f"<li><strong>{nome_exibicao}</strong><span class='detail'>{h}h x R$ {f_br(v_rate)} | Total: R$ {f_br(h*v_rate)}</span></li>"
+                        lista_setup_pre_ordenacao.append({'nome_exibicao': nome_exibicao, 'html': html_linha, 'html_dig': html_digital})
+                    if ads > 0:
+                        t_setup += ads
+                        html_linha = f"<li><span class='item-name'>Taxa de Adesao {n}</span><span class='item-detalhe'>1 un x R$ {f_br(ads)} | Total: R$ {f_br(ads)}</span></li>"
+                        html_digital = f"<li><strong>Taxa de Adesao {n}</strong><span class='detail'>1 un x R$ {f_br(ads)} | Total: R$ {f_br(ads)}</span></li>"
+                        lista_setup_pre_ordenacao.append({'nome_exibicao': f"Taxa de Adesao {n}", 'html': html_linha, 'html_dig': html_digital})
+
+        lista_setup_pre_ordenacao.sort(key=get_prioridade_setup)
+        h_setup = "".join(item['html'] for item in lista_setup_pre_ordenacao)
+        html_setup_digital = "".join(item['html_dig'] for item in lista_setup_pre_ordenacao)
+
+        with res_cols[0]:
+            parcelas_safe = st.session_state.g_parcelas_setup if st.session_state.g_parcelas_setup > 0 else 1
+            st.markdown(f"""<div class="resumo-card"><span class="resumo-label" style="color:#ff6600; font-weight:bold;">Investimento Implantação (Setup)</span><div class="resumo-valor">R$ {f_br(t_setup)}</div><div style="font-weight:bold;">{st.session_state.g_parcelas_setup}x de R$ {f_br(t_setup/parcelas_safe)}</div><div class="resumo-subtitulo" style="margin-top:15px;">DETALHAMENTO SETUP</div><ul class="lista-itens">{h_setup if h_setup else "<li>Nenhum item</li>"}</ul></div>""", unsafe_allow_html=True)
+
+        t_mensal, h_m = 0.0, ""
+        html_mensal_digital = ""
+        sistemas_ordenados = sorted(dv['sel_m'], key=get_prioridade_mensal)
+        
+        for n in sistemas_ordenados:
+            q = int(dv['quantidades'].get(n, 0))
+            if q > 0 and n in sistemas_db:
+                v_u = sistemas_db[n].get('valor', 0.0)
+                desc_aplicado = st.session_state.g_desc_mensalidade if st.session_state.modo_desconto == "Total" else dv['descontos_itens'].get(n, 0.0)
+                v_liq_u = v_u * (1 - (desc_aplicado/100))
+                t_mensal += (q * v_liq_u)
+                
+                str_orig = f"R$ {f_br(q * v_u)}"
+                str_desc = f"R$ {f_br(q * v_liq_u)}"
+                
+                if desc_aplicado > 0:
+                    h_m += f"<li><span class='item-name'>{n}</span><span class='item-detalhe'>{q} un x R$ {f_br(v_u)} | Total: <del style='color:#999; margin-right:5px;'>{str_orig}</del>{str_desc}</span></li>"
+                    html_mensal_digital += f"<li><strong>{n}</strong><span class='detail'>{q} un x R$ {f_br(v_u)} | Total: <del>{str_orig}</del> {str_desc}</span></li>"
+                else:
+                    h_m += f"<li><span class='item-name'>{n}</span><span class='item-detalhe'>{q} un x R$ {f_br(v_u)} | Total: {str_orig}</span></li>"
+                    html_mensal_digital += f"<li><strong>{n}</strong><span class='detail'>{q} un x R$ {f_br(v_u)} | Total: {str_orig}</span></li>"
+                
+                vincs = [id_to_name.get(v['id_filho']) for v in vinculos_db.get(name_to_id.get(n), []) if v['tipo'] == 'incluso']
+                for inc in vincs: 
+                    h_m += f"<li class='item-incluso'>└ {inc} (Incluso)</li>"
+                    html_mensal_digital += f"<li class='item-incluso'>└ {inc} (Incluso)</li>"
+                if n == "VR ERP PRO" and not vincs:
+                    for inc in ["VR Promo", "VR Carteira Digital", "VR Analytics"]: 
+                        h_m += f"<li class='item-incluso'>└ {inc} (Incluso)</li>"
+                        html_mensal_digital += f"<li class='item-incluso'>└ {inc} (Incluso)</li>"
+
+        with res_cols[1]:
+            d_h = f"""<div style="color:#2e7d32; font-weight:bold;">Desconto: {st.session_state.g_desc_mensalidade}%</div>""" if (st.session_state.modo_desconto == "Total" and exibir_detalhe_desc and st.session_state.g_desc_mensalidade > 0) else """<div style="height:21px"></div>"""
+            st.markdown(f"""<div class="resumo-card" style="border-top-color:#2e7d32;"><span class="resumo-label" style="color:#2e7d32; font-weight:bold;">Manutenção Mensal</span><div class="resumo-valor" style="color:#2e7d32;">R$ {f_br(t_mensal)}</div>{d_h}<div style="font-weight:bold;">Início: {st.session_state.g_faturamento}</div><div class="resumo-subtitulo" style="margin-top:15px;">SISTEMAS</div><ul class="lista-itens">{h_m if h_m else "<li>Nenhum</li>"}</ul></div>""", unsafe_allow_html=True)
+
+        t_d, h_d = 0.0, ""
+        html_desp_digital = ""
+        if perfil_venda == "Com Despesas":
+            for n in dv['sel_d']:
+                q = int(dv['quantidades'].get(n, 0))
+                if q > 0 and n in despesas_db:
+                    v_u = float(dv['despesas_valores'].get(n, despesas_db[n].get('valor', 0.0)))
+                    t_d += (q * v_u)
+                    h_d += f"<li><span class='item-name'>{n}</span><span class='item-detalhe'>{q} un x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_u)}</span></li>"
+                    html_desp_digital += f"<li><strong>{n}</strong><span class='detail'>{q} un x R$ {f_br(v_u)} | Total: R$ {f_br(q*v_u)}</span></li>"
+            with res_cols[2]:
+                st.markdown(f"""<div class="resumo-card" style="border-top-color:#1976d2;"><span class="resumo-label" style="color:#1976d2; font-weight:bold;">Despesas do Projeto</span><div class="resumo-valor" style="color:#1976d2;">R$ {f_br(t_d)}</div><div style="color:#d32f2f; font-weight:bold; font-size:0.8rem;">{st.session_state.g_regra_desp}</div><div class="resumo-subtitulo" style="margin-top:15px;">DETALHAMENTO</div><ul class="lista-itens">{h_d if h_d else "<li>Sem despesas</li>"}</ul></div>""", unsafe_allow_html=True)
+
+        if exibir_media_loja:
+            qtd_lojas = int(dv['quantidades'].get("VR ERP PRO", 0))
+            if qtd_lojas > 0:
+                st.markdown(f"""<h3 style='text-align:center; font-weight:800; margin-top:40px; color:#262730;'>DILUIÇÃO DO INVESTIMENTO ({qtd_lojas} LOJAS)</h3>""", unsafe_allow_html=True)
+                m_cols = st.columns(3) if perfil_venda == "Com Despesas" else st.columns([1, 2, 2, 1])[1:3]
+                with m_cols[0]: st.markdown(f"""<div style="background-color:#ffffff; border-left: 6px solid #ff6600; padding:15px; border-radius:5px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);"><span style="font-size:0.85rem; font-weight:bold; color:#777;">SETUP POR LOJA</span><br><span style="font-size:1.6rem; font-weight:900; color:#333;">R$ {f_br(t_setup / qtd_lojas)}</span></div>""", unsafe_allow_html=True)
+                with m_cols[1]: st.markdown(f"""<div style="background-color:#ffffff; border-left: 6px solid #2e7d32; padding:15px; border-radius:5px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);"><span style="font-size:0.85rem; font-weight:bold; color:#777;">MENSALIDADE POR LOJA</span><br><span style="font-size:1.6rem; font-weight:900; color:#333;">R$ {f_br(t_mensal / qtd_lojas)}</span></div>""", unsafe_allow_html=True)
+                if perfil_venda == "Com Despesas":
+                    with m_cols[2]: st.markdown(f"""<div style="background-color:#ffffff; border-left: 6px solid #1976d2; padding:15px; border-radius:5px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);"><span style="font-size:0.85rem; font-weight:bold; color:#777;">DESPESAS POR LOJA</span><br><span style="font-size:1.6rem; font-weight:900; color:#333;">R$ {f_br(t_d / qtd_lojas)}</span></div>""", unsafe_allow_html=True)
+
+        if not st.session_state.modo_apresentacao:
+            st.write("---")
+            if not st.session_state.perma_nome_cliente:
+                st.info("Preencha o nome do cliente no cabeçalho da página para liberar a emissão de proposta digital.")
+            else:
+                col_dig1, col_dig2, col_dig3 = st.columns([1, 2, 1])
+                with col_dig2:
+                    if st.button("Gerar Proposta Digital (PDF)", use_container_width=True):
+                        dados_pdf = {
+                            'nome_cliente': st.session_state.perma_nome_cliente,
+                            'cnpj': st.session_state.perma_cnpj_cliente,
+                            'html_setup': html_setup_digital,
+                            'valor_setup': f_br(t_setup),
+                            'parcelas': str(st.session_state.g_parcelas_setup),
+                            'html_mensal': html_mensal_digital,
+                            'valor_mensal': f_br(t_mensal),
+                            'faturamento': st.session_state.g_faturamento,
+                            'html_despesa': html_desp_digital if html_desp_digital else "<li>Sem despesas</li>",
+                            'valor_despesa': f_br(t_d) if 't_d' in locals() else "0,00",
+                            'regra_desp': st.session_state.g_regra_desp
+                        }
+                        st.session_state.html_proposta = renderizar_proposta_digital(dados_pdf)
+                        st.session_state.show_digital_proposal = True
+                        st.rerun()
+                        
+        if st.session_state.get('show_digital_proposal', False) and not st.session_state.modo_apresentacao:
+            st.markdown("---")
+            st.markdown("<h2 style='text-align:center; color:#ff6600;'>Visualização da Proposta Digital</h2>", unsafe_allow_html=True)
+            st.info("Clique no botão laranja 'Salvar como PDF' dentro do quadro abaixo.")
+            components.html(st.session_state.html_proposta, height=1200, scrolling=True)
+            col_f1, col_f2, col_f3 = st.columns([1, 1, 1])
+            if col_f2.button("Fechar Visualização", use_container_width=True): 
+                st.session_state.show_digital_proposal = False
                 st.rerun()
 
     # ==========================================
