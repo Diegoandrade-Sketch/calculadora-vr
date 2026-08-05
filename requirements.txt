@@ -3,3 +3,6 @@ pandas
 sqlalchemy
 psycopg2-binary
 fpdf2
+streamlit==1.49.1
+starlette==0.47.2
+uvicorn==0.35.0
