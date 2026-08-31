@@ -24,7 +24,7 @@ if 'form_rc' not in st.session_state: st.session_state.form_rc = 0
 # O NOVO COFRE DE DADOS (DATA VAULT)
 # ==========================================
 if 'data_vault' not in st.session_state:
-st.session_state.data_vault = {
+    st.session_state.data_vault = {
         'sel_m': [], 'sel_i': [], 'sel_d': [], 'auto_added': [],
         'quantidades': {}, 'setup_sistemas': {}, 'descontos_itens': {},
         'despesas_valores': {}, 'negociar': {},
