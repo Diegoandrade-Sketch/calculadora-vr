@@ -44,12 +44,12 @@ if 'modo_apresentacao' not in st.session_state: st.session_state.modo_apresentac
 
 try:
     DB_USER = st.secrets["DB_USER"]
-    DB_PASS = st.secrets["DB_PASS"]
-    DB_HOST = st.secrets["DB_HOST"]
-    DB_PORT = st.secrets["DB_PORT"]
-    DB_NAME = st.secrets["DB_NAME"]
-    DB_PASS_ENCODED = urllib.parse.quote_plus(DB_PASS)
-    CONN_STR = f"postgresql://{DB_USER}:{DB_PASS_ENCODED}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    DB_PASS = st.secrets["DB_PASS"]
+    DB_HOST = st.secrets["DB_HOST"]
+    DB_PORT = st.secrets["DB_PORT"]
+    DB_NAME = st.secrets["DB_NAME"]
+    DB_PASS_ENCODED = urllib.parse.quote_plus(DB_PASS)
+    CONN_STR = f"postgresql://{DB_USER}:{DB_PASS_ENCODED}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 except Exception:
     CONN_STR = None
 
