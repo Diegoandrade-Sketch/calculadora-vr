@@ -43,7 +43,7 @@ if 'has_unsaved_changes' not in st.session_state: st.session_state.has_unsaved_c
 if 'modo_apresentacao' not in st.session_state: st.session_state.modo_apresentacao = False
 
 try:
-    DB_USER = st.secrets["DB_USER"]
+    DB_USER = st.secrets["DB_USER"]
     DB_PASS = st.secrets["DB_PASS"]
     DB_HOST = st.secrets["DB_HOST"]
     DB_PORT = st.secrets["DB_PORT"]
