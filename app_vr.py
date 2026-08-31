@@ -503,6 +503,107 @@ def renderizar_welcome_pack(nome, cnpjs, val_setup, val_mensal, parcelas_html):
     </html>
     """
 
+
+# ==========================================
+# NOVA TELA: COMISSIONAMENTO (ISOLADA)
+# ==========================================
+def tela_comissionamento():
+    st.markdown("<h1 class='hero-title'>COMISSIONAMENTO</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Auditoria e Fechamento de Pagamentos (Visão Mockup Visual)</p>", unsafe_allow_html=True)
+
+    # ==========================================
+    # PARTE 1: FILTROS DE APURAÇÃO
+    # ==========================================
+    st.markdown("""<div class="cliente-container"><h3 style="margin:0; color:#262730;">1. Filtros de Apuração</h3></div>""", unsafe_allow_html=True)
+    
+    with st.container():
+        c1, c2, c3, c4 = st.columns(4)
+        c1.selectbox("Mês de Referência", ["Agosto/2026", "Julho/2026", "Junho/2026"], key="mock_comis_mes")
+        c2.selectbox("Unidade Operacional", ["Todas", "Matriz", "VR Recife"], key="mock_comis_unidade")
+        c3.selectbox("Status do Extrato", ["Pendentes de Pagamento", "Já Pagos"], key="mock_comis_status")
+        c4.text_input("Buscar Vendedor (Nome)", placeholder="Ex: João Silva", key="mock_comis_busca")
+
+        c5, c6, c7 = st.columns(3)
+        c5.selectbox("Cargo", ["Todos", "Executivo de Vendas", "CS"], key="mock_comis_cargo")
+        c6.selectbox("Senioridade", ["Todas", "Júnior", "Pleno", "Sênior"], key="mock_comis_nivel")
+        c7.selectbox("Origem da Venda", ["Todas", "CRM (Propostas)", "Lançamento Externo"], key="mock_comis_origem")
+
+    # ==========================================
+    # PARTE 2: MATRIZ DE AUDITORIA (TABELA MOCK)
+    # ==========================================
+    st.markdown("""<br><div class="mapeamento-container" style="border-left-color:#1976d2;"><h3 style="margin:0; color:#1976d2;">2. Matriz de Auditoria e Ajustes</h3></div>""", unsafe_allow_html=True)
+    st.info("Simulação Visual: Esta tabela permite ao financeiro auditar os valores, ver as porcentagens e adicionar ajustes manuais (como estornos) antes de pagar.")
+
+    # Criando dados fictícios apenas para validação visual
+    dados_mock = pd.DataFrame({
+        "Vendedor": ["João Silva (Pleno)", "João Silva (Pleno)", "Maria Souza (Sênior)"],
+        "Proposta ID": ["#1042", "#1045", "Venda Ext."],
+        "Cliente": ["Supermercado A", "Mercadinho B", "Atacadão C"],
+        "Data Venda": ["10/08/2026", "15/08/2026", "18/08/2026"],
+        "Setup Bruto (R$)": [15000.0, 5000.0, 25000.0],
+        "MRR Bruto (R$)": [1500.0, 800.0, 3000.0],
+        "% Setup": [2.0, 2.0, 2.5],
+        "% MRR": [5.0, 5.0, 6.0],
+        "Comissão Setup (R$)": [300.0, 100.0, 625.0],
+        "Comissão MRR (R$)": [75.0, 40.0, 180.0],
+        "Ajuste Adicional (R$)": [0.0, -50.0, 0.0], # Campo que o financeiro poderá editar
+        "Obs. Ajuste": ["", "Estorno parcial", ""] # Campo que o financeiro poderá editar
+    })
+    
+    # Coluna de Cálculo Final da Linha (Apenas leitura)
+    dados_mock["Total Líquido (R$)"] = dados_mock["Comissão Setup (R$)"] + dados_mock["Comissão MRR (R$)"] + dados_mock["Ajuste Adicional (R$)"]
+
+    # Renderiza a tabela iterativa (permitindo ao financeiro editar apenas os ajustes)
+    colunas_config = {
+        "Vendedor": st.column_config.TextColumn("Vendedor", disabled=True),
+        "Proposta ID": st.column_config.TextColumn("ID / Origem", disabled=True),
+        "Cliente": st.column_config.TextColumn("Cliente", disabled=True),
+        "Data Venda": st.column_config.TextColumn("Data Venda", disabled=True),
+        "Setup Bruto (R$)": st.column_config.NumberColumn("Setup Bruto (R$)", disabled=True, format="R$ %.2f"),
+        "MRR Bruto (R$)": st.column_config.NumberColumn("MRR Bruto (R$)", disabled=True, format="R$ %.2f"),
+        "% Setup": st.column_config.NumberColumn("% Setup", disabled=True),
+        "% MRR": st.column_config.NumberColumn("% MRR", disabled=True),
+        "Comissão Setup (R$)": st.column_config.NumberColumn("Comis. Setup", disabled=True, format="R$ %.2f"),
+        "Comissão MRR (R$)": st.column_config.NumberColumn("Comis. MRR", disabled=True, format="R$ %.2f"),
+        "Ajuste Adicional (R$)": st.column_config.NumberColumn("Ajuste (R$)", help="Insira valores negativos para descontos/estornos", format="R$ %.2f"),
+        "Obs. Ajuste": st.column_config.TextColumn("Obs. Ajuste"),
+        "Total Líquido (R$)": st.column_config.NumberColumn("Total Líquido", disabled=True, format="R$ %.2f")
+    }
+
+    st.data_editor(
+        dados_mock, 
+        column_config=colunas_config, 
+        use_container_width=True,
+        hide_index=True,
+        key="mock_comis_editor"
+    )
+
+    # ==========================================
+    # PARTE 3: PAINEL DE EFETIVAÇÃO
+    # ==========================================
+    st.markdown("""<br><div class="cliente-container" style="border-left-color:#2e7d32;"><h3 style="margin:0; color:#2e7d32;">3. Consolidação e Fechamento</h3></div>""", unsafe_allow_html=True)
+    
+    # Resumo totalizador
+    t_setup_comis = dados_mock["Comissão Setup (R$)"].sum()
+    t_mrr_comis = dados_mock["Comissão MRR (R$)"].sum()
+    t_ajustes = dados_mock["Ajuste Adicional (R$)"].sum()
+    t_geral = dados_mock["Total Líquido (R$)"].sum()
+
+    col_tot1, col_tot2, col_tot3, col_tot4 = st.columns(4)
+    with col_tot1: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #ff6600; min-height:auto;"><div class="dash-title">Total Setup a Pagar</div><div style="font-size:1.8rem; font-weight:900; color:#262730;">R$ {t_setup_comis:,.2f}</div></div>""", unsafe_allow_html=True)
+    with col_tot2: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #2e7d32; min-height:auto;"><div class="dash-title">Total MRR a Pagar</div><div style="font-size:1.8rem; font-weight:900; color:#262730;">R$ {t_mrr_comis:,.2f}</div></div>""", unsafe_allow_html=True)
+    with col_tot3: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #ef4444; min-height:auto;"><div class="dash-title">Ajustes / Estornos</div><div style="font-size:1.8rem; font-weight:900; color:#ef4444;">R$ {t_ajustes:,.2f}</div></div>""", unsafe_allow_html=True)
+    with col_tot4: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #262730; min-height:auto; background:#f4f6f9;"><div class="dash-title">TOTAL LÍQUIDO A PAGAR</div><div style="font-size:1.8rem; font-weight:900; color:#262730;">R$ {t_geral:,.2f}</div></div>""", unsafe_allow_html=True)
+
+    st.write("---")
+    c_btn1, c_btn2, c_btn3 = st.columns([1, 1, 1])
+    with c_btn1:
+        st.button("⚙️ Configurar % Regras de Comissão", use_container_width=True, help="Abre painel para editar as porcentagens por cargo")
+    with c_btn2:
+        st.download_button(label="📥 Exportar Relatório Contábil (CSV)", data="mock_csv_data", file_name="comissoes_agosto_2026.csv", mime="text/csv", use_container_width=True)
+    with c_btn3:
+        st.button("🔒 Efetivar e Fechar Mês", type="primary", use_container_width=True, help="Congela estes dados e marca como 'Pagos' no banco de dados.")
+
 # ==========================================
 # BLOCO 3: APLICATIVO PRINCIPAL (UI E LÓGICA)
 # ==========================================
@@ -611,7 +712,7 @@ def aplicativo_principal():
         if st.session_state.user_role == "consultor":
             abas = ["Diagnóstico"]
         elif st.session_state.user_role == "financeiro":
-            abas = ["Início", "Faturamento"]
+            abas = ["Início", "Faturamento", "Comissionamento"]
         else:
             abas = ["Início", "Diagnóstico", "Gerador de Proposta", "Minhas Propostas", "Consulta de Preco"]
             if st.session_state.user_role in ["admin", "projetos"] and not st.toggle("Simular Visão Vendedor"): 
@@ -619,6 +720,7 @@ def aplicativo_principal():
                 if st.session_state.user_role == "admin":
                     abas.append("Faturamento")
                     abas.append("Visão do Gestor")
+                    abas.append("Comissionamento")
         
         if st.session_state.aba_atual not in abas: st.session_state.aba_atual = abas[0]
         tela = st.radio("Navegação:", abas, key="aba_atual")
@@ -1738,6 +1840,12 @@ def aplicativo_principal():
 
         except Exception as e:
             st.error(f"Falha ao comunicar com o Banco de Dados. Erro Técnico: {e}")
+            
+    # ==========================================
+    # ROTA INJETADA: COMISSIONAMENTO
+    # ==========================================
+    elif tela == "Comissionamento":
+        tela_comissionamento()
 
 # ==========================================
 # ROTEADOR DE SEGURANÇA
@@ -1745,4 +1853,4 @@ def aplicativo_principal():
 if not st.session_state.logged_in: 
     tela_login()
 else: 
-    aplicativo_principal() 
+    aplicativo_principal()
