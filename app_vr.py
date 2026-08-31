@@ -20,20 +20,17 @@ CACHE_FILE = "cache_vr.json"
 # Contador Mestre para evitar o Crash de Tela Branca (React Desync)
 if 'form_rc' not in st.session_state: st.session_state.form_rc = 0
 
-# ==========================================
-# O NOVO COFRE DE DADOS (DATA VAULT)
-# ==========================================
 if 'data_vault' not in st.session_state:
     st.session_state.data_vault = {
-        'sel_m': [], 'sel_i': [], 'sel_d': [], 'auto_added': [],
-        'quantidades': {}, 'setup_sistemas': {}, 'descontos_itens': {},
-        'despesas_valores': {}, 'negociar': {},
-        'mapeamento': {
-            'm_combo': "Montar Manualmente", 'm_pdv_conv': 0, 'm_pdv_touch': 0, 'm_pdv_self': 0, 'm_semanas': 0, 'm_mobile': 0,
-            'm_tef': "Nao utiliza", 'm_migracao': False, 'm_ecommerce': False, 'm_app': False, 'm_connect': False,
-            'm_erp_pro': False, 'm_xml': False, 'm_escopo': False, 'm_controller': False, 'm_cartaz': False, 'm_masterfisco': False, 'm_backup': False,
-        }
-    }
+        'sel_m': [], 'sel_i': [], 'sel_d': [], 'auto_added': [],
+        'quantidades': {}, 'setup_sistemas': {}, 'descontos_itens': {},
+        'despesas_valores': {}, 'negociar': {},
+        'mapeamento': {
+            'm_combo': "Montar Manualmente", 'm_pdv_conv': 0, 'm_pdv_touch': 0, 'm_pdv_self': 0, 'm_semanas': 0, 'm_mobile': 0,
+            'm_tef': "Nao utiliza", 'm_migracao': False, 'm_ecommerce': False, 'm_app': False, 'm_connect': False,
+            'm_erp_pro': False, 'm_xml': False, 'm_escopo': False, 'm_controller': False, 'm_cartaz': False, 'm_masterfisco': False, 'm_backup': False,
+        }
+    }
 
 if 'perma_nome_cliente' not in st.session_state: st.session_state.perma_nome_cliente = ""
 if 'perma_cnpj_cliente' not in st.session_state: st.session_state.perma_cnpj_cliente = ""
