@@ -543,7 +543,7 @@ def tela_comissionamento():
     data_inicio = datetime.date(ano_num, mes_num, 1)
     data_fim = datetime.date(ano_num, mes_num, calendar.monthrange(ano_num, mes_num)[1])
 
-    # ==========================================
+# ==========================================
     # PARTE 2: COMUNICAÇÃO COM BANCO E MATRIZ
     # ==========================================
     st.markdown("""<br><div class="mapeamento-container" style="border-left-color:#1976d2;"><h3 style="margin:0; color:#1976d2;">2. Matriz de Auditoria e Ajustes</h3></div>""", unsafe_allow_html=True)
@@ -552,15 +552,15 @@ def tela_comissionamento():
     try:
         engine = get_db_engine()
         with engine.connect() as conn:
-            # Query isolada: DISTINCT ON (n.id) previne a duplicidade de múltiplos itens/CNPJs do Grupo Econômico
+            # Forçamos a saída como texto (::text) e fallback '0' para evitar DatatypeMismatch
             query_bitrix = text("""
                 SELECT DISTINCT ON (n.id)
                     n.id AS "Proposta ID",
                     ab.name AS "Vendedor", 
                     e.title AS "Cliente",
                     o.closedate AS data_bruta,
-                    COALESCE(o.ufcrmvalorprojeto, 0) AS "Setup Bruto (R$)",
-                    COALESCE(o.ufcrmvalorrecorrente, o.opportunity, 0) AS "MRR Bruto (R$)"
+                    COALESCE(o.ufcrmvalorprojeto::text, '0') AS setup_str,
+                    COALESCE(o.ufcrmvalorrecorrente::text, o.opportunity::text, '0') AS mrr_str
                 FROM orcamento_novo AS o
                 JOIN negocio_novo AS n ON n.id = o.dealId
                 LEFT JOIN assignedby_novo AS ab ON ab.id = n.assignedById
@@ -579,14 +579,19 @@ def tela_comissionamento():
     else:
         # Formatação de Datas
         df_base['Data Venda'] = pd.to_datetime(df_base['data_bruta']).dt.strftime('%d/%m/%Y')
-        df_base = df_base.drop(columns=['data_bruta'])
+        
+        # Tratamento robusto via Python (ignora letras, sufixos como |BRL e formata decimais corretamente)
+        df_base['Setup Bruto (R$)'] = df_base['setup_str'].apply(parse_currency)
+        df_base['MRR Bruto (R$)'] = df_base['mrr_str'].apply(parse_currency)
+        
+        # Limpeza das colunas temporárias
+        df_base = df_base.drop(columns=['data_bruta', 'setup_str', 'mrr_str'])
 
         # Filtro de Busca Nominal
         if busca_vend:
             df_base = df_base[df_base['Vendedor'].str.contains(busca_vend, case=False, na=False)]
 
         # --- MOTOR DE REGRAS DE COMISSÃO ---
-        # Substitua estes valores fixos pela sua regra de negócios ou puxe de uma tabela de comissões
         df_base['% Setup'] = 2.0
         df_base['% MRR'] = 5.0
         
@@ -597,7 +602,6 @@ def tela_comissionamento():
         df_base['Ajuste Adicional (R$)'] = 0.0
         df_base['Obs. Ajuste'] = ""
 
-        # Prevenção estrutural caso haja Propostas ID repetidas mesmo com o DISTINCT
         df_base['Proposta ID'] = df_base['Proposta ID'].astype(str)
         df_base['Total Líquido (R$)'] = df_base['Comissão Setup (R$)'] + df_base['Comissão MRR (R$)'] + df_base['Ajuste Adicional (R$)']
 
