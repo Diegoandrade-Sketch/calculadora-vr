@@ -11,7 +11,6 @@ import base64
 import calendar
 import html
 import hashlib
-import html
 
 # ==========================================
 # CONFIGURAÇÕES INICIAIS E CONTROLE DE ESTADO
@@ -1173,7 +1172,6 @@ def aplicativo_principal():
     # ==========================================
     elif tela == "Faturamento":
         import pandas as pd
-        import html
         from sqlalchemy import text
         import streamlit.components.v1 as components
         
