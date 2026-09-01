@@ -621,7 +621,8 @@ def tela_visao_comercial():
                 COALESCE(o.ufcrmvalorrecorrente::text, o.opportunity::text, '0') AS mrr_str,
                 TRIM(CONCAT(COALESCE(ab.name, ''), ' ', COALESCE(ab.lastname, ''))) AS "Vendedor",
                 n.processovendaid,
-                COALESCE(c.title, 'Cliente Não Informado') AS "Cliente"
+                COALESCE(c.title, 'Cliente Não Informado') AS "Cliente",
+                COALESCE(n.begindate, CURRENT_DATE) AS data_inicio_negocio
                 FROM orcamento_novo AS o 
                 JOIN negocio_novo AS n ON n.id = o.dealId
                 LEFT JOIN assignedby_novo AS ab ON ab.id = n.assignedById
@@ -712,11 +713,7 @@ def tela_visao_comercial():
                     df_regiao = df_regiao.sort_values(by='Total Bruto', ascending=False)
                     df_regiao['Volume de Vendas'] = df_regiao['Total Bruto'].apply(lambda x: f"R$ {f_br(x)}")
                     
-                    st.dataframe(
-                        df_regiao[['Estado', 'Volume de Vendas']],
-                        use_container_width=True,
-                        hide_index=True
-                    )
+                    st.dataframe(df_regiao[['Estado', 'Volume de Vendas']], use_container_width=True, hide_index=True)
 
                 with col_g2:
                     st.markdown("**Volume de Vendas por Executivo**")
@@ -724,11 +721,7 @@ def tela_visao_comercial():
                     df_exec = df_exec.sort_values(by='Total Bruto', ascending=False)
                     df_exec['Volume de Vendas'] = df_exec['Total Bruto'].apply(lambda x: f"R$ {f_br(x)}")
                     
-                    st.dataframe(
-                        df_exec[['Vendedor', 'Volume de Vendas']],
-                        use_container_width=True,
-                        hide_index=True
-                    )
+                    st.dataframe(df_exec[['Vendedor', 'Volume de Vendas']], use_container_width=True, hide_index=True)
                     
                 st.markdown("<hr>", unsafe_allow_html=True)
                 
@@ -769,6 +762,23 @@ def tela_visao_comercial():
                 df_open['Total Projetado'] = df_open['Setup Bruto'] + df_open['MRR Bruto']
                 df_open['Origem'] = df_open['processovendaid'].astype(str).map(MAPA_PROCESSOS).fillna("Outros Processos")
                 
+                # Cálculo de Dias na Mesa
+                df_open['Dias na Mesa'] = (pd.to_datetime(hoje) - pd.to_datetime(df_open['data_inicio_negocio']).dt.date).dt.days
+                df_open['Dias na Mesa'] = df_open['Dias na Mesa'].apply(lambda x: 0 if x < 0 else x)
+                
+                # Identificando o teto máximo de cada Vendedor para aplicar o gatilho 🔥
+                df_open['Max_Executivo'] = df_open.groupby('Vendedor')['Total Projetado'].transform('max')
+                
+                def aplicar_alertas(row):
+                    status = []
+                    if row['Total Projetado'] == row['Max_Executivo'] and row['Total Projetado'] > 0:
+                        status.append("🔥 Alto Ticket")
+                    if row['Dias na Mesa'] >= 15:
+                        status.append("❄️ Esfriando")
+                    return " | ".join(status) if status else "Em Andamento"
+                
+                df_open['Status'] = df_open.apply(aplicar_alertas, axis=1)
+                
                 t_open_setup = df_open['Setup Bruto'].sum()
                 t_open_mrr = df_open['MRR Bruto'].sum()
                 t_open_geral = df_open['Total Projetado'].sum()
@@ -778,11 +788,26 @@ def tela_visao_comercial():
                 with col_o2: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #888; background:#f9f9f9;"><div class="dash-title">Setup Projetado (Na Mesa)</div><div style="font-size:1.5rem; font-weight:900; color:#555;">R$ {f_br(t_open_setup)}</div></div>""", unsafe_allow_html=True)
                 with col_o3: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #262730;"><div class="dash-title">Volume Total em Aberto</div><div style="font-size:1.5rem; font-weight:900; color:#262730;">R$ {f_br(t_open_geral)}</div></div>""", unsafe_allow_html=True)
                 
-                df_open_view = df_open[['id', 'Cliente', 'Origem', 'Vendedor', 'Total Projetado']].copy()
-                df_open_view = df_open_view.rename(columns={'id': 'Proposta ID'})
+                # A GRANDE OPORTUNIDADE (Destaque Isolado)
+                maior_negocio = df_open.loc[df_open['Total Projetado'].idxmax()]
+                if maior_negocio['Total Projetado'] > 0:
+                    st.markdown(f"""
+                        <div style='background: linear-gradient(90deg, #fef9e7 0%, #fff 100%); border-left: 6px solid #f39c12; padding: 20px; border-radius: 5px; margin: 25px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.05);'>
+                            <div style='font-size: 0.9rem; font-weight: 700; color: #f39c12; text-transform: uppercase; margin-bottom: 5px;'>🏆 Maior Oportunidade do Pipeline</div>
+                            <div style='font-size: 1.8rem; font-weight: 900; color: #333; margin-bottom: 15px;'>{maior_negocio['Cliente']}</div>
+                            <div style='display: flex; gap: 30px; flex-wrap: wrap;'>
+                                <div><span style='color: #777; font-size: 0.9rem;'>Executivo</span><br><strong>{maior_negocio['Vendedor']}</strong></div>
+                                <div><span style='color: #777; font-size: 0.9rem;'>Volume Total</span><br><strong style='color:#2e7d32; font-size:1.2rem;'>R$ {f_br(maior_negocio['Total Projetado'])}</strong></div>
+                                <div><span style='color: #777; font-size: 0.9rem;'>Tempo de Negociação</span><br><strong style='{"color:#d32f2f;" if maior_negocio['Dias na Mesa'] >= 15 else "color:#1976d2;"}'>{maior_negocio['Dias na Mesa']} dias</strong></div>
+                            </div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                
+                # Tabela Top 15 com Gamificação
+                df_open_view = df_open[['Cliente', 'Status', 'Dias na Mesa', 'Vendedor', 'Total Projetado']].copy()
                 df_open_view['Total Projetado'] = df_open_view['Total Projetado'].apply(lambda x: f"R$ {f_br(x)}")
                 
-                st.markdown("<br>**Top 15 Negociações em Andamento (Por Volume)**", unsafe_allow_html=True)
+                st.markdown("**Radar de Negociações (Top 15)**")
                 st.dataframe(df_open_view.sort_values(by='Total Projetado', ascending=False).head(15), use_container_width=True, hide_index=True)
             else:
                 st.info("Não há propostas ativas no funil no momento para o filtro selecionado.")
