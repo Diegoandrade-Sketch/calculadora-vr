@@ -520,12 +520,13 @@ def modal_extrato_venda(proposta_id, nome_cliente):
             # Extraindo dados como texto bruto para o Python fazer o tratamento seguro
             query_itens = text("""
                 SELECT 
-                    title AS "Produto/Serviço",
-                    quantidade AS "Qtd",
-                    COALESCE(ufcrmvalorproduto::text, '0') AS "val_unit_str",
-                    ufcrmtipoproduto AS "Tipo ID"
-                FROM itensorcamento_novo
-                WHERE dealid = :pid
+                    io.title AS "Produto/Serviço",
+                    io.quantidade AS "Qtd",
+                    COALESCE(io.ufcrmvalorproduto::text, '0') AS "val_unit_str",
+                    io.ufcrmtipoproduto AS "Tipo ID"
+                FROM itensorcamento_novo AS io
+                JOIN orcamento_novo AS o ON o.id = io.parentid7
+                WHERE o.dealid = :pid
             """)
             df_itens = pd.read_sql(query_itens, conn, params={"pid": proposta_id})
             
