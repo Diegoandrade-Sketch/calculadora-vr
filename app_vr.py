@@ -578,7 +578,6 @@ def tela_visao_comercial():
         engine = get_db_engine()
         with engine.connect() as conn:
             
-            # --- CARREGAMENTO GLOBAL DE DADOS ---
             try:
                 query_dash = text("""
                     SELECT DISTINCT ON (n.id) n.id, 
@@ -631,11 +630,9 @@ def tela_visao_comercial():
             """)
             df_open = pd.read_sql(query_open, conn)
             
-            # --- LIMPEZA GERAL DE DESPESAS (2812) ---
             if not df_dash.empty: df_dash = df_dash[df_dash['processovendaid'].astype(str) != '2812']
             if not df_open.empty: df_open = df_open[df_open['processovendaid'].astype(str) != '2812']
             
-            # --- FILTRO POR EXECUTIVO ---
             lista_vendedores = []
             if not df_dash.empty: lista_vendedores.extend(df_dash['Vendedor'].dropna().unique().tolist())
             if not df_open.empty: lista_vendedores.extend(df_open['Vendedor'].dropna().unique().tolist())
@@ -647,7 +644,6 @@ def tela_visao_comercial():
                 if not df_dash.empty: df_dash = df_dash[df_dash['Vendedor'] == vendedor_sel]
                 if not df_open.empty: df_open = df_open[df_open['Vendedor'] == vendedor_sel]
                 
-            # === BLOCO 1: NEGÓCIOS FECHADOS (GANHOS) ===
             if df_dash.empty:
                 st.warning("Nenhum negócio de receita comercial classificado como ganho neste período para o filtro selecionado.")
             else:
@@ -752,7 +748,6 @@ def tela_visao_comercial():
                     proc_id = df_exibicao[df_exibicao["Proposta ID"] == prop_id]["processovendaid"].values[0]
                     modal_extrato_venda(prop_id, cli_nome, proc_id)
 
-            # === BLOCO 2: PIPELINE ATIVO (NEGÓCIOS EM ABERTO) ===
             st.markdown("<hr>", unsafe_allow_html=True)
             st.markdown("### ⏳ Pipeline Ativo (Negócios em Aberto)")
             
@@ -762,11 +757,10 @@ def tela_visao_comercial():
                 df_open['Total Projetado'] = df_open['Setup Bruto'] + df_open['MRR Bruto']
                 df_open['Origem'] = df_open['processovendaid'].astype(str).map(MAPA_PROCESSOS).fillna("Outros Processos")
                 
-                # Cálculo de Dias na Mesa
-                df_open['Dias na Mesa'] = (pd.to_datetime(hoje) - pd.to_datetime(df_open['data_inicio_negocio']).dt.date).dt.days
+                hoje_pd = pd.to_datetime(hoje)
+                df_open['Dias na Mesa'] = (hoje_pd - pd.to_datetime(df_open['data_inicio_negocio']).dt.normalize()).dt.days
                 df_open['Dias na Mesa'] = df_open['Dias na Mesa'].apply(lambda x: 0 if x < 0 else x)
                 
-                # Identificando o teto máximo de cada Vendedor para aplicar o gatilho 🔥
                 df_open['Max_Executivo'] = df_open.groupby('Vendedor')['Total Projetado'].transform('max')
                 
                 def aplicar_alertas(row):
@@ -788,7 +782,6 @@ def tela_visao_comercial():
                 with col_o2: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #888; background:#f9f9f9;"><div class="dash-title">Setup Projetado (Na Mesa)</div><div style="font-size:1.5rem; font-weight:900; color:#555;">R$ {f_br(t_open_setup)}</div></div>""", unsafe_allow_html=True)
                 with col_o3: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #262730;"><div class="dash-title">Volume Total em Aberto</div><div style="font-size:1.5rem; font-weight:900; color:#262730;">R$ {f_br(t_open_geral)}</div></div>""", unsafe_allow_html=True)
                 
-                # A GRANDE OPORTUNIDADE (Destaque Isolado)
                 maior_negocio = df_open.loc[df_open['Total Projetado'].idxmax()]
                 if maior_negocio['Total Projetado'] > 0:
                     st.markdown(f"""
@@ -798,12 +791,11 @@ def tela_visao_comercial():
                             <div style='display: flex; gap: 30px; flex-wrap: wrap;'>
                                 <div><span style='color: #777; font-size: 0.9rem;'>Executivo</span><br><strong>{maior_negocio['Vendedor']}</strong></div>
                                 <div><span style='color: #777; font-size: 0.9rem;'>Volume Total</span><br><strong style='color:#2e7d32; font-size:1.2rem;'>R$ {f_br(maior_negocio['Total Projetado'])}</strong></div>
-                                <div><span style='color: #777; font-size: 0.9rem;'>Tempo de Negociação</span><br><strong style='{"color:#d32f2f;" if maior_negocio['Dias na Mesa'] >= 15 else "color:#1976d2;"}'>{maior_negocio['Dias na Mesa']} dias</strong></div>
+                                <div><span style='color: #777; font-size: 0.9rem;'>Tempo de Negociação</span><br><strong style='{"color:#d32f2f;" if maior_negocio['Dias na Mesa'] >= 15 else "color:#1976d2;"}'>{int(maior_negocio['Dias na Mesa'])} dias</strong></div>
                             </div>
                         </div>
                     """, unsafe_allow_html=True)
                 
-                # Tabela Top 15 com Gamificação
                 df_open_view = df_open[['Cliente', 'Status', 'Dias na Mesa', 'Vendedor', 'Total Projetado']].copy()
                 df_open_view['Total Projetado'] = df_open_view['Total Projetado'].apply(lambda x: f"R$ {f_br(x)}")
                 
