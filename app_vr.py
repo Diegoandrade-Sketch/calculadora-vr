@@ -9,13 +9,15 @@ import re
 import datetime
 import base64
 import calendar
+import html
+import hashlib
 
 # ==========================================
 # CONFIGURAÇÕES INICIAIS E CONTROLE DE ESTADO
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-APP_VERSION = "v6.2.4 - Ultimate Stability & Finance Hub"
+APP_VERSION = "v6.3.0 - Security & Finance Hub"
 CACHE_FILE = "cache_vr.json"
 
 # Contador Mestre para evitar o Crash de Tela Branca (React Desync)
@@ -55,13 +57,16 @@ except Exception:
     CONN_STR = None
 
 # ==========================================
-# MOTOR DE BANCO DE DADOS
+# MOTOR DE BANCO DE DADOS E SEGURANÇA
 # ==========================================
 @st.cache_resource
 def get_db_engine():
     if CONN_STR:
         return create_engine(CONN_STR, pool_pre_ping=True, pool_size=10, max_overflow=20)
     return None
+
+def get_senha_hash(senha):
+    return hashlib.sha256(senha.encode('utf-8')).hexdigest()
 
 # ==========================================
 # FUNÇÕES DE FORMATAÇÃO E PARSERS
@@ -122,12 +127,11 @@ def empacotar_simulacao():
 
 def desempacotar_simulacao(json_data, prop_id):
     try:
-        # Destruir UI ghosts
         for k in list(st.session_state.keys()):
             if k.startswith("ui_"):
                 del st.session_state[k]
 
-        st.session_state.form_rc += 1 # Incrementa contador global de front-end
+        st.session_state.form_rc += 1
         dados = json.loads(json_data) if isinstance(json_data, str) else json_data
         
         st.session_state.perma_nome_cliente = dados.get('perma_nome_cliente', '')
@@ -167,7 +171,7 @@ def desempacotar_simulacao(json_data, prop_id):
         st.session_state.modo_apresentacao = False
         st.session_state.aba_atual = "Gerador de Proposta"
     except Exception as e:
-        st.error(f"Falha ao ler os dados do histórico.")
+        st.error("Falha interna ao carregar histórico.")
 
 # ==========================================
 # DATA LAYER (CARREGAMENTO DO BANCO)
@@ -279,18 +283,16 @@ def tela_login():
                     if nova_senha and nova_senha == confirma_senha:
                         try:
                             engine = get_db_engine()
-                            with engine.begin() as conn: conn.execute(text("UPDATE usuarios SET senha = :s, primeiro_acesso = FALSE WHERE email = :e"), {"s": nova_senha, "e": st.session_state.user_email})
+                            with engine.begin() as conn: 
+                                conn.execute(text("UPDATE usuarios SET senha = :s, primeiro_acesso = FALSE WHERE email = :e"), {"s": get_senha_hash(nova_senha), "e": st.session_state.user_email})
                             st.session_state.primeiro_acesso = False; st.session_state.logged_in = True; st.rerun()
-                        except Exception: st.error("Erro de comunicação com o banco de dados.")
+                        except Exception: st.error("Erro interno. Tente novamente mais tarde.")
                     else: st.error("As senhas informadas não conferem.")
             else:
                 email = st.text_input("E-mail corporativo")
                 senha = st.text_input("Senha", type="password")
                 if st.form_submit_button("Autenticar", use_container_width=True):
-                    if email == "admin" and senha == "333666":
-                        st.session_state.logged_in = True; st.session_state.user_role = "admin"; st.session_state.user_name = "Administrador Master"
-                        st.session_state.unidade_nome = "Matriz"; st.session_state.user_cargo = "Executivo de Vendas"; st.session_state.user_senioridade = "Sênior"; st.rerun()
-                    elif not CONN_STR: st.error("Conexão com o servidor falhou.")
+                    if not CONN_STR: st.error("Erro interno do servidor.")
                     else:
                         try:
                             engine = get_db_engine()
@@ -298,7 +300,9 @@ def tela_login():
                                 resultado = pd.read_sql(text("SELECT u.*, un.nome_fantasia as nome_unidade, un.meta_regiao FROM usuarios u LEFT JOIN unidades un ON u.id_unidade = un.id WHERE u.email = :e AND u.ativo = TRUE"), conn, params={"e": email})
                             if not resultado.empty:
                                 user = resultado.iloc[0]
-                                if user['senha'] == senha or user['primeiro_acesso']:
+                                senha_hash = get_senha_hash(senha)
+                                # A validação 'user['senha'] == senha' é mantida apenas provisoriamente para evitar bloqueio enquanto o banco migra os usuários antigos para hash.
+                                if user['senha'] == senha_hash or user['senha'] == senha or user['primeiro_acesso']:
                                     st.session_state.user_email = email; st.session_state.user_role = user['nivel_acesso']; st.session_state.user_name = user['nome']
                                     st.session_state.unidade_nome = user['nome_unidade'] if pd.notna(user['nome_unidade']) else "VR Software"
                                     st.session_state.user_cargo = user['cargo'] if 'cargo' in user and pd.notna(user['cargo']) else "Executivo de Vendas"
@@ -312,9 +316,9 @@ def tela_login():
                                             with engine.begin() as conn_log: conn_log.execute(text("INSERT INTO logs_acesso (email_usuario) VALUES (:e)"), {"e": email})
                                         except Exception: pass
                                         st.session_state.logged_in = True; st.rerun()
-                                else: st.error("Senha incorreta.")
-                            else: st.error("Usuário não cadastrado ou bloqueado.")
-                        except Exception: st.error("Ocorreu um erro ao validar os dados.")
+                                else: st.error("Credenciais inválidas.")
+                            else: st.error("Credenciais inválidas.")
+                        except Exception as e: st.error("Erro técnico interno. Tente novamente.")
 
 # ==========================================
 # BLOCO 2: RENDERIZADORES HTML (PDFs)
@@ -385,8 +389,8 @@ def renderizar_proposta_digital(dados):
                     </div>
                     <div>
                         <div class="detail-label">Executivo de Vendas</div>
-                        <div class="detail-value">{st.session_state.user_name}</div>
-                        <div class="detail-sub" style="color: #ff6600;">{st.session_state.unidade_nome}</div>
+                        <div class="detail-value">{html.escape(st.session_state.user_name)}</div>
+                        <div class="detail-sub" style="color: #ff6600;">{html.escape(st.session_state.unidade_nome)}</div>
                     </div>
                 </div>
             </div>
@@ -505,7 +509,7 @@ def renderizar_welcome_pack(nome, cnpjs, val_setup, val_mensal, parcelas_html):
     """
 
 # ==========================================
-# NOVA TELA: COMISSIONAMENTO (INTEGRADO AO BD)
+# NOVA TELA: COMISSIONAMENTO OTIMIZADA
 # ==========================================
 def tela_comissionamento():
     st.markdown("<h1 class='hero-title'>COMISSIONAMENTO</h1>", unsafe_allow_html=True)
@@ -514,50 +518,31 @@ def tela_comissionamento():
     # ==========================================
     # PARTE 1: FILTROS DE APURAÇÃO
     # ==========================================
-    st.markdown("""<div class="cliente-container"><h3 style="margin:0; color:#262730;">1. Filtros de Apuração</h3></div>""", unsafe_allow_html=True)
+    st.markdown("""<div class="cliente-container"><h3 style="margin:0; color:#262730;">1. Filtros de Apuração de Pagamento</h3></div>""", unsafe_allow_html=True)
     
-    with st.container():
-        c1, c2, c3, c4 = st.columns(4)
-        
-        # Gerador dinâmico de meses
-        hoje = datetime.date.today()
-        meses_pt = {1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril", 5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto", 9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"}
-        meses_inv = {v: k for k, v in meses_pt.items()}
-        opcoes_meses = [f"{meses_pt[(hoje.month - i - 1) % 12 + 1]}/{hoje.year if (hoje.month - i - 1) >= 0 else hoje.year - 1}" for i in range(6)]
-        
-        mes_selecionado = c1.selectbox("Mês de Referência", opcoes_meses, key="comis_mes")
-        unidade_sel = c2.selectbox("Unidade Operacional", ["Todas", "Matriz", "VR Recife"], key="comis_unidade")
-        status_sel = c3.selectbox("Status do Extrato", ["Pendentes de Pagamento", "Já Pagos"], key="comis_status")
-        busca_vend = c4.text_input("Buscar Vendedor (Nome)", placeholder="Ex: João", key="comis_busca")
+    hoje = datetime.date.today()
+    c1, c2, c3, c4 = st.columns(4)
+    data_inicio = c1.date_input("Data Início (Corte)", hoje.replace(day=1))
+    data_fim = c2.date_input("Data Fim (Corte)", hoje)
+    unidade_sel = c3.selectbox("Unidade Operacional", ["Todas", "Matriz", "VR Recife"])
+    cargo_sel = c4.selectbox("Cargo", ["Todos", "Executivo de Vendas", "CS"])
 
-        c5, c6, c7 = st.columns(3)
-        cargo_sel = c5.selectbox("Cargo", ["Todos", "Executivo de Vendas", "CS"], key="comis_cargo")
-        nivel_sel = c6.selectbox("Senioridade", ["Todas", "Júnior", "Pleno", "Sênior"], key="comis_nivel")
-        origem_sel = c7.selectbox("Origem da Venda", ["Todas (Bitrix24)"], key="comis_origem")
-
-    # Tratamento de datas para a Query
-    mes_str, ano_str = mes_selecionado.split("/")
-    mes_num = meses_inv[mes_str]
-    ano_num = int(ano_str)
-    
-    data_inicio = datetime.date(ano_num, mes_num, 1)
-    data_fim = datetime.date(ano_num, mes_num, calendar.monthrange(ano_num, mes_num)[1])
-
-# ==========================================
+    # ==========================================
     # PARTE 2: COMUNICAÇÃO COM BANCO E MATRIZ
     # ==========================================
-    st.markdown("""<br><div class="mapeamento-container" style="border-left-color:#1976d2;"><h3 style="margin:0; color:#1976d2;">2. Matriz de Auditoria e Ajustes</h3></div>""", unsafe_allow_html=True)
+    st.markdown("""<br><div class="mapeamento-container" style="border-left-color:#1976d2;"><h3 style="margin:0; color:#1976d2;">2. Matriz de Auditoria e Espelho de Vendas</h3></div>""", unsafe_allow_html=True)
 
     df_base = pd.DataFrame()
     try:
         engine = get_db_engine()
         with engine.connect() as conn:
-            # Forçamos a saída como texto (::text) e fallback '0' para evitar DatatypeMismatch
+            # Proteção contra erros de tipagem e Extração rica (Nome e Sobrenome do Vendedor + UF da Empresa)
             query_bitrix = text("""
                 SELECT DISTINCT ON (n.id)
                     n.id AS "Proposta ID",
-                    ab.name AS "Vendedor", 
+                    TRIM(CONCAT(COALESCE(ab.name, ''), ' ', COALESCE(ab.last_name, ''))) AS "Vendedor", 
                     e.title AS "Cliente",
+                    COALESCE(e.uf, 'N/I') AS "Estado",
                     o.closedate AS data_bruta,
                     COALESCE(o.ufcrmvalorprojeto::text, '0') AS setup_str,
                     COALESCE(o.ufcrmvalorrecorrente::text, o.opportunity::text, '0') AS mrr_str
@@ -572,97 +557,75 @@ def tela_comissionamento():
             df_base = pd.read_sql(query_bitrix, conn, params={"d_inicio": data_inicio, "d_fim": data_fim})
             
     except Exception as e:
-        st.error(f"Falha ao conectar com o banco de dados. Erro técnico: {e}")
+        print(f"Erro técnico silencioso: {e}")
+        st.error("Falha ao comunicar com o banco de dados. Tente novamente mais tarde.")
 
     if df_base.empty:
-        st.info(f"Nenhum fechamento encontrado no Bitrix24 para o período de {mes_selecionado}.")
+        st.info(f"Nenhum fechamento encontrado no período selecionado.")
     else:
-        # Formatação de Datas
+        # Pós-processamento Inteligente (Dropdown de Vendedores)
+        vendedores_unicos = ["Todos os Vendedores"] + sorted(df_base["Vendedor"].dropna().unique().tolist())
+        vendedor_selecionado = st.selectbox("🎯 Filtrar pagamentos por Vendedor específico:", vendedores_unicos)
+
+        if vendedor_selecionado != "Todos os Vendedores":
+            df_base = df_base[df_base['Vendedor'] == vendedor_selecionado]
+            
+        if df_base.empty:
+            st.warning("O vendedor não possui lançamentos neste período.")
+            return
+
+        # Formatação e Cálculos Base
         df_base['Data Venda'] = pd.to_datetime(df_base['data_bruta']).dt.strftime('%d/%m/%Y')
-        
-        # Tratamento robusto via Python (ignora letras, sufixos como |BRL e formata decimais corretamente)
         df_base['Setup Bruto (R$)'] = df_base['setup_str'].apply(parse_currency)
         df_base['MRR Bruto (R$)'] = df_base['mrr_str'].apply(parse_currency)
-        
-        # Limpeza das colunas temporárias
         df_base = df_base.drop(columns=['data_bruta', 'setup_str', 'mrr_str'])
 
-        # Filtro de Busca Nominal
-        if busca_vend:
-            df_base = df_base[df_base['Vendedor'].str.contains(busca_vend, case=False, na=False)]
-
-        # --- MOTOR DE REGRAS DE COMISSÃO ---
+        # Regras de Negócio e Comissão
         df_base['% Setup'] = 2.0
         df_base['% MRR'] = 5.0
-        
         df_base['Comissão Setup (R$)'] = df_base['Setup Bruto (R$)'] * (df_base['% Setup'] / 100)
         df_base['Comissão MRR (R$)'] = df_base['MRR Bruto (R$)'] * (df_base['% MRR'] / 100)
+        df_base['Total Líquido (R$)'] = df_base['Comissão Setup (R$)'] + df_base['Comissão MRR (R$)']
         
-        # Colunas Editáveis pelo Financeiro
-        df_base['Ajuste Adicional (R$)'] = 0.0
-        df_base['Obs. Ajuste'] = ""
+        # Consolidação dos Valores Totais (Dashboards Inferiores)
+        t_setup_comis = df_base["Comissão Setup (R$)"].sum()
+        t_mrr_comis = df_base["Comissão MRR (R$)"].sum()
+        t_geral = df_base["Total Líquido (R$)"].sum()
 
-        df_base['Proposta ID'] = df_base['Proposta ID'].astype(str)
-        df_base['Total Líquido (R$)'] = df_base['Comissão Setup (R$)'] + df_base['Comissão MRR (R$)'] + df_base['Ajuste Adicional (R$)']
+        # Criação de um DataFrame estético para visualização no Padrão Brasileiro
+        df_exibicao = df_base.copy()
+        colunas_monetarias = ['Setup Bruto (R$)', 'MRR Bruto (R$)', 'Comissão Setup (R$)', 'Comissão MRR (R$)', 'Total Líquido (R$)']
+        for col in colunas_monetarias:
+            df_exibicao[col] = df_exibicao[col].apply(lambda x: f"R$ {f_br(x)}")
+            
+        df_exibicao['Proposta ID'] = df_exibicao['Proposta ID'].astype(str)
+        ordem_colunas = ["Vendedor", "Proposta ID", "Cliente", "Estado", "Data Venda", "Setup Bruto (R$)", "MRR Bruto (R$)", "% Setup", "% MRR", "Comissão Setup (R$)", "Comissão MRR (R$)", "Total Líquido (R$)"]
+        df_exibicao = df_exibicao[ordem_colunas]
 
-        # Ordenação das colunas para visualização
-        ordem_colunas = ["Vendedor", "Proposta ID", "Cliente", "Data Venda", "Setup Bruto (R$)", "MRR Bruto (R$)", "% Setup", "% MRR", "Comissão Setup (R$)", "Comissão MRR (R$)", "Ajuste Adicional (R$)", "Obs. Ajuste", "Total Líquido (R$)"]
-        df_base = df_base[ordem_colunas]
-
-        colunas_config = {
-            "Vendedor": st.column_config.TextColumn("Vendedor", disabled=True),
-            "Proposta ID": st.column_config.TextColumn("ID (Bitrix)", disabled=True),
-            "Cliente": st.column_config.TextColumn("Cliente", disabled=True),
-            "Data Venda": st.column_config.TextColumn("Data Venda", disabled=True),
-            "Setup Bruto (R$)": st.column_config.NumberColumn("Setup Bruto", disabled=True, format="R$ %.2f"),
-            "MRR Bruto (R$)": st.column_config.NumberColumn("MRR Bruto", disabled=True, format="R$ %.2f"),
-            "% Setup": st.column_config.NumberColumn("% Setup", disabled=True),
-            "% MRR": st.column_config.NumberColumn("% MRR", disabled=True),
-            "Comissão Setup (R$)": st.column_config.NumberColumn("Comis. Setup", disabled=True, format="R$ %.2f"),
-            "Comissão MRR (R$)": st.column_config.NumberColumn("Comis. MRR", disabled=True, format="R$ %.2f"),
-            "Ajuste Adicional (R$)": st.column_config.NumberColumn("Ajuste (R$)", help="Insira valores negativos para descontos/estornos", format="R$ %.2f"),
-            "Obs. Ajuste": st.column_config.TextColumn("Obs. Ajuste"),
-            "Total Líquido (R$)": st.column_config.NumberColumn("Total Líquido", disabled=True, format="R$ %.2f")
-        }
-
-        # O data_editor captura as modificações que o Financeiro fizer nos "Ajustes Adicionais"
-        df_final = st.data_editor(
-            df_base, 
-            column_config=colunas_config, 
-            use_container_width=True,
-            hide_index=True,
-            key="comis_editor"
-        )
-
-        # Recalculando o total líquido com base no que o financeiro editar dinamicamente
-        df_final["Total Líquido (R$)"] = df_final["Comissão Setup (R$)"] + df_final["Comissão MRR (R$)"] + df_final["Ajuste Adicional (R$)"]
+        # Apresentação Clean Dataframe
+        st.dataframe(df_exibicao, use_container_width=True, hide_index=True)
 
         # ==========================================
         # PARTE 3: PAINEL DE EFETIVAÇÃO
         # ==========================================
         st.markdown("""<br><div class="cliente-container" style="border-left-color:#2e7d32;"><h3 style="margin:0; color:#2e7d32;">3. Consolidação e Fechamento</h3></div>""", unsafe_allow_html=True)
         
-        t_setup_comis = df_final["Comissão Setup (R$)"].sum()
-        t_mrr_comis = df_final["Comissão MRR (R$)"].sum()
-        t_ajustes = df_final["Ajuste Adicional (R$)"].sum()
-        t_geral = df_final["Total Líquido (R$)"].sum()
-
-        col_tot1, col_tot2, col_tot3, col_tot4 = st.columns(4)
-        with col_tot1: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #ff6600; min-height:auto;"><div class="dash-title">Total Setup a Pagar</div><div style="font-size:1.8rem; font-weight:900; color:#262730;">R$ {t_setup_comis:,.2f}</div></div>""", unsafe_allow_html=True)
-        with col_tot2: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #2e7d32; min-height:auto;"><div class="dash-title">Total MRR a Pagar</div><div style="font-size:1.8rem; font-weight:900; color:#262730;">R$ {t_mrr_comis:,.2f}</div></div>""", unsafe_allow_html=True)
-        with col_tot3: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #ef4444; min-height:auto;"><div class="dash-title">Ajustes / Estornos</div><div style="font-size:1.8rem; font-weight:900; color:#ef4444;">R$ {t_ajustes:,.2f}</div></div>""", unsafe_allow_html=True)
-        with col_tot4: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #262730; min-height:auto; background:#f4f6f9;"><div class="dash-title">TOTAL LÍQUIDO A PAGAR</div><div style="font-size:1.8rem; font-weight:900; color:#262730;">R$ {t_geral:,.2f}</div></div>""", unsafe_allow_html=True)
+        col_tot1, col_tot2, col_tot4 = st.columns([1, 1, 2])
+        with col_tot1: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #ff6600; min-height:auto;"><div class="dash-title">Total Setup a Pagar</div><div style="font-size:1.8rem; font-weight:900; color:#262730;">R$ {f_br(t_setup_comis)}</div></div>""", unsafe_allow_html=True)
+        with col_tot2: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #2e7d32; min-height:auto;"><div class="dash-title">Total MRR a Pagar</div><div style="font-size:1.8rem; font-weight:900; color:#262730;">R$ {f_br(t_mrr_comis)}</div></div>""", unsafe_allow_html=True)
+        with col_tot4: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #262730; min-height:auto; background:#f4f6f9;"><div class="dash-title">TOTAL LÍQUIDO A PAGAR</div><div style="font-size:1.8rem; font-weight:900; color:#262730;">R$ {f_br(t_geral)}</div></div>""", unsafe_allow_html=True)
 
         st.write("---")
         c_btn1, c_btn2, c_btn3 = st.columns([1, 1, 1])
         with c_btn1:
             st.button("⚙️ Configurar % Regras de Comissão", use_container_width=True, help="Abre painel para editar as porcentagens por cargo")
         with c_btn2:
-            csv = df_final.to_csv(index=False).encode('utf-8')
-            st.download_button(label="📥 Exportar Relatório Contábil (CSV)", data=csv, file_name=f"comissoes_{mes_str.lower()}_{ano_str}.csv", mime="text/csv", use_container_width=True)
+            # O Excel precisa dos dados puros (df_base) sem as strings R$ para poder somar corretamente
+            csv = df_base.to_csv(index=False, sep=';', decimal=',').encode('utf-8')
+            st.download_button(label="📥 Exportar Relatório Contábil (CSV)", data=csv, file_name=f"comissoes_fechamento.csv", mime="text/csv", use_container_width=True)
         with c_btn3:
-            if st.button("🔒 Efetivar e Fechar Mês", type="primary", use_container_width=True, help="Congela estes dados e marca como 'Pagos' no banco de dados."):
-                st.success("O sistema de trava de lote será implementado na próxima fase. No momento, você já pode exportar os dados consolidados pelo botão de Exportação.")
+            if st.button("🔒 Efetivar e Fechar Período", type="primary", use_container_width=True):
+                st.success("Operação bloqueada com sucesso. (Trava de lote será conectada ao banco na próxima fase).")
 
 # ==========================================
 # BLOCO 3: APLICATIVO PRINCIPAL (UI E LÓGICA)
@@ -764,7 +727,7 @@ def aplicativo_principal():
     # ==========================================
     with st.sidebar:
         if os.path.exists("logo_vr.png"): st.image("logo_vr.png", width=180)
-        st.markdown(f"<div style='background-color:#f0f0f0; padding:10px; border-radius:5px; margin-bottom:15px; border-left:4px solid #ff6600;'><span style='font-weight:bold; color:#333;'>Usuário: {st.session_state.user_name}</span></div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='background-color:#f0f0f0; padding:10px; border-radius:5px; margin-bottom:15px; border-left:4px solid #ff6600;'><span style='font-weight:bold; color:#333;'>Usuário: {html.escape(st.session_state.user_name)}</span></div>", unsafe_allow_html=True)
         
         if st.session_state.has_unsaved_changes and st.session_state.perma_nome_cliente:
             st.markdown("<div style='background-color:#fff3cd; color:#856404; padding:8px; border-radius:4px; font-size:0.8rem; border-left:3px solid #ffeeba; margin-bottom:15px;'>Atenção: Alterações não salvas</div>", unsafe_allow_html=True)
@@ -829,7 +792,7 @@ def aplicativo_principal():
     # TELA 0: INÍCIO
     # ==========================================
     if tela == "Início":
-        st.markdown(f"""<h1 class="hero-title">BEM-VINDO(A), {str(st.session_state.user_name).split()[0].upper()}!</h1>""", unsafe_allow_html=True)
+        st.markdown(f"""<h1 class="hero-title">BEM-VINDO(A), {html.escape(str(st.session_state.user_name).split()[0].upper())}!</h1>""", unsafe_allow_html=True)
         
         if st.session_state.user_role == "financeiro":
             st.markdown(f"""<p style="color:#777; font-size:1.2rem; margin-bottom:30px;"><b>Controladoria e Faturamento</b> | VR Software</p>""", unsafe_allow_html=True)
@@ -894,7 +857,7 @@ def aplicativo_principal():
             with c_mes:
                 st.markdown(f"""<h4 style="color:#262730; margin-bottom:15px;">Bússola Mensal (Alvo do Mês Atual)</h4><div style="background:#fff; padding:15px; border-radius:8px; border-left: 4px solid #1976d2; box-shadow: 0 2px 10px rgba(0,0,0,0.05);"><p style="margin:0; color:#444; font-size:1.05rem;">A sua meta fracionada para manter o ritmo este mês é de <b>R$ {f_br(m_proj/3)}</b> em Setup e <b>R$ {f_br(m_rec/3)}</b> em Recorrente.</p></div>""", unsafe_allow_html=True)
                 if st.session_state.meta_regiao > 0:
-                    st.markdown(f"""<h4 style="color:#262730; margin-top:25px; margin-bottom:15px;">Espírito de Equipe ({st.session_state.unidade_nome})</h4><div style="background:#fff; padding:15px; border-radius:8px; border-left: 4px solid #ffcc00; box-shadow: 0 2px 10px rgba(0,0,0,0.05);"><p style="margin:0; color:#444; font-size:1.05rem;">A meta global da sua unidade regional é de <b>R$ {f_br(st.session_state.meta_regiao)}</b>.</p></div>""", unsafe_allow_html=True)
+                    st.markdown(f"""<h4 style="color:#262730; margin-top:25px; margin-bottom:15px;">Espírito de Equipe ({html.escape(st.session_state.unidade_nome)})</h4><div style="background:#fff; padding:15px; border-radius:8px; border-left: 4px solid #ffcc00; box-shadow: 0 2px 10px rgba(0,0,0,0.05);"><p style="margin:0; color:#444; font-size:1.05rem;">A meta global da sua unidade regional é de <b>R$ {f_br(st.session_state.meta_regiao)}</b>.</p></div>""", unsafe_allow_html=True)
 
             with c_act:
                 st.markdown("<br>", unsafe_allow_html=True)
@@ -1035,7 +998,7 @@ def aplicativo_principal():
             st.markdown("<br>", unsafe_allow_html=True)
             if st.button("Gerar Documento de Boas-Vindas (PDF)", use_container_width=True):
                 st.session_state.html_welcome_pack = renderizar_welcome_pack(
-                    nome=nome_fin, cnpjs=cnpj_fin, val_setup=val_setup_fin, val_mensal=val_mensal_fin, parcelas_html=html_linhas_tabela
+                    nome=html.escape(nome_fin), cnpjs=html.escape(cnpj_fin), val_setup=val_setup_fin, val_mensal=val_mensal_fin, parcelas_html=html_linhas_tabela
                 )
                 st.session_state.show_welcome_pack = True
                 st.rerun()
@@ -1201,8 +1164,8 @@ def aplicativo_principal():
             st.markdown(f"""
             <div style="background-color:#ffffff; border-left: 10px solid #262730; padding: 20px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
                 <span style="color:#ff6600; font-size:0.9rem; text-transform:uppercase; font-weight:bold;">Apresentação para o cliente:</span>
-                <h2 style="margin:5px 0; color:#262730;">{st.session_state.perma_nome_cliente or "Cliente Não Informado"}</h2>
-                <span style="color:#777; font-size:1.1rem; font-weight:bold;">CNPJ: {st.session_state.perma_cnpj_cliente if st.session_state.perma_cnpj_cliente else "Não informado"}</span>
+                <h2 style="margin:5px 0; color:#262730;">{html.escape(st.session_state.perma_nome_cliente or "Cliente Não Informado")}</h2>
+                <span style="color:#777; font-size:1.1rem; font-weight:bold;">CNPJ: {html.escape(st.session_state.perma_cnpj_cliente) if st.session_state.perma_cnpj_cliente else "Não informado"}</span>
             </div>
             """, unsafe_allow_html=True)
         else:
@@ -1476,8 +1439,8 @@ def aplicativo_principal():
                 with col_dig2:
                     if st.button("Gerar Proposta Digital (PDF)", use_container_width=True):
                         dados_pdf = {
-                            'nome_cliente': st.session_state.perma_nome_cliente,
-                            'cnpj': st.session_state.perma_cnpj_cliente,
+                            'nome_cliente': html.escape(st.session_state.perma_nome_cliente),
+                            'cnpj': html.escape(st.session_state.perma_cnpj_cliente),
                             'html_setup': html_setup_digital,
                             'valor_setup': f_br(t_setup),
                             'parcelas': str(st.session_state.g_parcelas_setup),
@@ -1536,9 +1499,9 @@ def aplicativo_principal():
         piso_pdv, piso_rh, taxa_perda, taxa_risco = st.session_state.param_piso_pdv, st.session_state.param_piso_rh, st.session_state.param_perda / 100.0, st.session_state.param_risco_trib / 100.0
 
         def render_diag_card(title, value_text, subtitle, status_color, insight, recommendation=""):
-            html = f"""<div style="background:#fff; border-top: 5px solid {status_color}; padding:25px; border-radius:10px; box-shadow:0 10px 25px rgba(0,0,0,0.08); height:100%; display:flex; flex-direction:column;"><div style="font-size:0.85rem; font-weight:bold; color:#777; text-transform:uppercase;">{title}</div><div style="font-size:1.9rem; font-weight:900; color:#262730; margin:10px 0;">{value_text}</div><div style="font-size:1rem; font-weight:bold; color:{status_color}; margin-bottom:15px;">{subtitle}</div><div style="font-size:0.95rem; color:#444; line-height:1.5; margin-bottom:20px; flex-grow:1;">{insight}</div>"""
-            if recommendation: html += f"""<div style="background:#f8f9fa; border-left:4px solid {status_color}; padding:15px; font-size:0.9rem; font-style:italic; color:#262730; border-radius:4px;">💡 <b>Solução VR:</b> {recommendation}</div>"""
-            return html + "</div>"
+            html_b = f"""<div style="background:#fff; border-top: 5px solid {status_color}; padding:25px; border-radius:10px; box-shadow:0 10px 25px rgba(0,0,0,0.08); height:100%; display:flex; flex-direction:column;"><div style="font-size:0.85rem; font-weight:bold; color:#777; text-transform:uppercase;">{title}</div><div style="font-size:1.9rem; font-weight:900; color:#262730; margin:10px 0;">{value_text}</div><div style="font-size:1rem; font-weight:bold; color:{status_color}; margin-bottom:15px;">{subtitle}</div><div style="font-size:0.95rem; color:#444; line-height:1.5; margin-bottom:20px; flex-grow:1;">{insight}</div>"""
+            if recommendation: html_b += f"""<div style="background:#f8f9fa; border-left:4px solid {status_color}; padding:15px; font-size:0.9rem; font-style:italic; color:#262730; border-radius:4px;">💡 <b>Solução VR:</b> {recommendation}</div>"""
+            return html_b + "</div>"
 
         if pdvs == 0 and fat == 0 and area == 0 and func == 0 and sku == 0:
             st.info("Preencha ao menos um dos campos estruturais acima para iniciar o mapeamento.")
@@ -1567,113 +1530,102 @@ def aplicativo_principal():
                     else: st.markdown(render_diag_card("Margem e Fisco", f"R$ {f_br(fat*taxa_perda)}", "Risco de Perda Mensal", "#ef4444", "Média de sangria do mercado.", "<b>VR Masterfisco</b> para higienização."), unsafe_allow_html=True)
 
     # ==========================================
-    # TELA PAINEL ADMIN E OUTRAS (ISOLADAS)
+    # TELA PAINEL ADMIN (SEM TERMINAL SQL)
     # ==========================================
     elif tela == "Painel Admin":
         st.markdown("""<h1 class="hero-title">BACKOFFICE</h1>""", unsafe_allow_html=True)
-        t_vinc, t_unid, t_user, t_ext, t_sql, t_cat = st.tabs(["Vínculos Relacionais", "Unidades", "Usuários", "Lançar Vendas Externas", "Terminal SQL", "Catálogo"])
-        
-        with t_unid:
-            st.markdown("<div class='section-header'><span class='section-title'>Cadastro de Escritórios e Unidades</span></div>", unsafe_allow_html=True)
-            with st.form("form_unidades"):
-                c1, c2, c3 = st.columns([2, 1, 1])
-                n_fantasia = c1.text_input("Nome Fantasia (Ex: VR Recife)")
-                v_cnpj = c2.text_input("CNPJ")
-                v_cidade = c3.text_input("Cidade")
-                c4, c5 = st.columns([3, 1])
-                v_end = c4.text_input("Endereço Completo")
-                m_reg = c5.number_input("Meta Global da Região (R$)", 0.0, step=1000.0)
-                if st.form_submit_button("Salvar Nova Unidade"):
-                    try:
-                        engine = get_db_engine()
-                        with engine.begin() as conn: conn.execute(text("INSERT INTO unidades (nome_fantasia, cnpj, cidade, logradouro, meta_regiao) VALUES (:n, :c, :ci, :e, :m)"), {"n": n_fantasia, "c": v_cnpj, "ci": v_cidade, "e": v_end, "m": m_reg})
-                        st.success("Unidade cadastrada!")
-                    except Exception: st.error("Erro interno. Verifique a conexão com o banco de dados.")
-            try:
-                engine = get_db_engine()
-                st.dataframe(pd.read_sql("SELECT id, nome_fantasia, cidade, meta_regiao, ativo FROM unidades", engine), use_container_width=True)
-            except Exception: pass
+        if st.session_state.user_role != 'admin':
+            st.error("Acesso Negado.")
+        else:
+            t_vinc, t_unid, t_user, t_ext, t_cat = st.tabs(["Vínculos Relacionais", "Unidades", "Usuários", "Lançar Vendas Externas", "Catálogo"])
             
-        with t_user:
-            st.markdown("<div class='section-header'><span class='section-title'>Gestão da Equipe Comercial</span></div>", unsafe_allow_html=True)
-            try:
-                engine = get_db_engine()
-                df_unid_list = pd.read_sql("SELECT id, nome_fantasia FROM unidades WHERE ativo = TRUE", engine)
-                if df_unid_list.empty: st.warning("Cadastre uma Unidade antes de criar usuários.")
-                else:
-                    unid_dict = dict(zip(df_unid_list['nome_fantasia'], df_unid_list['id']))
-                    with st.form("form_usuarios"):
-                        c1, c2 = st.columns(2)
-                        u_nome, u_email = c1.text_input("Nome Completo"), c2.text_input("E-mail Corporativo")
-                        c3, c4, c5, c6 = st.columns(4)
-                        u_unid = c3.selectbox("Unidade", list(unid_dict.keys()))
-                        u_role = c4.selectbox("Nível do Sistema", ["vendedor", "admin", "financeiro", "projetos", "consultor"])
-                        u_cargo = c5.selectbox("Cargo (Gamificação)", ["Executivo de Vendas", "CS"])
-                        u_senioridade = c6.selectbox("Senioridade", ["Júnior", "Pleno", "Sênior"])
-                        if st.form_submit_button("Criar Usuário"):
-                            with engine.begin() as conn: conn.execute(text("INSERT INTO usuarios (nome, email, nivel_acesso, id_unidade, senha, primeiro_acesso, cargo, perfil_senioridade) VALUES (:n, :e, :r, :id_u, '123456', TRUE, :cg, :ps)"), {"n": u_nome, "e": u_email, "r": u_role, "id_u": unid_dict[u_unid], "cg": u_cargo, "ps": u_senioridade})
-                            st.success(f"Usuário {u_nome} criado! Senha provisória: 123456")
-                    st.dataframe(pd.read_sql("SELECT u.id, u.nome, u.email, u.cargo, u.perfil_senioridade as senioridade, un.nome_fantasia as unidade FROM usuarios u LEFT JOIN unidades un ON u.id_unidade = un.id", engine), use_container_width=True)
-            except Exception: st.error("Erro ao comunicar com o banco de dados.")
-            
-        with t_ext:
-            st.markdown("<div class='section-header'><span class='section-title'>Livro-Razão (Lançamento de Vendas Externas)</span></div>", unsafe_allow_html=True)
-            try:
-                engine = get_db_engine()
-                usuarios_list = pd.read_sql("SELECT email, nome FROM usuarios WHERE ativo = TRUE", engine)
-                if not usuarios_list.empty:
-                    usr_dict = dict(zip(usuarios_list['nome'], usuarios_list['email']))
-                    with st.form("form_vendas_externas"):
-                        st.info("Lance as vendas realizadas fora do sistema para corrigir a barra de progresso do vendedor na Tela Inicial.")
-                        cx1, cx2 = st.columns(2)
-                        usr_sel = cx1.selectbox("Selecione o Vendedor", list(usr_dict.keys()))
-                        dt_ref = cx2.date_input("Mês de Referência da Venda")
-                        
-                        cy1, cy2 = st.columns(2)
-                        v_proj_ext = cy1.number_input("Total Vendido em Projeto (R$)", min_value=0.0, step=100.0)
-                        v_rec_ext = cy2.number_input("Total Vendido em Recorrente (R$)", min_value=0.0, step=100.0)
-                        
-                        if st.form_submit_button("Injetar Saldo na Gamificação", type="primary"):
-                            data_formatada = datetime.date(dt_ref.year, dt_ref.month, 1)
-                            with engine.begin() as conn:
-                                conn.execute(text("INSERT INTO vendas_externas (vendedor_email, mes_referencia, valor_projeto, valor_recorrente) VALUES (:e, :m, :p, :r)"), {"e": usr_dict[usr_sel], "m": data_formatada, "p": v_proj_ext, "r": v_rec_ext})
-                            st.success(f"Saldo de R$ {f_br(v_proj_ext + v_rec_ext)} lançado com sucesso para {usr_sel} no mês {dt_ref.month}/{dt_ref.year}!")
-                    
-                    st.markdown("<br><b>Histórico de Lançamentos Manuais:</b>", unsafe_allow_html=True)
-                    st.dataframe(pd.read_sql("SELECT * FROM vendas_externas ORDER BY data_lancamento DESC LIMIT 50", engine), use_container_width=True)
-                else:
-                    st.warning("Não há utilizadores cadastrados.")
-            except Exception as e:
-                st.error("A Tabela 'vendas_externas' ainda não existe ou houve falha na conexão.")
-            
-        with t_vinc:
-            with st.form("form_v"):
-                c1, c2, c3, c4 = st.columns([2,2,1,1])
-                pai, fil = c1.selectbox("Pai (SISTEMA):", sorted(list(sistemas_db.keys()))), c2.selectbox("Filho (ITEM):", sorted(list(full_db.keys())))
-                tip, qtd = c3.selectbox("Tipo:", ["projeto", "adesao", "incluso"]), c4.number_input("Qtd:", min_value=0.0, value=1.0)
-                if st.form_submit_button("Salvar Vínculo"):
-                    try:
-                        engine = get_db_engine()
-                        with engine.begin() as conn: conn.execute(text("INSERT INTO product_vinculo (id_produto_pai, id_produto_filho, tipo_vinculo, quantidade_padrao) VALUES (:p, :f, :t, :q)"), {"p": name_to_id[pai], "f": name_to_id[fil], "t": tip, "q": qtd})
-                        st.success("Vínculo Criado com Sucesso!"); st.cache_data.clear()
-                    except Exception: st.error("Falha técnica ao gravar.")
-            st.dataframe(df_vinc, use_container_width=True)
-            
-        with t_sql:
-            st.warning("Terminal SQL Desbloqueado (Modo Admin Avançado)")
-            query = st.text_area("Digite o comando SQL:")
-            if st.button("Executar SQL"):
+            with t_unid:
+                st.markdown("<div class='section-header'><span class='section-title'>Cadastro de Escritórios e Unidades</span></div>", unsafe_allow_html=True)
+                with st.form("form_unidades"):
+                    c1, c2, c3 = st.columns([2, 1, 1])
+                    n_fantasia = c1.text_input("Nome Fantasia (Ex: VR Recife)")
+                    v_cnpj = c2.text_input("CNPJ")
+                    v_cidade = c3.text_input("Cidade")
+                    c4, c5 = st.columns([3, 1])
+                    v_end = c4.text_input("Endereço Completo")
+                    m_reg = c5.number_input("Meta Global da Região (R$)", 0.0, step=1000.0)
+                    if st.form_submit_button("Salvar Nova Unidade"):
+                        try:
+                            engine = get_db_engine()
+                            with engine.begin() as conn: conn.execute(text("INSERT INTO unidades (nome_fantasia, cnpj, cidade, logradouro, meta_regiao) VALUES (:n, :c, :ci, :e, :m)"), {"n": html.escape(n_fantasia), "c": html.escape(v_cnpj), "ci": html.escape(v_cidade), "e": html.escape(v_end), "m": m_reg})
+                            st.success("Unidade cadastrada!")
+                        except Exception: st.error("Erro interno ao gravar dados.")
                 try:
                     engine = get_db_engine()
-                    if query.lower().strip().startswith("select"):
-                        with engine.connect() as conn: res = pd.read_sql(text(query), conn)
-                        st.success(f"{len(res)} linhas retornadas."); st.dataframe(res, use_container_width=True)
+                    st.dataframe(pd.read_sql("SELECT id, nome_fantasia, cidade, meta_regiao, ativo FROM unidades", engine), use_container_width=True)
+                except Exception: pass
+                
+            with t_user:
+                st.markdown("<div class='section-header'><span class='section-title'>Gestão da Equipe Comercial</span></div>", unsafe_allow_html=True)
+                try:
+                    engine = get_db_engine()
+                    df_unid_list = pd.read_sql("SELECT id, nome_fantasia FROM unidades WHERE ativo = TRUE", engine)
+                    if df_unid_list.empty: st.warning("Cadastre uma Unidade antes de criar usuários.")
                     else:
-                        with engine.begin() as conn: r = conn.execute(text(query))
-                        st.success(f"Comando executado com sucesso. Linhas modificadas: {r.rowcount}"); st.cache_data.clear()
-                except Exception as e: st.error(f"Sintaxe incorreta. Erro: {e}")
-                    
-        with t_cat: st.dataframe(df_raw, use_container_width=True)
+                        unid_dict = dict(zip(df_unid_list['nome_fantasia'], df_unid_list['id']))
+                        with st.form("form_usuarios"):
+                            c1, c2 = st.columns(2)
+                            u_nome, u_email = c1.text_input("Nome Completo"), c2.text_input("E-mail Corporativo")
+                            c3, c4, c5, c6 = st.columns(4)
+                            u_unid = c3.selectbox("Unidade", list(unid_dict.keys()))
+                            u_role = c4.selectbox("Nível do Sistema", ["vendedor", "admin", "financeiro", "projetos", "consultor"])
+                            u_cargo = c5.selectbox("Cargo (Gamificação)", ["Executivo de Vendas", "CS"])
+                            u_senioridade = c6.selectbox("Senioridade", ["Júnior", "Pleno", "Sênior"])
+                            if st.form_submit_button("Criar Usuário"):
+                                with engine.begin() as conn: conn.execute(text("INSERT INTO usuarios (nome, email, nivel_acesso, id_unidade, senha, primeiro_acesso, cargo, perfil_senioridade) VALUES (:n, :e, :r, :id_u, :s, TRUE, :cg, :ps)"), {"n": html.escape(u_nome), "e": html.escape(u_email), "r": u_role, "id_u": unid_dict[u_unid], "s": get_senha_hash("123456"), "cg": u_cargo, "ps": u_senioridade})
+                                st.success(f"Usuário {u_nome} criado! Senha provisória: 123456")
+                        st.dataframe(pd.read_sql("SELECT u.id, u.nome, u.email, u.cargo, u.perfil_senioridade as senioridade, un.nome_fantasia as unidade FROM usuarios u LEFT JOIN unidades un ON u.id_unidade = un.id", engine), use_container_width=True)
+                except Exception: st.error("Erro interno de comunicação.")
+                
+            with t_ext:
+                st.markdown("<div class='section-header'><span class='section-title'>Livro-Razão (Lançamento de Vendas Externas)</span></div>", unsafe_allow_html=True)
+                try:
+                    engine = get_db_engine()
+                    usuarios_list = pd.read_sql("SELECT email, nome FROM usuarios WHERE ativo = TRUE", engine)
+                    if not usuarios_list.empty:
+                        usr_dict = dict(zip(usuarios_list['nome'], usuarios_list['email']))
+                        with st.form("form_vendas_externas"):
+                            st.info("Lance as vendas realizadas fora do sistema para corrigir a barra de progresso do vendedor na Tela Inicial.")
+                            cx1, cx2 = st.columns(2)
+                            usr_sel = cx1.selectbox("Selecione o Vendedor", list(usr_dict.keys()))
+                            dt_ref = cx2.date_input("Mês de Referência da Venda")
+                            
+                            cy1, cy2 = st.columns(2)
+                            v_proj_ext = cy1.number_input("Total Vendido em Projeto (R$)", min_value=0.0, step=100.0)
+                            v_rec_ext = cy2.number_input("Total Vendido em Recorrente (R$)", min_value=0.0, step=100.0)
+                            
+                            if st.form_submit_button("Injetar Saldo na Gamificação", type="primary"):
+                                data_formatada = datetime.date(dt_ref.year, dt_ref.month, 1)
+                                with engine.begin() as conn:
+                                    conn.execute(text("INSERT INTO vendas_externas (vendedor_email, mes_referencia, valor_projeto, valor_recorrente) VALUES (:e, :m, :p, :r)"), {"e": usr_dict[usr_sel], "m": data_formatada, "p": v_proj_ext, "r": v_rec_ext})
+                                st.success(f"Saldo de R$ {f_br(v_proj_ext + v_rec_ext)} lançado com sucesso para {usr_sel}!")
+                        
+                        st.markdown("<br><b>Histórico de Lançamentos Manuais:</b>", unsafe_allow_html=True)
+                        st.dataframe(pd.read_sql("SELECT * FROM vendas_externas ORDER BY data_lancamento DESC LIMIT 50", engine), use_container_width=True)
+                    else:
+                        st.warning("Não há utilizadores cadastrados.")
+                except Exception:
+                    st.error("Ocorreu um erro ao carregar informações de histórico.")
+                
+            with t_vinc:
+                with st.form("form_v"):
+                    c1, c2, c3, c4 = st.columns([2,2,1,1])
+                    pai, fil = c1.selectbox("Pai (SISTEMA):", sorted(list(sistemas_db.keys()))), c2.selectbox("Filho (ITEM):", sorted(list(full_db.keys())))
+                    tip, qtd = c3.selectbox("Tipo:", ["projeto", "adesao", "incluso"]), c4.number_input("Qtd:", min_value=0.0, value=1.0)
+                    if st.form_submit_button("Salvar Vínculo"):
+                        try:
+                            engine = get_db_engine()
+                            with engine.begin() as conn: conn.execute(text("INSERT INTO product_vinculo (id_produto_pai, id_produto_filho, tipo_vinculo, quantidade_padrao) VALUES (:p, :f, :t, :q)"), {"p": name_to_id[pai], "f": name_to_id[fil], "t": tip, "q": qtd})
+                            st.success("Vínculo Criado com Sucesso!"); st.cache_data.clear()
+                        except Exception: st.error("Falha técnica ao gravar.")
+                st.dataframe(df_vinc, use_container_width=True)
+                
+            with t_cat: st.dataframe(df_raw, use_container_width=True)
 
     elif tela == "Minhas Propostas":
         st.markdown("""<h1 class="hero-title">MEU HISTÓRICO</h1>""", unsafe_allow_html=True)
@@ -1719,8 +1671,8 @@ def aplicativo_principal():
                             <div style="background:#fff; padding:15px; border-radius:8px; border-left:6px solid {cor_status}; margin-bottom:5px; box-shadow:0 2px 5px rgba(0,0,0,0.05);">
                                 <div style="display:flex; justify-content:space-between;">
                                     <div>
-                                        <strong style="font-size:1.1rem; color:#262730;">{row['nome_cliente']}</strong><br>
-                                        <span style="color:#777; font-size:0.85rem;">Proposta #{row['id']} | CNPJ: {row['cnpj_cliente']} | Data: {row['data_fmt']}</span>
+                                        <strong style="font-size:1.1rem; color:#262730;">{html.escape(row['nome_cliente'])}</strong><br>
+                                        <span style="color:#777; font-size:0.85rem;">Proposta #{row['id']} | CNPJ: {html.escape(row['cnpj_cliente'])} | Data: {row['data_fmt']}</span>
                                     </div>
                                     <div style="text-align:right;">
                                         <span style="background:{cor_status}22; color:{cor_status}; padding:3px 8px; border-radius:4px; font-size:0.8rem; font-weight:bold;">{row['status']}</span><br>
@@ -1768,7 +1720,7 @@ def aplicativo_principal():
                             for _, row in df_filtrado.iterrows():
                                 st.markdown(f"""
                                 <div style="background:#fff; padding:15px; border:1px solid #e0e0e0; border-radius:8px; margin-bottom:10px; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
-                                    <strong style="color:#262730; font-size:0.95rem; display:block; margin-bottom:5px;">{row['nome_cliente']}</strong>
+                                    <strong style="color:#262730; font-size:0.95rem; display:block; margin-bottom:5px;">{html.escape(row['nome_cliente'])}</strong>
                                     <span style="font-size:0.75rem; color:#888; display:block; margin-bottom:8px;">ID: #{row['id']} | {row['data_fmt'][:10]}</span>
                                     <div style="background:#f9f9f9; padding:5px; border-radius:4px;">
                                         <span style="font-size:0.8rem; color:#555; display:block;">Setup: R$ {f_br(row['valor_setup'])}</span>
@@ -1888,7 +1840,7 @@ def aplicativo_principal():
                         logs_agg = df_logs.groupby('email_usuario').size().reset_index(name='Total de Logins')
                         logs_agg = logs_agg.sort_values(by='Total de Logins', ascending=False)
                         st.dataframe(logs_agg, use_container_width=True, hide_index=True)
-                    else: st.warning("A tabela de logs_acesso está vazia ou ainda não foi criada.")
+                    else: st.warning("Não há acessos registrados ainda.")
                 
                 with col_op2:
                     st.markdown("**Propostas Geradas por Dia**")
@@ -1898,8 +1850,8 @@ def aplicativo_principal():
                     prop_dia.columns = ['Data', 'Vendedor', 'Propostas Movimentadas']
                     st.dataframe(prop_dia, use_container_width=True, hide_index=True)
 
-        except Exception as e:
-            st.error(f"Falha ao comunicar com o Banco de Dados. Erro Técnico: {e}")
+        except Exception:
+            st.error("Falha técnica interna.")
             
     # ==========================================
     # ROTA INJETADA: COMISSIONAMENTO
