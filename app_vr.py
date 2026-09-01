@@ -1267,11 +1267,15 @@ def aplicativo_principal():
                     mrr_filial_total = 0.0
                     max_parcelas = 1
                     
-                    # 4. Cálculo Inteligente Linha a Linha
+# 4. Cálculo Inteligente Linha a Linha
                     for _, item in df_itens.iterrows():
                         desc = str(item['title']).strip().upper()
-                        v_setup = float(item['valor_setup'] or 0)
-                        v_mrr = float(item['valor_mrr'] or 0)
+                        
+                        # --- LINHAS CORRIGIDAS AQUI ---
+                        v_setup = parse_currency(str(item['valor_setup'] or '0'))
+                        v_mrr = parse_currency(str(item['valor_mrr'] or '0'))
+                        # ------------------------------
+                        
                         parcelas = int(item['qtdparcelas'] or 1)
                         
                         if parcelas > max_parcelas: max_parcelas = parcelas
