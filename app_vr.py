@@ -556,7 +556,7 @@ def tela_comissionamento():
             
             df_base = pd.read_sql(query_bitrix, conn, params={"d_inicio": data_inicio, "d_fim": data_fim})
             
-   except Exception as e:
+    except Exception as e:
         st.error(f"Erro real: {e}")
 
     if df_base.empty:
