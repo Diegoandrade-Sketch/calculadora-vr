@@ -578,8 +578,11 @@ def tela_visao_comercial():
         engine = get_db_engine()
         with engine.connect() as conn:
             query_dash = text("""
-                SELECT DISTINCT ON (n.id) n.id, COALESCE(o.ufcrmvalorprojeto::text, '0') AS setup_str, COALESCE(o.ufcrmvalorrecorrente::text, o.opportunity::text, '0') AS mrr_str
-                FROM orcamento_novo AS o JOIN negocio_novo AS n ON n.id = o.dealId
+                SELECT DISTINCT ON (n.id) n.id, COALESCE(o.ufcrmvalorprojeto::text, '0') AS setup_str, COALESCE(o.ufcrmvalorrecorrente::text, o.opportunity::text, '0') AS mrr_str,
+                TRIM(CONCAT(COALESCE(ab.name, ''), ' ', COALESCE(ab.lastname, ''))) AS "Vendedor"
+                FROM orcamento_novo AS o 
+                JOIN negocio_novo AS n ON n.id = o.dealId
+                LEFT JOIN assignedby_novo AS ab ON ab.id = n.assignedById
                 WHERE o.closedate >= :d_inicio AND o.closedate <= :d_fim AND n.closed = 'Y'
             """)
             df_dash = pd.read_sql(query_dash, conn, params={"d_inicio": data_inicio, "d_fim": data_fim})
@@ -590,6 +593,7 @@ def tela_visao_comercial():
                 
             df_dash['Setup Bruto'] = df_dash['setup_str'].apply(parse_currency)
             df_dash['MRR Bruto'] = df_dash['mrr_str'].apply(parse_currency)
+            df_dash['Total Bruto'] = df_dash['Setup Bruto'] + df_dash['MRR Bruto']
             t_setup, t_mrr = df_dash['Setup Bruto'].sum(), df_dash['MRR Bruto'].sum()
             
             st.markdown("### 💰 Receita Adquirida no Período (Negócios Ganhos)")
@@ -597,7 +601,55 @@ def tela_visao_comercial():
             with col_kpi1: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #1976d2;"><div class="dash-title">Total de MRR (Mensalidade)</div><div style="font-size:1.8rem; font-weight:900; color:#262730;">R$ {f_br(t_mrr)}</div></div>""", unsafe_allow_html=True)
             with col_kpi2: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #ff6600;"><div class="dash-title">Total de Setup (Serviços)</div><div style="font-size:1.8rem; font-weight:900; color:#262730;">R$ {f_br(t_setup)}</div></div>""", unsafe_allow_html=True)
             with col_kpi3: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #2e7d32; background:#f4f6f9;"><div class="dash-title">Volume Total Fechado</div><div style="font-size:1.8rem; font-weight:900; color:#262730;">R$ {f_br(t_mrr + t_setup)}</div></div>""", unsafe_allow_html=True)
-            st.info("💡 Próxima etapa: Construção dos gráficos de Produtos Mais Vendidos e Curva ABC de Executivos.")
+            
+            st.markdown("<hr>", unsafe_allow_html=True)
+            st.markdown("### 📊 Análise de Performance Operacional")
+            
+            query_prods = text("""
+                SELECT io.title AS "Produto", io.quantidade
+                FROM itensorcamento_novo AS io
+                JOIN orcamento_novo AS o ON o.id = io.parentid7
+                JOIN negocio_novo AS n ON n.id = o.dealId
+                WHERE o.closedate >= :d_inicio AND o.closedate <= :d_fim AND n.closed = 'Y'
+            """)
+            df_prods = pd.read_sql(query_prods, conn, params={"d_inicio": data_inicio, "d_fim": data_fim})
+            
+            col_g1, col_g2 = st.columns(2)
+            
+            with col_g1:
+                st.markdown("**🏆 Produtos Mais Vendidos (Top 10)**")
+                if not df_prods.empty:
+                    df_prods['quantidade'] = pd.to_numeric(df_prods['quantidade'], errors='coerce').fillna(1)
+                    df_top_prods = df_prods.groupby('Produto')['quantidade'].sum().reset_index()
+                    df_top_prods = df_top_prods.sort_values(by='quantidade', ascending=False).head(10)
+                    df_top_prods = df_top_prods.rename(columns={'quantidade': 'Qtd Vendida'}).set_index('Produto')
+                    st.bar_chart(df_top_prods, color="#1976d2")
+                else:
+                    st.info("Sem dados de produtos no período selecionado.")
+
+            with col_g2:
+                st.markdown("**📈 Curva ABC de Receita por Executivo**")
+                df_abc = df_dash.groupby('Vendedor')['Total Bruto'].sum().reset_index()
+                df_abc = df_abc.sort_values(by='Total Bruto', ascending=False)
+                df_abc = df_abc[df_abc['Total Bruto'] > 0]
+                
+                if not df_abc.empty:
+                    df_abc['% Participação'] = (df_abc['Total Bruto'] / df_abc['Total Bruto'].sum()) * 100
+                    df_abc['% Acumulado'] = df_abc['% Participação'].cumsum()
+                    
+                    def classificar_curva(pct):
+                        if pct <= 70: return 'A'
+                        elif pct <= 90: return 'B'
+                        else: return 'C'
+                        
+                    df_abc['Curva'] = df_abc['% Acumulado'].apply(classificar_curva)
+                    
+                    df_exibicao = df_abc[['Vendedor', 'Total Bruto', 'Curva']].copy()
+                    df_exibicao['Total Bruto'] = df_exibicao['Total Bruto'].apply(lambda x: f"R$ {f_br(x)}")
+                    st.dataframe(df_exibicao, use_container_width=True, hide_index=True)
+                else:
+                    st.info("Receita zerada no período para classificação.")
+
     except Exception as e:
         st.error(f"Erro ao carregar dashboards: {e}")
 
