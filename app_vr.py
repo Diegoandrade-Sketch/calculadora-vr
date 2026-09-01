@@ -577,7 +577,8 @@ def tela_visao_comercial():
     try:
         engine = get_db_engine()
         with engine.connect() as conn:
-            # === BLOCO 1: NEGÓCIOS FECHADOS (ESTRITAMENTE GANHOS) ===
+            
+            # --- CARREGAMENTO GLOBAL DE DADOS ---
             try:
                 query_dash = text("""
                     SELECT DISTINCT ON (n.id) n.id, 
@@ -613,11 +614,41 @@ def tela_visao_comercial():
                     WHERE o.closedate >= :d_inicio AND o.closedate <= :d_fim AND n.closed = 'Y'
                 """)
                 df_dash = pd.read_sql(query_fallback, conn, params={"d_inicio": data_inicio, "d_fim": data_fim})
+                
+            query_open = text("""
+                SELECT DISTINCT ON (n.id) n.id, 
+                COALESCE(o.ufcrmvalorprojeto::text, '0') AS setup_str, 
+                COALESCE(o.ufcrmvalorrecorrente::text, o.opportunity::text, '0') AS mrr_str,
+                TRIM(CONCAT(COALESCE(ab.name, ''), ' ', COALESCE(ab.lastname, ''))) AS "Vendedor",
+                n.processovendaid,
+                COALESCE(c.title, 'Cliente Não Informado') AS "Cliente"
+                FROM orcamento_novo AS o 
+                JOIN negocio_novo AS n ON n.id = o.dealId
+                LEFT JOIN assignedby_novo AS ab ON ab.id = n.assignedById
+                LEFT JOIN company_novo AS c ON c.id = n.companyId
+                WHERE n.closed = 'N'
+            """)
+            df_open = pd.read_sql(query_open, conn)
             
-            df_dash = df_dash[df_dash['processovendaid'].astype(str) != '2812']
+            # --- LIMPEZA GERAL DE DESPESAS (2812) ---
+            if not df_dash.empty: df_dash = df_dash[df_dash['processovendaid'].astype(str) != '2812']
+            if not df_open.empty: df_open = df_open[df_open['processovendaid'].astype(str) != '2812']
             
+            # --- FILTRO POR EXECUTIVO ---
+            lista_vendedores = []
+            if not df_dash.empty: lista_vendedores.extend(df_dash['Vendedor'].dropna().unique().tolist())
+            if not df_open.empty: lista_vendedores.extend(df_open['Vendedor'].dropna().unique().tolist())
+            lista_vendedores = sorted(list(set([v for v in lista_vendedores if v.strip() != ''])))
+            
+            vendedor_sel = st.selectbox("Auditoria Estratégica por Executivo", ["Todos"] + lista_vendedores)
+            
+            if vendedor_sel != "Todos":
+                if not df_dash.empty: df_dash = df_dash[df_dash['Vendedor'] == vendedor_sel]
+                if not df_open.empty: df_open = df_open[df_open['Vendedor'] == vendedor_sel]
+                
+            # === BLOCO 1: NEGÓCIOS FECHADOS (GANHOS) ===
             if df_dash.empty:
-                st.warning("Nenhum negócio de receita comercial classificado como ganho neste período.")
+                st.warning("Nenhum negócio de receita comercial classificado como ganho neste período para o filtro selecionado.")
             else:
                 df_dash['Setup Bruto'] = df_dash['setup_str'].apply(parse_currency)
                 df_dash['MRR Bruto'] = df_dash['mrr_str'].apply(parse_currency)
@@ -679,19 +710,10 @@ def tela_visao_comercial():
                     st.markdown("**Volume de Vendas por Região (UF)**")
                     df_regiao = df_dash.groupby('Estado')['Total Bruto'].sum().reset_index()
                     df_regiao = df_regiao.sort_values(by='Total Bruto', ascending=False)
-                    max_regiao = float(df_regiao['Total Bruto'].max()) if not df_regiao.empty else 100
+                    df_regiao['Volume de Vendas'] = df_regiao['Total Bruto'].apply(lambda x: f"R$ {f_br(x)}")
                     
                     st.dataframe(
-                        df_regiao,
-                        column_config={
-                            "Estado": st.column_config.TextColumn("Região (UF)"),
-                            "Total Bruto": st.column_config.ProgressColumn(
-                                "Volume de Vendas",
-                                format="R$ %.2f",
-                                min_value=0,
-                                max_value=max_regiao
-                            )
-                        },
+                        df_regiao[['Estado', 'Volume de Vendas']],
                         use_container_width=True,
                         hide_index=True
                     )
@@ -700,19 +722,10 @@ def tela_visao_comercial():
                     st.markdown("**Volume de Vendas por Executivo**")
                     df_exec = df_dash.groupby('Vendedor')['Total Bruto'].sum().reset_index()
                     df_exec = df_exec.sort_values(by='Total Bruto', ascending=False)
-                    max_exec = float(df_exec['Total Bruto'].max()) if not df_exec.empty else 100
+                    df_exec['Volume de Vendas'] = df_exec['Total Bruto'].apply(lambda x: f"R$ {f_br(x)}")
                     
                     st.dataframe(
-                        df_exec,
-                        column_config={
-                            "Vendedor": st.column_config.TextColumn("Executivo"),
-                            "Total Bruto": st.column_config.ProgressColumn(
-                                "Volume de Vendas",
-                                format="R$ %.2f",
-                                min_value=0,
-                                max_value=max_exec
-                            )
-                        },
+                        df_exec[['Vendedor', 'Volume de Vendas']],
                         use_container_width=True,
                         hide_index=True
                     )
@@ -750,23 +763,6 @@ def tela_visao_comercial():
             st.markdown("<hr>", unsafe_allow_html=True)
             st.markdown("### ⏳ Pipeline Ativo (Negócios em Aberto)")
             
-            query_open = text("""
-                SELECT DISTINCT ON (n.id) n.id, 
-                COALESCE(o.ufcrmvalorprojeto::text, '0') AS setup_str, 
-                COALESCE(o.ufcrmvalorrecorrente::text, o.opportunity::text, '0') AS mrr_str,
-                TRIM(CONCAT(COALESCE(ab.name, ''), ' ', COALESCE(ab.lastname, ''))) AS "Vendedor",
-                n.processovendaid,
-                COALESCE(c.title, 'Cliente Não Informado') AS "Cliente"
-                FROM orcamento_novo AS o 
-                JOIN negocio_novo AS n ON n.id = o.dealId
-                LEFT JOIN assignedby_novo AS ab ON ab.id = n.assignedById
-                LEFT JOIN company_novo AS c ON c.id = n.companyId
-                WHERE n.closed = 'N'
-            """)
-            df_open = pd.read_sql(query_open, conn)
-            
-            df_open = df_open[df_open['processovendaid'].astype(str) != '2812']
-            
             if not df_open.empty:
                 df_open['Setup Bruto'] = df_open['setup_str'].apply(parse_currency)
                 df_open['MRR Bruto'] = df_open['mrr_str'].apply(parse_currency)
@@ -789,7 +785,7 @@ def tela_visao_comercial():
                 st.markdown("<br>**Top 15 Negociações em Andamento (Por Volume)**", unsafe_allow_html=True)
                 st.dataframe(df_open_view.sort_values(by='Total Projetado', ascending=False).head(15), use_container_width=True, hide_index=True)
             else:
-                st.info("Não há propostas ativas no funil no momento.")
+                st.info("Não há propostas ativas no funil no momento para o filtro selecionado.")
 
     except Exception as e:
         st.error(f"Erro ao carregar dashboards: {e}")
