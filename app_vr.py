@@ -718,7 +718,7 @@ def tela_comissionamento():
             nome_cli_sel = linhas_selecionadas.iloc[0]["Cliente"]
             
             # Resgatando o Processo ID do df_base original
-            proc_id_sel = df_base[df_base["Proposta ID"] == prop_selecionada]["Processo ID"].values[0]
+            proc_id_sel = df_base[df_base["Proposta ID"].astype(str) == str(prop_selecionada)]["Processo ID"].values[0]
             
             modal_extrato_venda(prop_selecionada, nome_cli_sel, proc_id_sel)
 
