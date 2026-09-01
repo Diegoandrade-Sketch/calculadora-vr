@@ -514,7 +514,6 @@ def modal_extrato_venda(proposta_id, nome_cliente):
     st.markdown(f"<h3 style='color:#262730; margin-bottom: 5px;'>{nome_cliente}</h3>", unsafe_allow_html=True)
     st.markdown(f"<span style='color:#777; font-weight:bold;'>Negócio ID: #{proposta_id}</span><hr>", unsafe_allow_html=True)
     
-    # Query que busca as linhas da proposta e cruza com a tabela de produtos
     try:
         engine = get_db_engine()
         with engine.connect() as conn:
@@ -535,7 +534,6 @@ def modal_extrato_venda(proposta_id, nome_cliente):
                 st.warning("Nenhum item detalhado encontrado no banco para esta proposta.")
                 return
 
-            # Regras de Negócio e Tagueamento para o Financeiro
             df_itens['% Comissão'] = 0.0
             df_itens['Tag'] = 'Despesa (Isento)'
             
@@ -543,22 +541,19 @@ def modal_extrato_venda(proposta_id, nome_cliente):
                 tipo = row['Tipo ID']
                 nome = str(row['Produto/Serviço']).lower()
                 
-                # Regra: MRR (Mensalidade) -> 5%
+                # Regras de Isenção e Tagueamento
                 if tipo == 604: 
                     df_itens.at[index, '% Comissão'] = 5.0
                     df_itens.at[index, 'Tag'] = 'Mensalidade'
-                # Regra: Despesas operacionais -> 0% (Isento)
                 elif any(kw in nome for kw in ['despesa', 'km', 'hospedagem', 'alimentação', 'passagem', 'viagem']):
                     df_itens.at[index, '% Comissão'] = 0.0
                     df_itens.at[index, 'Tag'] = 'Despesa (Isento)'
-                # Regra: Setup / Serviços -> 2%
                 elif tipo == 606: 
                     df_itens.at[index, '% Comissão'] = 2.0
                     df_itens.at[index, 'Tag'] = 'Setup/Serviço'
 
             df_itens['Comissão (R$)'] = df_itens['Valor Total (R$)'] * (df_itens['% Comissão'] / 100)
             
-            # Formatação Clean
             colunas_monetarias = ['Valor Unit. (R$)', 'Valor Total (R$)', 'Comissão (R$)']
             for col in colunas_monetarias:
                 df_itens[col] = df_itens[col].apply(lambda x: f"R$ {f_br(x)}" if pd.notnull(x) else "R$ 0,00")
@@ -583,7 +578,6 @@ def tela_comissionamento():
     
     hoje = datetime.date.today()
     c1, c2, c3 = st.columns(3)
-    # Formato Brasileiro de Data
     data_inicio = c1.date_input("Data Início (Corte)", hoje.replace(day=1), format="DD/MM/YYYY")
     data_fim = c2.date_input("Data Fim (Corte)", hoje, format="DD/MM/YYYY")
     cargo_sel = c3.selectbox("Cargo de Apuração", ["Todos", "Executivo de Vendas", "CS"])
@@ -597,7 +591,6 @@ def tela_comissionamento():
     try:
         engine = get_db_engine()
         with engine.connect() as conn:
-            # Query com a nova coluna de Status do Bitrix (stageid)
             query_bitrix = text("""
                 SELECT DISTINCT ON (n.id)
                     n.id AS "Proposta ID",
@@ -625,17 +618,18 @@ def tela_comissionamento():
     if df_base.empty:
         st.info(f"Nenhum fechamento encontrado no período selecionado.")
     else:
-        # Multi-Filtros Dinâmicos (Vendedor e Estado)
+        # Multi-Filtros em Cascata (Vendedor -> UF)
         cf1, cf2 = st.columns(2)
         vendedores_unicos = sorted(df_base["Vendedor"].dropna().unique().tolist())
         vendedores_sel = cf1.multiselect("Filtrar por Vendedor(es):", vendedores_unicos, placeholder="Todos selecionados por padrão")
         
+        if vendedores_sel:
+            df_base = df_base[df_base['Vendedor'].isin(vendedores_sel)]
+            
+        # As UFs agora refletem apenas os dados filtrados acima, evitando becos sem saída
         estados_unicos = sorted(df_base["Estado"].dropna().unique().tolist())
         estados_sel = cf2.multiselect("Filtrar por Região (UF):", estados_unicos, placeholder="Todas as regiões selecionadas por padrão")
 
-        # Aplicação dos Filtros
-        if vendedores_sel:
-            df_base = df_base[df_base['Vendedor'].isin(vendedores_sel)]
         if estados_sel:
             df_base = df_base[df_base['Estado'].isin(estados_sel)]
             
@@ -648,30 +642,39 @@ def tela_comissionamento():
         df_base['Setup Bruto (R$)'] = df_base['setup_str'].apply(parse_currency)
         df_base['MRR Bruto (R$)'] = df_base['mrr_str'].apply(parse_currency)
         
-        # Consolidação dos Valores Totais (Dashboards Inferiores)
-        # O cálculo global considera 2% para setup e 5% para MRR da base filtrada
-        t_setup_comis = (df_base['Setup Bruto (R$)'] * 0.02).sum()
-        t_mrr_comis = (df_base['MRR Bruto (R$)'] * 0.05).sum()
-        t_geral = t_setup_comis + t_mrr_comis
+        # Restauração das Colunas de Comissão na Tabela Principal
+        df_base['% Setup'] = 2.0
+        df_base['% MRR'] = 5.0
+        df_base['Comissão Setup (R$)'] = df_base['Setup Bruto (R$)'] * (df_base['% Setup'] / 100)
+        df_base['Comissão MRR (R$)'] = df_base['MRR Bruto (R$)'] * (df_base['% MRR'] / 100)
+        df_base['Total Líquido (R$)'] = df_base['Comissão Setup (R$)'] + df_base['Comissão MRR (R$)']
 
-        # Criação de um DataFrame estético para visualização
+        # Consolidação dos Dashboards Inferiores
+        t_setup_comis = df_base['Comissão Setup (R$)'].sum()
+        t_mrr_comis = df_base['Comissão MRR (R$)'].sum()
+        t_geral = df_base['Total Líquido (R$)'].sum()
+
         df_exibicao = df_base.copy()
-        colunas_monetarias = ['Setup Bruto (R$)', 'MRR Bruto (R$)']
+        colunas_monetarias = ['Setup Bruto (R$)', 'MRR Bruto (R$)', 'Comissão Setup (R$)', 'Comissão MRR (R$)', 'Total Líquido (R$)']
         for col in colunas_monetarias:
             df_exibicao[col] = df_exibicao[col].apply(lambda x: f"R$ {f_br(x)}")
             
         df_exibicao['Proposta ID'] = df_exibicao['Proposta ID'].astype(str)
-        ordem_colunas = ["Vendedor", "Proposta ID", "Cliente", "Estado", "Status Bitrix", "Data Venda", "Setup Bruto (R$)", "MRR Bruto (R$)"]
+        ordem_colunas = ["Vendedor", "Proposta ID", "Cliente", "Estado", "Status Bitrix", "Data Venda", "Setup Bruto (R$)", "MRR Bruto (R$)", "% Setup", "% MRR", "Comissão Setup (R$)", "Comissão MRR (R$)", "Total Líquido (R$)"]
         df_exibicao = df_exibicao[ordem_colunas]
 
-        st.dataframe(df_exibicao, use_container_width=True, hide_index=True, selection_mode="single-row", on_select="rerun", key="tb_comissao")
+        st.dataframe(df_exibicao, use_container_width=True, hide_index=True)
 
-        # Acionador do Modal Flutuante
-        if st.session_state.tb_comissao.selection.rows:
-            linha_selecionada = st.session_state.tb_comissao.selection.rows[0]
-            prop_id = df_exibicao.iloc[linha_selecionada]["Proposta ID"]
-            nome_cli = df_exibicao.iloc[linha_selecionada]["Cliente"]
-            modal_extrato_venda(prop_id, nome_cli)
+        # Disparador Seguro do Extrato Modal (Compatível com qualquer versão do Streamlit)
+        st.markdown("<div style='margin-top:15px; margin-bottom:5px;'><span style='font-size:0.9rem; font-weight:bold; color:#777;'>🔎 AUDITORIA DE PROPOSTA</span></div>", unsafe_allow_html=True)
+        c_det1, c_det2, c_det3 = st.columns([2, 1, 4])
+        opcoes_propostas = df_exibicao["Proposta ID"].tolist()
+        
+        if opcoes_propostas:
+            prop_selecionada = c_det1.selectbox("Selecione o ID da Venda:", opcoes_propostas, label_visibility="collapsed")
+            if c_det2.button("Ver Extrato", type="primary", use_container_width=True):
+                nome_cli_sel = df_exibicao[df_exibicao["Proposta ID"] == prop_selecionada]["Cliente"].values[0]
+                modal_extrato_venda(prop_selecionada, nome_cli_sel)
 
         # ==========================================
         # PARTE 3: PAINEL DE EFETIVAÇÃO
@@ -686,7 +689,7 @@ def tela_comissionamento():
         st.write("---")
         c_btn1, c_btn2 = st.columns([1, 1])
         with c_btn1:
-            csv = df_base.to_csv(index=False, sep=';', decimal=',').encode('utf-8')
+            csv = df_base.drop(columns=['setup_str', 'mrr_str']).to_csv(index=False, sep=';', decimal=',').encode('utf-8')
             st.download_button(label="📥 Exportar Relatório Contábil (CSV)", data=csv, file_name=f"comissoes_fechamento.csv", mime="text/csv", use_container_width=True)
         with c_btn2:
             if st.button("🔒 Efetivar Lote de Pagamento", type="primary", use_container_width=True):
