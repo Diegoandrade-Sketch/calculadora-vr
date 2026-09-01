@@ -509,15 +509,40 @@ def renderizar_welcome_pack(nome, cnpjs, val_setup, val_mensal, parcelas_html):
 # ==========================================
 # NOVA TELA: COMISSIONAMENTO OTIMIZADA
 # ==========================================
+# Dicionário de Mapeamento dos Processos do Bitrix
+MAPA_PROCESSOS = {
+    "2726": "NOVOS NEGÓCIOS",
+    "2806": "NOVOS PRODUTOS CLIENTE VR",
+    "2728": "NOVAS LOJAS CLIENTE VR",
+    "5968": "O3 CLOUD - NOVOS NEGÓCIOS",
+    "2724": "O3 CLOUD - BASE DE CLIENTES",
+    "5998": "SKY ONE - NOVOS NEGÓCIOS",
+    "6000": "SKY ONE - BASE DE CLIENTES",
+    "2816": "ATUALIZAÇÃO DE VALORES",
+    "2730": "TROCA DE CNPJ",
+    "2810": "CUSTOMIZAÇÃO/DESENVOLVIMENTO",
+    "2818": "INSTALAÇÃO TÉCNICA",
+    "2812": "DESPESA DE PROJETO",
+    "2814": "ACESSO TEMPORÁRIO",
+    "2820": "SERVIÇOS DE TREINAMENTO",
+    "2718": "CONTROLLER 360 (DESATIVADO)",
+    "2720": "MASTERFISCO (DESATIVADO)",
+    "2722": "OMNICHANNEL (DESATIVADO)",
+    "3626": "NOVOS NEGÓCIOS - CONTROLLER 360 (DESATIVADO)",
+    "3632": "NOVOS NEGÓCIOS - OMNICHANNEL (DESATIVADO)",
+    "3630": "NOVOS NEGÓCIOS - MASTERFISCO (DESATIVADO)"
+}
+
 @st.dialog("Extrato de Liquidação por Produto", width="large")
-def modal_extrato_venda(proposta_id, nome_cliente):
+def modal_extrato_venda(proposta_id, nome_cliente, processo_id):
+    nome_processo = MAPA_PROCESSOS.get(str(processo_id), "Processo Não Mapeado / Outros")
+    
     st.markdown(f"<h3 style='color:#262730; margin-bottom: 5px;'>{nome_cliente}</h3>", unsafe_allow_html=True)
-    st.markdown(f"<span style='color:#777; font-weight:bold;'>Negócio ID: #{proposta_id}</span><hr>", unsafe_allow_html=True)
+    st.markdown(f"<span style='color:#777; font-weight:bold;'>Negócio ID: #{proposta_id} | Origem: {nome_processo}</span><hr>", unsafe_allow_html=True)
     
     try:
         engine = get_db_engine()
         with engine.connect() as conn:
-            # Extraindo dados como texto bruto para o Python fazer o tratamento seguro
             query_itens = text("""
                 SELECT 
                     io.title AS "Produto/Serviço",
@@ -534,30 +559,31 @@ def modal_extrato_venda(proposta_id, nome_cliente):
                 st.warning("Nenhum item detalhado encontrado no banco para esta proposta.")
                 return
 
-            # Limpeza matemática no Python (Imune a erros de texto no banco)
             df_itens['Valor Unit. (R$)'] = df_itens['val_unit_str'].apply(parse_currency)
             df_itens['Qtd'] = pd.to_numeric(df_itens['Qtd'], errors='coerce').fillna(1)
             df_itens['Valor Total (R$)'] = df_itens['Qtd'] * df_itens['Valor Unit. (R$)']
             
             df_itens['% Comissão'] = 0.0
-            df_itens['Tag'] = 'Despesa (Isento)'
+            df_itens['Tag'] = 'Não Classificado'
             
             for index, row in df_itens.iterrows():
                 tipo = pd.to_numeric(row['Tipo ID'], errors='coerce')
                 nome = str(row['Produto/Serviço']).lower()
                 
-                # MRR (Mensalidade)
-                if tipo == 604: 
-                    df_itens.at[index, '% Comissão'] = 5.0
-                    df_itens.at[index, 'Tag'] = 'Mensalidade'
-                # Despesas operacionais
-                elif any(kw in nome for kw in ['despesa', 'km', 'hospedagem', 'alimentação', 'passagem', 'viagem']):
+                # Regra Absoluta: Se o negócio inteiro for Despesa de Projeto (2812), zera tudo.
+                if str(processo_id) == '2812':
                     df_itens.at[index, '% Comissão'] = 0.0
-                    df_itens.at[index, 'Tag'] = 'Despesa (Isento)'
-                # Setup / Serviços / Projetos
-                elif tipo in [606, 608, 610]: 
-                    df_itens.at[index, '% Comissão'] = 5.0
-                    df_itens.at[index, 'Tag'] = 'Setup/Serviço'
+                    df_itens.at[index, 'Tag'] = 'Despesa de Projeto (Isento)'
+                else:
+                    if tipo == 604: 
+                        df_itens.at[index, '% Comissão'] = 5.0
+                        df_itens.at[index, 'Tag'] = 'Mensalidade'
+                    elif any(kw in nome for kw in ['despesa', 'km', 'hospedagem', 'alimentação', 'passagem', 'viagem']):
+                        df_itens.at[index, '% Comissão'] = 0.0
+                        df_itens.at[index, 'Tag'] = 'Despesa (Isento)'
+                    elif tipo in [606, 608, 610]: 
+                        df_itens.at[index, '% Comissão'] = 5.0
+                        df_itens.at[index, 'Tag'] = 'Setup/Serviço'
 
             df_itens['Comissão (R$)'] = df_itens['Valor Total (R$)'] * (df_itens['% Comissão'] / 100)
             
@@ -570,7 +596,8 @@ def modal_extrato_venda(proposta_id, nome_cliente):
             st.dataframe(df_itens[['Produto/Serviço', 'Tag', 'Qtd', 'Valor Unit. (R$)', 'Valor Total (R$)', '% Comissão', 'Comissão (R$)']], use_container_width=True, hide_index=True)
             
     except Exception as e:
-        st.error(f"Erro real para debug: {e}")
+        print(f"Erro no Modal: {e}")
+        st.error("Falha ao carregar detalhamento. Tente novamente.")
 
 
 def tela_comissionamento():
@@ -589,7 +616,7 @@ def tela_comissionamento():
     cargo_sel = c3.selectbox("Cargo de Apuração", ["Todos", "Executivo de Vendas", "CS"])
 
     # ==========================================
-    # PARTE 2: COMUNICAÇÃO COM BANCO E MATRIZ
+    # PARTE 2: MATRIZ E ESPELHO DE VENDAS
     # ==========================================
     st.markdown("""<br><div class="mapeamento-container" style="border-left-color:#1976d2;"><h3 style="margin:0; color:#1976d2;">2. Matriz de Auditoria e Espelho de Vendas</h3></div>""", unsafe_allow_html=True)
 
@@ -603,16 +630,17 @@ def tela_comissionamento():
                     TRIM(CONCAT(COALESCE(ab.name, ''), ' ', COALESCE(ab.lastname, ''))) AS "Vendedor", 
                     e.title AS "Cliente",
                     COALESCE(e.ufcrmintegraoreceitauf, 'N/I') AS "Estado",
-                    CASE WHEN n.stageid = 'WON' THEN 'Ganhou' ELSE 'Em Aberto' END AS "Status Bitrix",
-                    o.closedate AS data_bruta,
+                    CASE WHEN n.closed = 'Y' THEN 'Ganhou' ELSE 'Em Aberto' END AS "Status Bitrix",
+                    n.closedate AS data_bruta,
+                    n.processovendaid AS "Processo ID",
                     COALESCE(o.ufcrmvalorprojeto::text, '0') AS setup_str,
                     COALESCE(o.ufcrmvalorrecorrente::text, o.opportunity::text, '0') AS mrr_str
                 FROM orcamento_novo AS o
                 JOIN negocio_novo AS n ON n.id = o.dealId
                 LEFT JOIN assignedby_novo AS ab ON ab.id = n.assignedById
                 LEFT JOIN company_novo AS e ON e.id = n.companyId
-                WHERE o.closedate >= :d_inicio AND o.closedate <= :d_fim
-                ORDER BY n.id, o.closedate DESC
+                WHERE n.closedate >= :d_inicio AND n.closedate <= :d_fim
+                ORDER BY n.id, n.closedate DESC
             """)
             
             df_base = pd.read_sql(query_bitrix, conn, params={"d_inicio": data_inicio, "d_fim": data_fim})
@@ -624,7 +652,7 @@ def tela_comissionamento():
     if df_base.empty:
         st.info("Nenhum fechamento encontrado no período selecionado.")
     else:
-        # Multi-Filtros em Cascata Integrados
+        # Filtros em Cascata
         cf1, cf2 = st.columns(2)
         vendedores_unicos = sorted(df_base["Vendedor"].dropna().unique().tolist())
         vendedores_sel = cf1.multiselect("Filtrar por Vendedor(es):", vendedores_unicos, placeholder="Todos selecionados por padrão")
@@ -646,8 +674,15 @@ def tela_comissionamento():
         df_base['Setup Bruto (R$)'] = df_base['setup_str'].apply(parse_currency)
         df_base['MRR Bruto (R$)'] = df_base['mrr_str'].apply(parse_currency)
         
+        # Atribuição da % Base pelo Cargo
         df_base['% Setup'] = 5.0 if cargo_sel != "CS" else 10.0
         df_base['% MRR'] = 5.0 if cargo_sel != "CS" else 10.0
+        
+        # APLICAÇÃO DA REGRA DE ISENÇÃO (DESPESA DE PROJETO - ID 2812)
+        mask_despesa = df_base['Processo ID'].astype(str) == '2812'
+        df_base.loc[mask_despesa, '% Setup'] = 0.0
+        df_base.loc[mask_despesa, '% MRR'] = 0.0
+        
         df_base['Comissão Setup (R$)'] = df_base['Setup Bruto (R$)'] * (df_base['% Setup'] / 100)
         df_base['Comissão MRR (R$)'] = df_base['MRR Bruto (R$)'] * (df_base['% MRR'] / 100)
         df_base['Total Líquido (R$)'] = df_base['Comissão Setup (R$)'] + df_base['Comissão MRR (R$)']
@@ -664,14 +699,13 @@ def tela_comissionamento():
         df_exibicao['Proposta ID'] = df_exibicao['Proposta ID'].astype(str)
         
         ordem_colunas = ["Vendedor", "Proposta ID", "Cliente", "Estado", "Status Bitrix", "Data Venda", "Setup Bruto (R$)", "MRR Bruto (R$)", "% Setup", "% MRR", "Comissão Setup (R$)", "Comissão MRR (R$)", "Total Líquido (R$)"]
-        df_exibicao = df_exibicao[ordem_colunas]
+        df_exibicao_limpa = df_exibicao[ordem_colunas]
 
-        # Tabela Interativa (Checkbox acionando Modal)
-        df_exibicao.insert(0, "Ver Extrato", False)
-        
-        colunas_bloqueadas = [col for col in df_exibicao.columns if col != "Ver Extrato"]
+        # Tabela Interativa
+        df_exibicao_limpa.insert(0, "Ver Extrato", False)
+        colunas_bloqueadas = [col for col in df_exibicao_limpa.columns if col != "Ver Extrato"]
         edited_df = st.data_editor(
-            df_exibicao,
+            df_exibicao_limpa,
             use_container_width=True,
             hide_index=True,
             column_config={"Ver Extrato": st.column_config.CheckboxColumn("Ver Extrato", default=False)},
@@ -682,7 +716,11 @@ def tela_comissionamento():
         if not linhas_selecionadas.empty:
             prop_selecionada = linhas_selecionadas.iloc[0]["Proposta ID"]
             nome_cli_sel = linhas_selecionadas.iloc[0]["Cliente"]
-            modal_extrato_venda(prop_selecionada, nome_cli_sel)
+            
+            # Resgatando o Processo ID do df_base original
+            proc_id_sel = df_base[df_base["Proposta ID"] == prop_selecionada]["Processo ID"].values[0]
+            
+            modal_extrato_venda(prop_selecionada, nome_cli_sel, proc_id_sel)
 
         # ==========================================
         # PARTE 3: PAINEL DE EFETIVAÇÃO
