@@ -583,7 +583,8 @@ def tela_visao_comercial():
                 COALESCE(o.ufcrmvalorrecorrente::text, o.opportunity::text, '0') AS mrr_str,
                 TRIM(CONCAT(COALESCE(ab.name, ''), ' ', COALESCE(ab.lastname, ''))) AS "Vendedor",
                 o.closedate,
-                COALESCE(c.title, 'Cliente Não Informado') AS "Cliente"
+                COALESCE(c.title, 'Cliente Não Informado') AS "Cliente",
+                n.processovendaid
                 FROM orcamento_novo AS o 
                 JOIN negocio_novo AS n ON n.id = o.dealId
                 LEFT JOIN assignedby_novo AS ab ON ab.id = n.assignedById
@@ -595,7 +596,14 @@ def tela_visao_comercial():
             if df_dash.empty:
                 st.warning("Nenhum negócio fechado neste período.")
                 return
-                
+            
+            # Filtro rigoroso: Exclui qualquer negócio vindo do pipeline de Despesas (2812)
+            df_dash = df_dash[df_dash['processovendaid'].astype(str) != '2812']
+            
+            if df_dash.empty:
+                st.warning("Nenhum negócio de receita comercial encontrado neste período (apenas despesas).")
+                return
+
             df_dash['Setup Bruto'] = df_dash['setup_str'].apply(parse_currency)
             df_dash['MRR Bruto'] = df_dash['mrr_str'].apply(parse_currency)
             df_dash['Total Bruto'] = df_dash['Setup Bruto'] + df_dash['MRR Bruto']
@@ -638,7 +646,7 @@ def tela_visao_comercial():
                 FROM itensorcamento_novo AS io
                 JOIN orcamento_novo AS o ON o.id = io.parentid7
                 JOIN negocio_novo AS n ON n.id = o.dealId
-                WHERE o.closedate >= :d_inicio AND o.closedate <= :d_fim AND n.closed = 'Y'
+                WHERE o.closedate >= :d_inicio AND o.closedate <= :d_fim AND n.closed = 'Y' AND n.processovendaid != '2812'
             """)
             df_prods = pd.read_sql(query_prods, conn, params={"d_inicio": data_inicio, "d_fim": data_fim})
             
@@ -670,32 +678,28 @@ def tela_visao_comercial():
                     st.info("Sem dados de produtos no período selecionado.")
 
             with col_g2:
-                st.markdown("**🎯 Curva ABC de Receita por Executivo**")
-                df_abc = df_dash.groupby('Vendedor')['Total Bruto'].sum().reset_index()
-                df_abc = df_abc.sort_values(by='Total Bruto', ascending=False)
-                df_abc = df_abc[df_abc['Total Bruto'] > 0]
+                st.markdown("**🎯 Receita por Origem do Negócio (Pipeline)**")
+                df_dash['Origem'] = df_dash['processovendaid'].astype(str).map(MAPA_PROCESSOS).fillna("Outros Processos")
+                df_origem = df_dash.groupby('Origem')['Total Bruto'].sum().reset_index()
+                df_origem = df_origem.sort_values(by='Total Bruto', ascending=False)
                 
-                if not df_abc.empty:
-                    df_abc['% Participação'] = (df_abc['Total Bruto'] / df_abc['Total Bruto'].sum()) * 100
-                    df_abc['% Acumulado'] = df_abc['% Participação'].cumsum()
-                    
-                    def classificar_curva(pct):
-                        if pct <= 70: return 'A'
-                        elif pct <= 90: return 'B'
-                        else: return 'C'
-                        
-                    df_abc['Curva'] = df_abc['% Acumulado'].apply(classificar_curva)
-                    
-                    df_exibicao = df_abc[['Vendedor', 'Total Bruto', 'Curva']].copy()
-                    df_exibicao['Total Bruto'] = df_exibicao['Total Bruto'].apply(lambda x: f"R$ {f_br(x)}")
-                    st.dataframe(df_exibicao, use_container_width=True, hide_index=True)
-                else:
-                    st.info("Receita zerada no período para classificação.")
+                df_exibicao_origem = df_origem.copy()
+                df_exibicao_origem['Total Bruto'] = df_exibicao_origem['Total Bruto'].apply(lambda x: f"R$ {f_br(x)}")
+                
+                st.dataframe(
+                    df_exibicao_origem,
+                    column_config={
+                        "Origem": st.column_config.TextColumn("Tipo de Negociação"),
+                        "Total Bruto": st.column_config.TextColumn("Volume Fechado (R$)")
+                    },
+                    use_container_width=True,
+                    hide_index=True
+                )
                     
             st.markdown("<hr>", unsafe_allow_html=True)
-            st.markdown("### 📋 Extrato Analítico (Drill-down)")
+            st.markdown("### 📋 Extrato Analítico (Drill-down Comercial)")
             
-            df_raw = df_dash[['id', 'Cliente', 'Vendedor', 'Data Fechamento', 'Setup Bruto', 'MRR Bruto', 'Total Bruto']].copy()
+            df_raw = df_dash[['id', 'Cliente', 'Origem', 'Vendedor', 'Data Fechamento', 'Setup Bruto', 'MRR Bruto', 'Total Bruto']].copy()
             df_raw = df_raw.rename(columns={'id': 'Negócio ID'})
             df_raw['Data Fechamento'] = pd.to_datetime(df_raw['Data Fechamento']).dt.strftime('%d/%m/%Y')
             
