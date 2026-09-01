@@ -8,6 +8,7 @@ import json
 import re
 import datetime
 import base64
+import calendar
 
 # ==========================================
 # CONFIGURAÇÕES INICIAIS E CONTROLE DE ESTADO
@@ -503,13 +504,12 @@ def renderizar_welcome_pack(nome, cnpjs, val_setup, val_mensal, parcelas_html):
     </html>
     """
 
-
 # ==========================================
-# NOVA TELA: COMISSIONAMENTO (ISOLADA)
+# NOVA TELA: COMISSIONAMENTO (INTEGRADO AO BD)
 # ==========================================
 def tela_comissionamento():
     st.markdown("<h1 class='hero-title'>COMISSIONAMENTO</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Auditoria e Fechamento de Pagamentos (Visão Mockup Visual)</p>", unsafe_allow_html=True)
+    st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Auditoria e Fechamento de Pagamentos Integrado ao Bitrix24</p>", unsafe_allow_html=True)
 
     # ==========================================
     # PARTE 1: FILTROS DE APURAÇÃO
@@ -518,91 +518,147 @@ def tela_comissionamento():
     
     with st.container():
         c1, c2, c3, c4 = st.columns(4)
-        c1.selectbox("Mês de Referência", ["Agosto/2026", "Julho/2026", "Junho/2026"], key="mock_comis_mes")
-        c2.selectbox("Unidade Operacional", ["Todas", "Matriz", "VR Recife"], key="mock_comis_unidade")
-        c3.selectbox("Status do Extrato", ["Pendentes de Pagamento", "Já Pagos"], key="mock_comis_status")
-        c4.text_input("Buscar Vendedor (Nome)", placeholder="Ex: João Silva", key="mock_comis_busca")
+        
+        # Gerador dinâmico de meses
+        hoje = datetime.date.today()
+        meses_pt = {1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril", 5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto", 9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"}
+        meses_inv = {v: k for k, v in meses_pt.items()}
+        opcoes_meses = [f"{meses_pt[(hoje.month - i - 1) % 12 + 1]}/{hoje.year if (hoje.month - i - 1) >= 0 else hoje.year - 1}" for i in range(6)]
+        
+        mes_selecionado = c1.selectbox("Mês de Referência", opcoes_meses, key="comis_mes")
+        unidade_sel = c2.selectbox("Unidade Operacional", ["Todas", "Matriz", "VR Recife"], key="comis_unidade")
+        status_sel = c3.selectbox("Status do Extrato", ["Pendentes de Pagamento", "Já Pagos"], key="comis_status")
+        busca_vend = c4.text_input("Buscar Vendedor (Nome)", placeholder="Ex: João", key="comis_busca")
 
         c5, c6, c7 = st.columns(3)
-        c5.selectbox("Cargo", ["Todos", "Executivo de Vendas", "CS"], key="mock_comis_cargo")
-        c6.selectbox("Senioridade", ["Todas", "Júnior", "Pleno", "Sênior"], key="mock_comis_nivel")
-        c7.selectbox("Origem da Venda", ["Todas", "CRM (Propostas)", "Lançamento Externo"], key="mock_comis_origem")
+        cargo_sel = c5.selectbox("Cargo", ["Todos", "Executivo de Vendas", "CS"], key="comis_cargo")
+        nivel_sel = c6.selectbox("Senioridade", ["Todas", "Júnior", "Pleno", "Sênior"], key="comis_nivel")
+        origem_sel = c7.selectbox("Origem da Venda", ["Todas (Bitrix24)"], key="comis_origem")
+
+    # Tratamento de datas para a Query
+    mes_str, ano_str = mes_selecionado.split("/")
+    mes_num = meses_inv[mes_str]
+    ano_num = int(ano_str)
+    
+    data_inicio = datetime.date(ano_num, mes_num, 1)
+    data_fim = datetime.date(ano_num, mes_num, calendar.monthrange(ano_num, mes_num)[1])
 
     # ==========================================
-    # PARTE 2: MATRIZ DE AUDITORIA (TABELA MOCK)
+    # PARTE 2: COMUNICAÇÃO COM BANCO E MATRIZ
     # ==========================================
     st.markdown("""<br><div class="mapeamento-container" style="border-left-color:#1976d2;"><h3 style="margin:0; color:#1976d2;">2. Matriz de Auditoria e Ajustes</h3></div>""", unsafe_allow_html=True)
-    st.info("Simulação Visual: Esta tabela permite ao financeiro auditar os valores, ver as porcentagens e adicionar ajustes manuais (como estornos) antes de pagar.")
 
-    # Criando dados fictícios apenas para validação visual
-    dados_mock = pd.DataFrame({
-        "Vendedor": ["João Silva (Pleno)", "João Silva (Pleno)", "Maria Souza (Sênior)"],
-        "Proposta ID": ["#1042", "#1045", "Venda Ext."],
-        "Cliente": ["Supermercado A", "Mercadinho B", "Atacadão C"],
-        "Data Venda": ["10/08/2026", "15/08/2026", "18/08/2026"],
-        "Setup Bruto (R$)": [15000.0, 5000.0, 25000.0],
-        "MRR Bruto (R$)": [1500.0, 800.0, 3000.0],
-        "% Setup": [2.0, 2.0, 2.5],
-        "% MRR": [5.0, 5.0, 6.0],
-        "Comissão Setup (R$)": [300.0, 100.0, 625.0],
-        "Comissão MRR (R$)": [75.0, 40.0, 180.0],
-        "Ajuste Adicional (R$)": [0.0, -50.0, 0.0], # Campo que o financeiro poderá editar
-        "Obs. Ajuste": ["", "Estorno parcial", ""] # Campo que o financeiro poderá editar
-    })
-    
-    # Coluna de Cálculo Final da Linha (Apenas leitura)
-    dados_mock["Total Líquido (R$)"] = dados_mock["Comissão Setup (R$)"] + dados_mock["Comissão MRR (R$)"] + dados_mock["Ajuste Adicional (R$)"]
+    df_base = pd.DataFrame()
+    try:
+        engine = get_db_engine()
+        with engine.connect() as conn:
+            # Query isolada: DISTINCT ON (n.id) previne a duplicidade de múltiplos itens/CNPJs do Grupo Econômico
+            query_bitrix = text("""
+                SELECT DISTINCT ON (n.id)
+                    n.id AS "Proposta ID",
+                    ab.name AS "Vendedor", 
+                    e.title AS "Cliente",
+                    o.closedate AS data_bruta,
+                    COALESCE(o.ufcrmvalorprojeto, 0) AS "Setup Bruto (R$)",
+                    COALESCE(o.ufcrmvalorrecorrente, o.opportunity, 0) AS "MRR Bruto (R$)"
+                FROM orcamento_novo AS o
+                JOIN negocio_novo AS n ON n.id = o.dealId
+                LEFT JOIN assignedby_novo AS ab ON ab.id = n.assignedById
+                LEFT JOIN company_novo AS e ON e.id = n.companyId
+                WHERE o.closedate >= :d_inicio AND o.closedate <= :d_fim
+                ORDER BY n.id, o.closedate DESC
+            """)
+            
+            df_base = pd.read_sql(query_bitrix, conn, params={"d_inicio": data_inicio, "d_fim": data_fim})
+            
+    except Exception as e:
+        st.error(f"Falha ao conectar com o banco de dados. Erro técnico: {e}")
 
-    # Renderiza a tabela iterativa (permitindo ao financeiro editar apenas os ajustes)
-    colunas_config = {
-        "Vendedor": st.column_config.TextColumn("Vendedor", disabled=True),
-        "Proposta ID": st.column_config.TextColumn("ID / Origem", disabled=True),
-        "Cliente": st.column_config.TextColumn("Cliente", disabled=True),
-        "Data Venda": st.column_config.TextColumn("Data Venda", disabled=True),
-        "Setup Bruto (R$)": st.column_config.NumberColumn("Setup Bruto (R$)", disabled=True, format="R$ %.2f"),
-        "MRR Bruto (R$)": st.column_config.NumberColumn("MRR Bruto (R$)", disabled=True, format="R$ %.2f"),
-        "% Setup": st.column_config.NumberColumn("% Setup", disabled=True),
-        "% MRR": st.column_config.NumberColumn("% MRR", disabled=True),
-        "Comissão Setup (R$)": st.column_config.NumberColumn("Comis. Setup", disabled=True, format="R$ %.2f"),
-        "Comissão MRR (R$)": st.column_config.NumberColumn("Comis. MRR", disabled=True, format="R$ %.2f"),
-        "Ajuste Adicional (R$)": st.column_config.NumberColumn("Ajuste (R$)", help="Insira valores negativos para descontos/estornos", format="R$ %.2f"),
-        "Obs. Ajuste": st.column_config.TextColumn("Obs. Ajuste"),
-        "Total Líquido (R$)": st.column_config.NumberColumn("Total Líquido", disabled=True, format="R$ %.2f")
-    }
+    if df_base.empty:
+        st.info(f"Nenhum fechamento encontrado no Bitrix24 para o período de {mes_selecionado}.")
+    else:
+        # Formatação de Datas
+        df_base['Data Venda'] = pd.to_datetime(df_base['data_bruta']).dt.strftime('%d/%m/%Y')
+        df_base = df_base.drop(columns=['data_bruta'])
 
-    st.data_editor(
-        dados_mock, 
-        column_config=colunas_config, 
-        use_container_width=True,
-        hide_index=True,
-        key="mock_comis_editor"
-    )
+        # Filtro de Busca Nominal
+        if busca_vend:
+            df_base = df_base[df_base['Vendedor'].str.contains(busca_vend, case=False, na=False)]
 
-    # ==========================================
-    # PARTE 3: PAINEL DE EFETIVAÇÃO
-    # ==========================================
-    st.markdown("""<br><div class="cliente-container" style="border-left-color:#2e7d32;"><h3 style="margin:0; color:#2e7d32;">3. Consolidação e Fechamento</h3></div>""", unsafe_allow_html=True)
-    
-    # Resumo totalizador
-    t_setup_comis = dados_mock["Comissão Setup (R$)"].sum()
-    t_mrr_comis = dados_mock["Comissão MRR (R$)"].sum()
-    t_ajustes = dados_mock["Ajuste Adicional (R$)"].sum()
-    t_geral = dados_mock["Total Líquido (R$)"].sum()
+        # --- MOTOR DE REGRAS DE COMISSÃO ---
+        # Substitua estes valores fixos pela sua regra de negócios ou puxe de uma tabela de comissões
+        df_base['% Setup'] = 2.0
+        df_base['% MRR'] = 5.0
+        
+        df_base['Comissão Setup (R$)'] = df_base['Setup Bruto (R$)'] * (df_base['% Setup'] / 100)
+        df_base['Comissão MRR (R$)'] = df_base['MRR Bruto (R$)'] * (df_base['% MRR'] / 100)
+        
+        # Colunas Editáveis pelo Financeiro
+        df_base['Ajuste Adicional (R$)'] = 0.0
+        df_base['Obs. Ajuste'] = ""
 
-    col_tot1, col_tot2, col_tot3, col_tot4 = st.columns(4)
-    with col_tot1: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #ff6600; min-height:auto;"><div class="dash-title">Total Setup a Pagar</div><div style="font-size:1.8rem; font-weight:900; color:#262730;">R$ {t_setup_comis:,.2f}</div></div>""", unsafe_allow_html=True)
-    with col_tot2: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #2e7d32; min-height:auto;"><div class="dash-title">Total MRR a Pagar</div><div style="font-size:1.8rem; font-weight:900; color:#262730;">R$ {t_mrr_comis:,.2f}</div></div>""", unsafe_allow_html=True)
-    with col_tot3: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #ef4444; min-height:auto;"><div class="dash-title">Ajustes / Estornos</div><div style="font-size:1.8rem; font-weight:900; color:#ef4444;">R$ {t_ajustes:,.2f}</div></div>""", unsafe_allow_html=True)
-    with col_tot4: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #262730; min-height:auto; background:#f4f6f9;"><div class="dash-title">TOTAL LÍQUIDO A PAGAR</div><div style="font-size:1.8rem; font-weight:900; color:#262730;">R$ {t_geral:,.2f}</div></div>""", unsafe_allow_html=True)
+        # Prevenção estrutural caso haja Propostas ID repetidas mesmo com o DISTINCT
+        df_base['Proposta ID'] = df_base['Proposta ID'].astype(str)
+        df_base['Total Líquido (R$)'] = df_base['Comissão Setup (R$)'] + df_base['Comissão MRR (R$)'] + df_base['Ajuste Adicional (R$)']
 
-    st.write("---")
-    c_btn1, c_btn2, c_btn3 = st.columns([1, 1, 1])
-    with c_btn1:
-        st.button("⚙️ Configurar % Regras de Comissão", use_container_width=True, help="Abre painel para editar as porcentagens por cargo")
-    with c_btn2:
-        st.download_button(label="📥 Exportar Relatório Contábil (CSV)", data="mock_csv_data", file_name="comissoes_agosto_2026.csv", mime="text/csv", use_container_width=True)
-    with c_btn3:
-        st.button("🔒 Efetivar e Fechar Mês", type="primary", use_container_width=True, help="Congela estes dados e marca como 'Pagos' no banco de dados.")
+        # Ordenação das colunas para visualização
+        ordem_colunas = ["Vendedor", "Proposta ID", "Cliente", "Data Venda", "Setup Bruto (R$)", "MRR Bruto (R$)", "% Setup", "% MRR", "Comissão Setup (R$)", "Comissão MRR (R$)", "Ajuste Adicional (R$)", "Obs. Ajuste", "Total Líquido (R$)"]
+        df_base = df_base[ordem_colunas]
+
+        colunas_config = {
+            "Vendedor": st.column_config.TextColumn("Vendedor", disabled=True),
+            "Proposta ID": st.column_config.TextColumn("ID (Bitrix)", disabled=True),
+            "Cliente": st.column_config.TextColumn("Cliente", disabled=True),
+            "Data Venda": st.column_config.TextColumn("Data Venda", disabled=True),
+            "Setup Bruto (R$)": st.column_config.NumberColumn("Setup Bruto", disabled=True, format="R$ %.2f"),
+            "MRR Bruto (R$)": st.column_config.NumberColumn("MRR Bruto", disabled=True, format="R$ %.2f"),
+            "% Setup": st.column_config.NumberColumn("% Setup", disabled=True),
+            "% MRR": st.column_config.NumberColumn("% MRR", disabled=True),
+            "Comissão Setup (R$)": st.column_config.NumberColumn("Comis. Setup", disabled=True, format="R$ %.2f"),
+            "Comissão MRR (R$)": st.column_config.NumberColumn("Comis. MRR", disabled=True, format="R$ %.2f"),
+            "Ajuste Adicional (R$)": st.column_config.NumberColumn("Ajuste (R$)", help="Insira valores negativos para descontos/estornos", format="R$ %.2f"),
+            "Obs. Ajuste": st.column_config.TextColumn("Obs. Ajuste"),
+            "Total Líquido (R$)": st.column_config.NumberColumn("Total Líquido", disabled=True, format="R$ %.2f")
+        }
+
+        # O data_editor captura as modificações que o Financeiro fizer nos "Ajustes Adicionais"
+        df_final = st.data_editor(
+            df_base, 
+            column_config=colunas_config, 
+            use_container_width=True,
+            hide_index=True,
+            key="comis_editor"
+        )
+
+        # Recalculando o total líquido com base no que o financeiro editar dinamicamente
+        df_final["Total Líquido (R$)"] = df_final["Comissão Setup (R$)"] + df_final["Comissão MRR (R$)"] + df_final["Ajuste Adicional (R$)"]
+
+        # ==========================================
+        # PARTE 3: PAINEL DE EFETIVAÇÃO
+        # ==========================================
+        st.markdown("""<br><div class="cliente-container" style="border-left-color:#2e7d32;"><h3 style="margin:0; color:#2e7d32;">3. Consolidação e Fechamento</h3></div>""", unsafe_allow_html=True)
+        
+        t_setup_comis = df_final["Comissão Setup (R$)"].sum()
+        t_mrr_comis = df_final["Comissão MRR (R$)"].sum()
+        t_ajustes = df_final["Ajuste Adicional (R$)"].sum()
+        t_geral = df_final["Total Líquido (R$)"].sum()
+
+        col_tot1, col_tot2, col_tot3, col_tot4 = st.columns(4)
+        with col_tot1: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #ff6600; min-height:auto;"><div class="dash-title">Total Setup a Pagar</div><div style="font-size:1.8rem; font-weight:900; color:#262730;">R$ {t_setup_comis:,.2f}</div></div>""", unsafe_allow_html=True)
+        with col_tot2: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #2e7d32; min-height:auto;"><div class="dash-title">Total MRR a Pagar</div><div style="font-size:1.8rem; font-weight:900; color:#262730;">R$ {t_mrr_comis:,.2f}</div></div>""", unsafe_allow_html=True)
+        with col_tot3: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #ef4444; min-height:auto;"><div class="dash-title">Ajustes / Estornos</div><div style="font-size:1.8rem; font-weight:900; color:#ef4444;">R$ {t_ajustes:,.2f}</div></div>""", unsafe_allow_html=True)
+        with col_tot4: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #262730; min-height:auto; background:#f4f6f9;"><div class="dash-title">TOTAL LÍQUIDO A PAGAR</div><div style="font-size:1.8rem; font-weight:900; color:#262730;">R$ {t_geral:,.2f}</div></div>""", unsafe_allow_html=True)
+
+        st.write("---")
+        c_btn1, c_btn2, c_btn3 = st.columns([1, 1, 1])
+        with c_btn1:
+            st.button("⚙️ Configurar % Regras de Comissão", use_container_width=True, help="Abre painel para editar as porcentagens por cargo")
+        with c_btn2:
+            csv = df_final.to_csv(index=False).encode('utf-8')
+            st.download_button(label="📥 Exportar Relatório Contábil (CSV)", data=csv, file_name=f"comissoes_{mes_str.lower()}_{ano_str}.csv", mime="text/csv", use_container_width=True)
+        with c_btn3:
+            if st.button("🔒 Efetivar e Fechar Mês", type="primary", use_container_width=True, help="Congela estes dados e marca como 'Pagos' no banco de dados."):
+                st.success("O sistema de trava de lote será implementado na próxima fase. No momento, você já pode exportar os dados consolidados pelo botão de Exportação.")
 
 # ==========================================
 # BLOCO 3: APLICATIVO PRINCIPAL (UI E LÓGICA)
@@ -991,7 +1047,7 @@ def aplicativo_principal():
                 st.rerun()
 
     # ==========================================
-    # TELA GERADOR DE PROPOSTA (BLINDADA CONTRA ERRO DE PRODUTO OBSOLETO)
+    # TELA GERADOR DE PROPOSTA
     # ==========================================
     elif tela == "Gerador de Proposta":
         dv = st.session_state.data_vault
