@@ -577,136 +577,198 @@ def tela_visao_comercial():
     try:
         engine = get_db_engine()
         with engine.connect() as conn:
-            query_dash = text("""
+            # === BLOCO 1: NEGÓCIOS FECHADOS (ESTRITAMENTE GANHOS) ===
+            try:
+                # Tenta puxar garantindo o marcador WON (Ganho) nativo do funil
+                query_dash = text("""
+                    SELECT DISTINCT ON (n.id) n.id, 
+                    COALESCE(o.ufcrmvalorprojeto::text, '0') AS setup_str, 
+                    COALESCE(o.ufcrmvalorrecorrente::text, o.opportunity::text, '0') AS mrr_str,
+                    TRIM(CONCAT(COALESCE(ab.name, ''), ' ', COALESCE(ab.lastname, ''))) AS "Vendedor",
+                    o.closedate,
+                    COALESCE(c.title, 'Cliente Não Informado') AS "Cliente",
+                    COALESCE(c.ufcrmintegraoreceitauf, 'N/I') AS "Estado",
+                    n.processovendaid
+                    FROM orcamento_novo AS o 
+                    JOIN negocio_novo AS n ON n.id = o.dealId
+                    LEFT JOIN assignedby_novo AS ab ON ab.id = n.assignedById
+                    LEFT JOIN company_novo AS c ON c.id = n.companyId
+                    WHERE o.closedate >= :d_inicio AND o.closedate <= :d_fim 
+                    AND n.closed = 'Y' AND n.stageid LIKE '%WON%'
+                """)
+                df_dash = pd.read_sql(query_dash, conn, params={"d_inicio": data_inicio, "d_fim": data_fim})
+            except:
+                # Fallback genérico caso a coluna stageId não esteja exposta na view
+                query_fallback = text("""
+                    SELECT DISTINCT ON (n.id) n.id, 
+                    COALESCE(o.ufcrmvalorprojeto::text, '0') AS setup_str, 
+                    COALESCE(o.ufcrmvalorrecorrente::text, o.opportunity::text, '0') AS mrr_str,
+                    TRIM(CONCAT(COALESCE(ab.name, ''), ' ', COALESCE(ab.lastname, ''))) AS "Vendedor",
+                    o.closedate,
+                    COALESCE(c.title, 'Cliente Não Informado') AS "Cliente",
+                    COALESCE(c.ufcrmintegraoreceitauf, 'N/I') AS "Estado",
+                    n.processovendaid
+                    FROM orcamento_novo AS o 
+                    JOIN negocio_novo AS n ON n.id = o.dealId
+                    LEFT JOIN assignedby_novo AS ab ON ab.id = n.assignedById
+                    LEFT JOIN company_novo AS c ON c.id = n.companyId
+                    WHERE o.closedate >= :d_inicio AND o.closedate <= :d_fim AND n.closed = 'Y'
+                """)
+                df_dash = pd.read_sql(query_fallback, conn, params={"d_inicio": data_inicio, "d_fim": data_fim})
+            
+            # Filtro rigoroso contra Despesas (2812)
+            df_dash = df_dash[df_dash['processovendaid'].astype(str) != '2812']
+            
+            if df_dash.empty:
+                st.warning("Nenhum negócio de receita comercial classificado como ganho neste período.")
+            else:
+                # Tratamento Monetário
+                df_dash['Setup Bruto'] = df_dash['setup_str'].apply(parse_currency)
+                df_dash['MRR Bruto'] = df_dash['mrr_str'].apply(parse_currency)
+                df_dash['Total Bruto'] = df_dash['Setup Bruto'] + df_dash['MRR Bruto']
+                df_dash['Data Fechamento'] = pd.to_datetime(df_dash['closedate']).dt.date
+                df_dash['Origem'] = df_dash['processovendaid'].astype(str).map(MAPA_PROCESSOS).fillna("Outros Processos")
+                
+                t_setup = df_dash['Setup Bruto'].sum()
+                t_mrr = df_dash['MRR Bruto'].sum()
+                t_geral = df_dash['Total Bruto'].sum()
+                tk_medio = t_geral / len(df_dash) if len(df_dash) > 0 else 0
+                
+                st.markdown("### 💰 Receita Adquirida (Negócios Ganhos)")
+                col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
+                with col_kpi1: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #1976d2;"><div class="dash-title">Total MRR</div><div style="font-size:1.5rem; font-weight:900; color:#262730;">R$ {f_br(t_mrr)}</div></div>""", unsafe_allow_html=True)
+                with col_kpi2: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #ff6600;"><div class="dash-title">Total Setup</div><div style="font-size:1.5rem; font-weight:900; color:#262730;">R$ {f_br(t_setup)}</div></div>""", unsafe_allow_html=True)
+                with col_kpi3: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #2e7d32; background:#f4f6f9;"><div class="dash-title">Volume Fechado</div><div style="font-size:1.5rem; font-weight:900; color:#262730;">R$ {f_br(t_geral)}</div></div>""", unsafe_allow_html=True)
+                with col_kpi4: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #8e24aa;"><div class="dash-title">Ticket Médio</div><div style="font-size:1.5rem; font-weight:900; color:#262730;">R$ {f_br(tk_medio)}</div></div>""", unsafe_allow_html=True)
+                
+                st.markdown("<hr>", unsafe_allow_html=True)
+                
+                # Evolução Diária formatada em R$ e Tabela de Origem Completa
+                st.markdown("### 📈 Origem e Evolução de Receita")
+                col_evo1, col_evo2 = st.columns([1, 1.2])
+                
+                with col_evo1:
+                    st.markdown("**Evolução Diária (Setup vs MRR)**")
+                    df_timeline = df_dash.groupby('Data Fechamento')[['Setup Bruto', 'MRR Bruto']].sum().reset_index()
+                    if not df_timeline.empty:
+                        df_timeline['Data Fechamento'] = pd.to_datetime(df_timeline['Data Fechamento']).dt.strftime('%d/%m/%Y')
+                        df_timeline['Setup'] = df_timeline['Setup Bruto'].apply(lambda x: f"R$ {f_br(x)}")
+                        df_timeline['MRR'] = df_timeline['MRR Bruto'].apply(lambda x: f"R$ {f_br(x)}")
+                        
+                        st.dataframe(
+                            df_timeline[['Data Fechamento', 'Setup', 'MRR']],
+                            column_config={"Data Fechamento": "Data"},
+                            use_container_width=True, hide_index=True
+                        )
+
+                with col_evo2:
+                    st.markdown("**Receita por Origem do Negócio (Pipeline)**")
+                    df_origem = df_dash.groupby('Origem')[['Setup Bruto', 'MRR Bruto', 'Total Bruto']].sum().reset_index()
+                    df_origem = df_origem.sort_values(by='Total Bruto', ascending=False)
+                    
+                    df_origem['Setup'] = df_origem['Setup Bruto'].apply(lambda x: f"R$ {f_br(x)}")
+                    df_origem['MRR'] = df_origem['MRR Bruto'].apply(lambda x: f"R$ {f_br(x)}")
+                    df_origem['Total Volume'] = df_origem['Total Bruto'].apply(lambda x: f"R$ {f_br(x)}")
+                    
+                    st.dataframe(
+                        df_origem[['Origem', 'Setup', 'MRR', 'Total Volume']],
+                        use_container_width=True, hide_index=True
+                    )
+                    
+                st.markdown("<hr>", unsafe_allow_html=True)
+                
+                # Gráficos Visuais: Região e Executivos
+                st.markdown("### 🗺️ Análise Geográfica e Força de Vendas")
+                col_g1, col_g2 = st.columns(2)
+                
+                with col_g1:
+                    st.markdown("**Volume de Vendas por Região (UF)**")
+                    df_regiao = df_dash.groupby('Estado')['Total Bruto'].sum().reset_index()
+                    df_regiao = df_regiao.sort_values(by='Total Bruto', ascending=False).set_index('Estado')
+                    st.bar_chart(df_regiao, color="#ff6600")
+
+                with col_g2:
+                    st.markdown("**Volume de Vendas por Executivo**")
+                    df_exec = df_dash.groupby('Vendedor')['Total Bruto'].sum().reset_index()
+                    df_exec = df_exec.sort_values(by='Total Bruto', ascending=False).set_index('Vendedor')
+                    st.bar_chart(df_exec, color="#2e7d32")
+                    
+                st.markdown("<hr>", unsafe_allow_html=True)
+                
+                # Extrato Analítico Interativo (Checkbox que abre o modal de auditoria)
+                st.markdown("### 📋 Extrato Analítico Interativo")
+                
+                df_exibicao = df_dash[['Vendedor', 'id', 'Cliente', 'Origem', 'Data Fechamento', 'Setup Bruto', 'MRR Bruto', 'Total Bruto', 'processovendaid']].copy()
+                df_exibicao['Data Fechamento'] = pd.to_datetime(df_exibicao['Data Fechamento']).dt.strftime('%d/%m/%Y')
+                
+                for col in ['Setup Bruto', 'MRR Bruto', 'Total Bruto']:
+                    df_exibicao[col] = df_exibicao[col].apply(lambda x: f"R$ {f_br(x)}")
+                
+                df_exibicao = df_exibicao.rename(columns={'id': 'Proposta ID'})
+                df_visual = df_exibicao[['Vendedor', 'Proposta ID', 'Cliente', 'Origem', 'Data Fechamento', 'Setup Bruto', 'MRR Bruto', 'Total Bruto']]
+                df_visual.insert(0, "Ver Extrato", False)
+                
+                edited_df = st.data_editor(
+                    df_visual, 
+                    use_container_width=True, 
+                    hide_index=True, 
+                    column_config={"Ver Extrato": st.column_config.CheckboxColumn("Ver Extrato", default=False)}, 
+                    disabled=[col for col in df_visual.columns if col != "Ver Extrato"]
+                )
+                
+                # Gatilho do Modal (igual a tela de comissionamento)
+                linhas_selecionadas = edited_df[edited_df["Ver Extrato"] == True]
+                if not linhas_selecionadas.empty:
+                    prop_id = linhas_selecionadas.iloc[0]["Proposta ID"]
+                    cli_nome = linhas_selecionadas.iloc[0]["Cliente"]
+                    proc_id = df_exibicao[df_exibicao["Proposta ID"] == prop_id]["processovendaid"].values[0]
+                    modal_extrato_venda(prop_id, cli_nome, proc_id)
+
+            # === BLOCO 2: PIPELINE ATIVO (NEGÓCIOS EM ABERTO) ===
+            st.markdown("<hr>", unsafe_allow_html=True)
+            st.markdown("### ⏳ Pipeline Ativo (Negócios em Aberto)")
+            
+            query_open = text("""
                 SELECT DISTINCT ON (n.id) n.id, 
                 COALESCE(o.ufcrmvalorprojeto::text, '0') AS setup_str, 
                 COALESCE(o.ufcrmvalorrecorrente::text, o.opportunity::text, '0') AS mrr_str,
                 TRIM(CONCAT(COALESCE(ab.name, ''), ' ', COALESCE(ab.lastname, ''))) AS "Vendedor",
-                o.closedate,
-                COALESCE(c.title, 'Cliente Não Informado') AS "Cliente",
-                n.processovendaid
+                n.processovendaid,
+                COALESCE(c.title, 'Cliente Não Informado') AS "Cliente"
                 FROM orcamento_novo AS o 
                 JOIN negocio_novo AS n ON n.id = o.dealId
                 LEFT JOIN assignedby_novo AS ab ON ab.id = n.assignedById
                 LEFT JOIN company_novo AS c ON c.id = n.companyId
-                WHERE o.closedate >= :d_inicio AND o.closedate <= :d_fim AND n.closed = 'Y'
+                WHERE n.closed = 'N'
             """)
-            df_dash = pd.read_sql(query_dash, conn, params={"d_inicio": data_inicio, "d_fim": data_fim})
+            df_open = pd.read_sql(query_open, conn)
             
-            if df_dash.empty:
-                st.warning("Nenhum negócio fechado neste período.")
-                return
+            # Filtro para ignorar despesas nos negócios em aberto também
+            df_open = df_open[df_open['processovendaid'].astype(str) != '2812']
             
-            # Filtro rigoroso: Exclui qualquer negócio vindo do pipeline de Despesas (2812)
-            df_dash = df_dash[df_dash['processovendaid'].astype(str) != '2812']
-            
-            if df_dash.empty:
-                st.warning("Nenhum negócio de receita comercial encontrado neste período (apenas despesas).")
-                return
-
-            df_dash['Setup Bruto'] = df_dash['setup_str'].apply(parse_currency)
-            df_dash['MRR Bruto'] = df_dash['mrr_str'].apply(parse_currency)
-            df_dash['Total Bruto'] = df_dash['Setup Bruto'] + df_dash['MRR Bruto']
-            df_dash['Data Fechamento'] = pd.to_datetime(df_dash['closedate']).dt.date
-            
-            t_setup = df_dash['Setup Bruto'].sum()
-            t_mrr = df_dash['MRR Bruto'].sum()
-            t_geral = df_dash['Total Bruto'].sum()
-            tk_medio = t_geral / len(df_dash) if len(df_dash) > 0 else 0
-            
-            st.markdown("### 💰 Receita Adquirida (Negócios Ganhos)")
-            col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
-            with col_kpi1: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #1976d2;"><div class="dash-title">Total MRR</div><div style="font-size:1.5rem; font-weight:900; color:#262730;">R$ {f_br(t_mrr)}</div></div>""", unsafe_allow_html=True)
-            with col_kpi2: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #ff6600;"><div class="dash-title">Total Setup</div><div style="font-size:1.5rem; font-weight:900; color:#262730;">R$ {f_br(t_setup)}</div></div>""", unsafe_allow_html=True)
-            with col_kpi3: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #2e7d32; background:#f4f6f9;"><div class="dash-title">Volume Fechado</div><div style="font-size:1.5rem; font-weight:900; color:#262730;">R$ {f_br(t_geral)}</div></div>""", unsafe_allow_html=True)
-            with col_kpi4: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #8e24aa;"><div class="dash-title">Ticket Médio</div><div style="font-size:1.5rem; font-weight:900; color:#262730;">R$ {f_br(tk_medio)}</div></div>""", unsafe_allow_html=True)
-            
-            st.markdown("<hr>", unsafe_allow_html=True)
-            
-            st.markdown("### 📈 Evolução de Receita Diária")
-            df_timeline = df_dash.groupby('Data Fechamento')[['Setup Bruto', 'MRR Bruto']].sum().reset_index()
-            if not df_timeline.empty:
-                df_timeline['Data Fechamento'] = pd.to_datetime(df_timeline['Data Fechamento']).dt.strftime('%d/%m/%Y')
-                st.dataframe(
-                    df_timeline,
-                    column_config={
-                        "Data Fechamento": "Data de Fechamento",
-                        "Setup Bruto": st.column_config.NumberColumn("Setup (R$)", format="R$ %.2f"),
-                        "MRR Bruto": st.column_config.NumberColumn("MRR (R$)", format="R$ %.2f")
-                    },
-                    use_container_width=True,
-                    hide_index=True
-                )
+            if not df_open.empty:
+                df_open['Setup Bruto'] = df_open['setup_str'].apply(parse_currency)
+                df_open['MRR Bruto'] = df_open['mrr_str'].apply(parse_currency)
+                df_open['Total Projetado'] = df_open['Setup Bruto'] + df_open['MRR Bruto']
+                df_open['Origem'] = df_open['processovendaid'].astype(str).map(MAPA_PROCESSOS).fillna("Outros Processos")
                 
-            st.markdown("<hr>", unsafe_allow_html=True)
-            st.markdown("### 📊 Análise de Performance Operacional")
-            
-            query_prods = text("""
-                SELECT io.title AS "Produto", io.quantidade
-                FROM itensorcamento_novo AS io
-                JOIN orcamento_novo AS o ON o.id = io.parentid7
-                JOIN negocio_novo AS n ON n.id = o.dealId
-                WHERE o.closedate >= :d_inicio AND o.closedate <= :d_fim AND n.closed = 'Y' AND n.processovendaid != '2812'
-            """)
-            df_prods = pd.read_sql(query_prods, conn, params={"d_inicio": data_inicio, "d_fim": data_fim})
-            
-            col_g1, col_g2 = st.columns(2)
-            
-            with col_g1:
-                st.markdown("**🏆 Produtos Mais Vendidos (Top 10)**")
-                if not df_prods.empty:
-                    df_prods['quantidade'] = pd.to_numeric(df_prods['quantidade'], errors='coerce').fillna(1)
-                    df_top_prods = df_prods.groupby('Produto')['quantidade'].sum().reset_index()
-                    df_top_prods = df_top_prods.sort_values(by='quantidade', ascending=False).head(10)
-                    
-                    max_qtd = int(df_top_prods['quantidade'].max())
-                    st.dataframe(
-                        df_top_prods,
-                        column_config={
-                            "Produto": st.column_config.TextColumn("Nome do Produto"),
-                            "quantidade": st.column_config.ProgressColumn(
-                                "Qtd Vendida",
-                                format="%d",
-                                min_value=0,
-                                max_value=max_qtd if max_qtd > 0 else 100
-                            )
-                        },
-                        use_container_width=True,
-                        hide_index=True
-                    )
-                else:
-                    st.info("Sem dados de produtos no período selecionado.")
-
-            with col_g2:
-                st.markdown("**🎯 Receita por Origem do Negócio (Pipeline)**")
-                df_dash['Origem'] = df_dash['processovendaid'].astype(str).map(MAPA_PROCESSOS).fillna("Outros Processos")
-                df_origem = df_dash.groupby('Origem')['Total Bruto'].sum().reset_index()
-                df_origem = df_origem.sort_values(by='Total Bruto', ascending=False)
+                t_open_setup = df_open['Setup Bruto'].sum()
+                t_open_mrr = df_open['MRR Bruto'].sum()
+                t_open_geral = df_open['Total Projetado'].sum()
                 
-                df_exibicao_origem = df_origem.copy()
-                df_exibicao_origem['Total Bruto'] = df_exibicao_origem['Total Bruto'].apply(lambda x: f"R$ {f_br(x)}")
+                col_o1, col_o2, col_o3 = st.columns(3)
+                with col_o1: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #888; background:#f9f9f9;"><div class="dash-title">MRR Projetado (Na Mesa)</div><div style="font-size:1.5rem; font-weight:900; color:#555;">R$ {f_br(t_open_mrr)}</div></div>""", unsafe_allow_html=True)
+                with col_o2: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #888; background:#f9f9f9;"><div class="dash-title">Setup Projetado (Na Mesa)</div><div style="font-size:1.5rem; font-weight:900; color:#555;">R$ {f_br(t_open_setup)}</div></div>""", unsafe_allow_html=True)
+                with col_o3: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #262730;"><div class="dash-title">Volume Total em Aberto</div><div style="font-size:1.5rem; font-weight:900; color:#262730;">R$ {f_br(t_open_geral)}</div></div>""", unsafe_allow_html=True)
                 
-                st.dataframe(
-                    df_exibicao_origem,
-                    column_config={
-                        "Origem": st.column_config.TextColumn("Tipo de Negociação"),
-                        "Total Bruto": st.column_config.TextColumn("Volume Fechado (R$)")
-                    },
-                    use_container_width=True,
-                    hide_index=True
-                )
-                    
-            st.markdown("<hr>", unsafe_allow_html=True)
-            st.markdown("### 📋 Extrato Analítico (Drill-down Comercial)")
-            
-            df_raw = df_dash[['id', 'Cliente', 'Origem', 'Vendedor', 'Data Fechamento', 'Setup Bruto', 'MRR Bruto', 'Total Bruto']].copy()
-            df_raw = df_raw.rename(columns={'id': 'Negócio ID'})
-            df_raw['Data Fechamento'] = pd.to_datetime(df_raw['Data Fechamento']).dt.strftime('%d/%m/%Y')
-            
-            for col in ['Setup Bruto', 'MRR Bruto', 'Total Bruto']:
-                df_raw[col] = df_raw[col].apply(lambda x: f"R$ {f_br(x)}")
+                df_open_view = df_open[['id', 'Cliente', 'Origem', 'Vendedor', 'Total Projetado']].copy()
+                df_open_view = df_open_view.rename(columns={'id': 'Proposta ID'})
+                df_open_view['Total Projetado'] = df_open_view['Total Projetado'].apply(lambda x: f"R$ {f_br(x)}")
                 
-            st.dataframe(df_raw, use_container_width=True, hide_index=True)
+                st.markdown("<br>**Top 15 Negociações em Andamento (Por Volume)**", unsafe_allow_html=True)
+                st.dataframe(df_open_view.sort_values(by='Total Projetado', ascending=False).head(15), use_container_width=True, hide_index=True)
+            else:
+                st.info("Não há propostas ativas no funil no momento.")
 
     except Exception as e:
         st.error(f"Erro ao carregar dashboards: {e}")
