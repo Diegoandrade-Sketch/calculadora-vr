@@ -601,6 +601,7 @@ def modal_extrato_venda(proposta_id, nome_cliente, processo_id):
 
 
 def tela_comissionamento():
+    # Estrutura visual simplificada solicitada: Proposta Comercial base dividida em três telas.
     st.markdown("<h1 class='hero-title'>COMISSIONAMENTO</h1>", unsafe_allow_html=True)
     st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Auditoria e Fechamento de Pagamentos Integrado ao Bitrix24</p>", unsafe_allow_html=True)
 
@@ -624,6 +625,7 @@ def tela_comissionamento():
     try:
         engine = get_db_engine()
         with engine.connect() as conn:
+            # Query ajustada para puxar a data do Orçamento (o.closedate) e Status do Bitrix (n.closed)
             query_bitrix = text("""
                 SELECT DISTINCT ON (n.id)
                     n.id AS "Proposta ID",
@@ -631,7 +633,7 @@ def tela_comissionamento():
                     e.title AS "Cliente",
                     COALESCE(e.ufcrmintegraoreceitauf, 'N/I') AS "Estado",
                     CASE WHEN n.closed = 'Y' THEN 'Ganhou' ELSE 'Em Aberto' END AS "Status Bitrix",
-                    n.closedate AS data_bruta,
+                    o.closedate AS data_bruta,
                     n.processovendaid AS "Processo ID",
                     COALESCE(o.ufcrmvalorprojeto::text, '0') AS setup_str,
                     COALESCE(o.ufcrmvalorrecorrente::text, o.opportunity::text, '0') AS mrr_str
@@ -639,8 +641,8 @@ def tela_comissionamento():
                 JOIN negocio_novo AS n ON n.id = o.dealId
                 LEFT JOIN assignedby_novo AS ab ON ab.id = n.assignedById
                 LEFT JOIN company_novo AS e ON e.id = n.companyId
-                WHERE n.closedate >= :d_inicio AND n.closedate <= :d_fim
-                ORDER BY n.id, n.closedate DESC
+                WHERE o.closedate >= :d_inicio AND o.closedate <= :d_fim
+                ORDER BY n.id, o.closedate DESC
             """)
             
             df_base = pd.read_sql(query_bitrix, conn, params={"d_inicio": data_inicio, "d_fim": data_fim})
@@ -652,6 +654,9 @@ def tela_comissionamento():
     if df_base.empty:
         st.info("Nenhum fechamento encontrado no período selecionado.")
     else:
+        # Padronizando o ID como texto logo na raiz para evitar IndexError nos filtros cruzados
+        df_base['Proposta ID'] = df_base['Proposta ID'].astype(str)
+        
         # Filtros em Cascata
         cf1, cf2 = st.columns(2)
         vendedores_unicos = sorted(df_base["Vendedor"].dropna().unique().tolist())
@@ -696,8 +701,6 @@ def tela_comissionamento():
         for col in colunas_monetarias:
             df_exibicao[col] = df_exibicao[col].apply(lambda x: f"R$ {f_br(x)}")
             
-        df_exibicao['Proposta ID'] = df_exibicao['Proposta ID'].astype(str)
-        
         ordem_colunas = ["Vendedor", "Proposta ID", "Cliente", "Estado", "Status Bitrix", "Data Venda", "Setup Bruto (R$)", "MRR Bruto (R$)", "% Setup", "% MRR", "Comissão Setup (R$)", "Comissão MRR (R$)", "Total Líquido (R$)"]
         df_exibicao_limpa = df_exibicao[ordem_colunas]
 
@@ -718,12 +721,12 @@ def tela_comissionamento():
             nome_cli_sel = linhas_selecionadas.iloc[0]["Cliente"]
             
             # Resgatando o Processo ID do df_base original
-            proc_id_sel = df_base[df_base["Proposta ID"].astype(str) == str(prop_selecionada)]["Processo ID"].values[0]
+            proc_id_sel = df_base[df_base["Proposta ID"] == prop_selecionada]["Processo ID"].values[0]
             
             modal_extrato_venda(prop_selecionada, nome_cli_sel, proc_id_sel)
 
         # ==========================================
-        # PARTE 3: PAINEL DE EFETIVAÇÃO
+        # PARTE 3: PAINEL DE EFETIVAÇÃO E RESUMO DE INVESTIMENTOS
         # ==========================================
         st.markdown("""<br><div class="cliente-container" style="border-left-color:#2e7d32;"><h3 style="margin:0; color:#2e7d32;">3. Consolidação e Fechamento</h3></div>""", unsafe_allow_html=True)
         
