@@ -569,8 +569,7 @@ def modal_extrato_venda(proposta_id, nome_cliente):
             st.dataframe(df_itens[['Produto/Serviço', 'Tag', 'Qtd', 'Valor Unit. (R$)', 'Valor Total (R$)', '% Comissão', 'Comissão (R$)']], use_container_width=True, hide_index=True)
             
     except Exception as e:
-        print(f"Erro no Modal: {e}")
-        st.error("Falha ao carregar detalhamento. Tente novamente.")
+        st.error(f"Erro real para debug: {e}")
 
 
 def tela_comissionamento():
