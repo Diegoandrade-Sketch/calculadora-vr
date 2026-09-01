@@ -1193,6 +1193,9 @@ def aplicativo_principal():
             except Exception as e:
                 st.error(f"⚠️ Arquivo de regras não encontrado. Erro: {e}")
                 return pd.DataFrame()
+                
+        # A variável que deu erro estava faltando aqui! Agora está garantida:
+        df_rateio = carregar_regras_rateio()
         
         # 2. Buscar Negócios Ganhos Recentes
         try:
@@ -1224,9 +1227,8 @@ def aplicativo_principal():
                 negocio_id = int(negocio_selecionado.split(" - ")[0])
                 cliente_nome = negocio_selecionado.split(" - ", 1)[1]
                 
-                # 3. Puxar Dados Estruturais do Negócio (CNPJs e Itens do Orçamento)
+                # 3. Puxar Dados Estruturais do Negócio
                 with engine.connect() as conn:
-                    # Busca de CNPJs no Grupo Econômico (Evitando duplicações)
                     query_cnpjs = text("""
                         SELECT DISTINCT ge.cnpj
                         FROM grupoeconomico_novo ge
@@ -1236,7 +1238,6 @@ def aplicativo_principal():
                     """)
                     df_cnpjs = pd.read_sql(query_cnpjs, conn, params={"deal_id": negocio_id})
                     
-                    # Busca de Produtos
                     query_itens = text("""
                         SELECT io.id, io.title, io.ufcrmvalorprojeto AS valor_setup, io.opportunity AS valor_mrr, io.qtdparcelas
                         FROM itensorcamento_novo io
@@ -1267,15 +1268,12 @@ def aplicativo_principal():
                     mrr_filial_total = 0.0
                     max_parcelas = 1
                     
-# 4. Cálculo Inteligente Linha a Linha
+                    # 4. Cálculo Inteligente Linha a Linha
                     for _, item in df_itens.iterrows():
                         desc = str(item['title']).strip().upper()
                         
-                        # --- LINHAS CORRIGIDAS AQUI ---
                         v_setup = parse_currency(str(item['valor_setup'] or '0'))
                         v_mrr = parse_currency(str(item['valor_mrr'] or '0'))
-                        # ------------------------------
-                        
                         parcelas = int(item['qtdparcelas'] or 1)
                         
                         if parcelas > max_parcelas: max_parcelas = parcelas
@@ -1283,21 +1281,27 @@ def aplicativo_principal():
                         total_mrr += v_mrr
                         
                         # Tenta encontrar a regra exata na planilha
-                        regra = df_rateio[df_rateio['Descrição'] == desc]
+                        if not df_rateio.empty:
+                            regra = df_rateio[df_rateio['Descrição'] == desc]
+                        else:
+                            regra = pd.DataFrame()
                         
                         if not regra.empty:
                             pct_matriz = float(regra.iloc[0]['% VR']) / 100.0
                             pct_filial = float(regra.iloc[0]['% Unidade']) / 100.0
                             status_regra = "✅ Planilha"
                         else:
-                            # Tentativa de Match Parcial (ex: contém a palavra no nome)
-                            match_parcial = df_rateio[df_rateio['Descrição'].apply(lambda x: str(x) in desc or desc in str(x))]
+                            # Tentativa de Match Parcial
+                            if not df_rateio.empty:
+                                match_parcial = df_rateio[df_rateio['Descrição'].apply(lambda x: str(x) in desc or desc in str(x))]
+                            else:
+                                match_parcial = pd.DataFrame()
+                                
                             if not match_parcial.empty:
                                 pct_matriz = float(match_parcial.iloc[0]['% VR']) / 100.0
                                 pct_filial = float(match_parcial.iloc[0]['% Unidade']) / 100.0
                                 status_regra = "⚠️ Parcial"
                             else:
-                                # Regra Default de Segurança caso seja um produto novo não tabelado
                                 pct_matriz = 0.10
                                 pct_filial = 0.90
                                 status_regra = "⚙️ Padrão (10/90)"
@@ -1318,14 +1322,12 @@ def aplicativo_principal():
                             "Mapeamento": status_regra
                         })
                         
-                    # Tabela de Auditoria Linha a Linha para o Financeiro conferir
                     st.dataframe(pd.DataFrame(detalhes_rateio), use_container_width=True, hide_index=True)
                     
                     qtd_parcelas_fin = st.number_input("Qtd. de Parcelas do Setup (Maior prazo capturado no Orçamento)", min_value=1, max_value=36, value=max_parcelas, step=1)
                     
                     st.markdown("<hr><h2 style='text-align:center; color:#262730;'>ESPELHO DE FATURAMENTO</h2>", unsafe_allow_html=True)
                     
-                    # Cálculo de parcelamento corrigindo possíveis dízimas residuais na última parcela
                     parcela_matriz_base = round(setup_matriz_total / qtd_parcelas_fin, 2) if qtd_parcelas_fin > 0 else 0.0
                     parcela_filial_base = round(setup_filial_total / qtd_parcelas_fin, 2) if qtd_parcelas_fin > 0 else 0.0
                     
@@ -1406,7 +1408,6 @@ def aplicativo_principal():
                     if col_fw2.button("Fechar Visualização", use_container_width=True): 
                         st.session_state.show_welcome_pack = False
                         st.rerun()
-
     # ==========================================
     # TELA GERADOR DE PROPOSTA
     # ==========================================
