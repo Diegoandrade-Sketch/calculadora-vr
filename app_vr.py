@@ -1181,15 +1181,18 @@ def aplicativo_principal():
         # 1. Carregar Motor de Regras (Planilha do Excel)
         @st.cache_data
         def carregar_regras_rateio():
+            import os
             try:
-                df_regras = pd.read_excel("Rateio_GrupoRecifeSul - 2026.xlsx")
+                # Mapeia o diretório real onde o app_vr.py está rodando
+                diretorio_atual = os.path.dirname(os.path.abspath(__file__))
+                caminho_planilha = os.path.join(diretorio_atual, "Rateio_GrupoRecifeSul - 2026.xlsx")
+                
+                df_regras = pd.read_excel(caminho_planilha)
                 df_regras['Descrição'] = df_regras['Descrição'].astype(str).str.strip().str.upper()
                 return df_regras
             except Exception as e:
-                st.error(f"⚠️ Arquivo de regras não encontrado. Verifique se 'Rateio_GrupoRecifeSul - 2026.xlsx' está na pasta raiz. Erro: {e}")
+                st.error(f"⚠️ Arquivo de regras não encontrado. Erro: {e}")
                 return pd.DataFrame()
-                
-        df_rateio = carregar_regras_rateio()
         
         # 2. Buscar Negócios Ganhos Recentes
         try:
