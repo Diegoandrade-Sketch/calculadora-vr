@@ -579,7 +579,6 @@ def tela_visao_comercial():
         with engine.connect() as conn:
             # === BLOCO 1: NEGÓCIOS FECHADOS (ESTRITAMENTE GANHOS) ===
             try:
-                # Tenta puxar garantindo o marcador WON (Ganho) nativo do funil
                 query_dash = text("""
                     SELECT DISTINCT ON (n.id) n.id, 
                     COALESCE(o.ufcrmvalorprojeto::text, '0') AS setup_str, 
@@ -598,7 +597,6 @@ def tela_visao_comercial():
                 """)
                 df_dash = pd.read_sql(query_dash, conn, params={"d_inicio": data_inicio, "d_fim": data_fim})
             except:
-                # Fallback genérico caso a coluna stageId não esteja exposta na view
                 query_fallback = text("""
                     SELECT DISTINCT ON (n.id) n.id, 
                     COALESCE(o.ufcrmvalorprojeto::text, '0') AS setup_str, 
@@ -616,13 +614,11 @@ def tela_visao_comercial():
                 """)
                 df_dash = pd.read_sql(query_fallback, conn, params={"d_inicio": data_inicio, "d_fim": data_fim})
             
-            # Filtro rigoroso contra Despesas (2812)
             df_dash = df_dash[df_dash['processovendaid'].astype(str) != '2812']
             
             if df_dash.empty:
                 st.warning("Nenhum negócio de receita comercial classificado como ganho neste período.")
             else:
-                # Tratamento Monetário
                 df_dash['Setup Bruto'] = df_dash['setup_str'].apply(parse_currency)
                 df_dash['MRR Bruto'] = df_dash['mrr_str'].apply(parse_currency)
                 df_dash['Total Bruto'] = df_dash['Setup Bruto'] + df_dash['MRR Bruto']
@@ -643,7 +639,6 @@ def tela_visao_comercial():
                 
                 st.markdown("<hr>", unsafe_allow_html=True)
                 
-                # Evolução Diária formatada em R$ e Tabela de Origem Completa
                 st.markdown("### 📈 Origem e Evolução de Receita")
                 col_evo1, col_evo2 = st.columns([1, 1.2])
                 
@@ -677,25 +672,53 @@ def tela_visao_comercial():
                     
                 st.markdown("<hr>", unsafe_allow_html=True)
                 
-                # Gráficos Visuais: Região e Executivos
                 st.markdown("### 🗺️ Análise Geográfica e Força de Vendas")
                 col_g1, col_g2 = st.columns(2)
                 
                 with col_g1:
                     st.markdown("**Volume de Vendas por Região (UF)**")
                     df_regiao = df_dash.groupby('Estado')['Total Bruto'].sum().reset_index()
-                    df_regiao = df_regiao.sort_values(by='Total Bruto', ascending=False).set_index('Estado')
-                    st.bar_chart(df_regiao, color="#ff6600")
+                    df_regiao = df_regiao.sort_values(by='Total Bruto', ascending=False)
+                    max_regiao = float(df_regiao['Total Bruto'].max()) if not df_regiao.empty else 100
+                    
+                    st.dataframe(
+                        df_regiao,
+                        column_config={
+                            "Estado": st.column_config.TextColumn("Região (UF)"),
+                            "Total Bruto": st.column_config.ProgressColumn(
+                                "Volume de Vendas",
+                                format="R$ %.2f",
+                                min_value=0,
+                                max_value=max_regiao
+                            )
+                        },
+                        use_container_width=True,
+                        hide_index=True
+                    )
 
                 with col_g2:
                     st.markdown("**Volume de Vendas por Executivo**")
                     df_exec = df_dash.groupby('Vendedor')['Total Bruto'].sum().reset_index()
-                    df_exec = df_exec.sort_values(by='Total Bruto', ascending=False).set_index('Vendedor')
-                    st.bar_chart(df_exec, color="#2e7d32")
+                    df_exec = df_exec.sort_values(by='Total Bruto', ascending=False)
+                    max_exec = float(df_exec['Total Bruto'].max()) if not df_exec.empty else 100
+                    
+                    st.dataframe(
+                        df_exec,
+                        column_config={
+                            "Vendedor": st.column_config.TextColumn("Executivo"),
+                            "Total Bruto": st.column_config.ProgressColumn(
+                                "Volume de Vendas",
+                                format="R$ %.2f",
+                                min_value=0,
+                                max_value=max_exec
+                            )
+                        },
+                        use_container_width=True,
+                        hide_index=True
+                    )
                     
                 st.markdown("<hr>", unsafe_allow_html=True)
                 
-                # Extrato Analítico Interativo (Checkbox que abre o modal de auditoria)
                 st.markdown("### 📋 Extrato Analítico Interativo")
                 
                 df_exibicao = df_dash[['Vendedor', 'id', 'Cliente', 'Origem', 'Data Fechamento', 'Setup Bruto', 'MRR Bruto', 'Total Bruto', 'processovendaid']].copy()
@@ -716,7 +739,6 @@ def tela_visao_comercial():
                     disabled=[col for col in df_visual.columns if col != "Ver Extrato"]
                 )
                 
-                # Gatilho do Modal (igual a tela de comissionamento)
                 linhas_selecionadas = edited_df[edited_df["Ver Extrato"] == True]
                 if not linhas_selecionadas.empty:
                     prop_id = linhas_selecionadas.iloc[0]["Proposta ID"]
@@ -743,7 +765,6 @@ def tela_visao_comercial():
             """)
             df_open = pd.read_sql(query_open, conn)
             
-            # Filtro para ignorar despesas nos negócios em aberto também
             df_open = df_open[df_open['processovendaid'].astype(str) != '2812']
             
             if not df_open.empty:
