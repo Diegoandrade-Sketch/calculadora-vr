@@ -540,7 +540,7 @@ def tela_comissionamento():
             query_bitrix = text("""
                 SELECT DISTINCT ON (n.id)
                     n.id AS "Proposta ID",
-                    TRIM(CONCAT(COALESCE(ab.name, ''), ' ', COALESCE(ab.last_name, ''))) AS "Vendedor", 
+                    TRIM(CONCAT(COALESCE(ab.name, ''), ' ', COALESCE(ab.lastname, ''))) AS "Vendedor", 
                     e.title AS "Cliente",
                     COALESCE(e.uf, 'N/I') AS "Estado",
                     o.closedate AS data_bruta,
