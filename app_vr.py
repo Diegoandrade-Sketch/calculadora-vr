@@ -658,34 +658,62 @@ def tela_visao_comercial():
                 df_dash['Data Fechamento'] = pd.to_datetime(df_dash['closedate']).dt.date
                 df_dash['Origem'] = df_dash['processovendaid'].astype(str).map(MAPA_PROCESSOS).fillna("Outros Processos")
                 
-                t_setup, t_mrr, t_geral = df_dash['Setup Bruto'].sum(), df_dash['MRR Bruto'].sum(), df_dash['Total Bruto'].sum()
-                tk_medio = t_geral / len(df_dash) if len(df_dash) > 0 else 0
+                t_setup = df_dash['Setup Bruto'].sum()
+                t_mrr = df_dash['MRR Bruto'].sum()
+                t_geral = df_dash['Total Bruto'].sum()
+                
+                qtd_geral = len(df_dash)
+                qtd_mrr = len(df_dash[df_dash['MRR Bruto'] > 0])
+                qtd_setup = len(df_dash[df_dash['Setup Bruto'] > 0])
+                
+                tk_medio = t_geral / qtd_geral if qtd_geral > 0 else 0
+                tk_medio_mrr = t_mrr / qtd_mrr if qtd_mrr > 0 else 0
+                tk_medio_setup = t_setup / qtd_setup if qtd_setup > 0 else 0
                 
                 st.markdown("### 💰 Receita Adquirida (Negócios Ganhos)")
-                col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
+                
+                # Linha 1: Totais
+                col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
                 with col_kpi1: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #1976d2;"><div class="dash-title">Total MRR</div><div style="font-size:1.5rem; font-weight:900;">R$ {f_br(t_mrr)}</div></div>""", unsafe_allow_html=True)
                 with col_kpi2: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #ff6600;"><div class="dash-title">Total Setup</div><div style="font-size:1.5rem; font-weight:900;">R$ {f_br(t_setup)}</div></div>""", unsafe_allow_html=True)
                 with col_kpi3: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #2e7d32; background:#f4f6f9;"><div class="dash-title">Volume Fechado</div><div style="font-size:1.5rem; font-weight:900;">R$ {f_br(t_geral)}</div></div>""", unsafe_allow_html=True)
-                with col_kpi4: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #8e24aa;"><div class="dash-title">Ticket Médio</div><div style="font-size:1.5rem; font-weight:900;">R$ {f_br(tk_medio)}</div></div>""", unsafe_allow_html=True)
+                
+                # Linha 2: Tickets Médios
+                col_kpi4, col_kpi5, col_kpi6 = st.columns(3)
+                with col_kpi4: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #1976d2; opacity: 0.9;"><div class="dash-title">Ticket Médio MRR</div><div style="font-size:1.3rem; font-weight:900;">R$ {f_br(tk_medio_mrr)}</div></div>""", unsafe_allow_html=True)
+                with col_kpi5: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #ff6600; opacity: 0.9;"><div class="dash-title">Ticket Médio Setup</div><div style="font-size:1.3rem; font-weight:900;">R$ {f_br(tk_medio_setup)}</div></div>""", unsafe_allow_html=True)
+                with col_kpi6: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #8e24aa;"><div class="dash-title">Ticket Médio Geral</div><div style="font-size:1.3rem; font-weight:900;">R$ {f_br(tk_medio)}</div></div>""", unsafe_allow_html=True)
                 
                 st.markdown("<hr>", unsafe_allow_html=True)
                 
                 st.markdown("### 🗺️ Análise Geográfica e Força de Vendas")
-                col_g1, col_g2 = st.columns(2)
                 
-                with col_g1:
-                    st.markdown("**Volume por Região (UF)**")
-                    df_regiao = df_dash.groupby('Estado')[['Setup Bruto', 'MRR Bruto', 'Total Bruto']].sum().reset_index()
-                    df_regiao = df_regiao.sort_values(by='Total Bruto', ascending=False)
-                    for col in ['Setup Bruto', 'MRR Bruto', 'Total Bruto']: df_regiao[col] = df_regiao[col].apply(lambda x: f"R$ {f_br(x)}")
-                    st.dataframe(df_regiao.rename(columns={'Setup Bruto': 'Setup', 'MRR Bruto': 'MRR', 'Total Bruto': 'Volume Total'}), use_container_width=True, hide_index=True)
+                # Agrupamento robusto para evitar skew de média (considerando apenas propostas com valor)
+                def gerar_tabela_analitica(df, agrupador):
+                    grp = df.groupby(agrupador).agg(
+                        Setup_Soma=('Setup Bruto', 'sum'),
+                        MRR_Soma=('MRR Bruto', 'sum'),
+                        Total_Soma=('Total Bruto', 'sum'),
+                        Qtd_Setup=('Setup Bruto', lambda x: (x > 0).sum()),
+                        Qtd_MRR=('MRR Bruto', lambda x: (x > 0).sum())
+                    ).reset_index()
+                    
+                    grp['TM_Setup'] = (grp['Setup_Soma'] / grp['Qtd_Setup'].replace(0, 1)).fillna(0)
+                    grp['TM_MRR'] = (grp['MRR_Soma'] / grp['Qtd_MRR'].replace(0, 1)).fillna(0)
+                    
+                    grp = grp.sort_values(by='Total_Soma', ascending=False)
+                    for col in ['Setup_Soma', 'TM_Setup', 'MRR_Soma', 'TM_MRR', 'Total_Soma']: 
+                        grp[col] = grp[col].apply(lambda x: f"R$ {f_br(x)}")
+                        
+                    return grp[[agrupador, 'Setup_Soma', 'TM_Setup', 'MRR_Soma', 'TM_MRR', 'Total_Soma']].rename(
+                        columns={'Setup_Soma': 'Setup', 'TM_Setup': 'T.M. Setup', 'MRR_Soma': 'MRR', 'TM_MRR': 'T.M. MRR', 'Total_Soma': 'Volume Total'}
+                    )
+                
+                st.markdown("**Volume e Ticket Médio por Região (UF)**")
+                st.dataframe(gerar_tabela_analitica(df_dash, 'Estado'), use_container_width=True, hide_index=True)
 
-                with col_g2:
-                    st.markdown("**Volume por Executivo**")
-                    df_exec = df_dash.groupby('Vendedor')[['Setup Bruto', 'MRR Bruto', 'Total Bruto']].sum().reset_index()
-                    df_exec = df_exec.sort_values(by='Total Bruto', ascending=False)
-                    for col in ['Setup Bruto', 'MRR Bruto', 'Total Bruto']: df_exec[col] = df_exec[col].apply(lambda x: f"R$ {f_br(x)}")
-                    st.dataframe(df_exec.rename(columns={'Setup Bruto': 'Setup', 'MRR Bruto': 'MRR', 'Total Bruto': 'Volume Total'}), use_container_width=True, hide_index=True)
+                st.markdown("<br>**Volume e Ticket Médio por Executivo**", unsafe_allow_html=True)
+                st.dataframe(gerar_tabela_analitica(df_dash, 'Vendedor'), use_container_width=True, hide_index=True)
                     
                 st.markdown("<hr>", unsafe_allow_html=True)
                 
@@ -730,18 +758,12 @@ def tela_visao_comercial():
                 df_open['Data Criação'] = pd.to_datetime(df_open['data_inicio_negocio'], errors='coerce').dt.strftime('%d/%m/%Y')
                 df_open['Data Prevista'] = pd.to_datetime(df_open['data_prevista'], errors='coerce').dt.strftime('%d/%m/%Y').fillna('Não informada')
                 
-                df_open['Max_MRR_Exec'] = df_open.groupby('Vendedor')['MRR Bruto'].transform('max')
-                df_open['Max_Setup_Exec'] = df_open.groupby('Vendedor')['Setup Bruto'].transform('max')
+                def classificar_temperatura(dias):
+                    if dias <= 7: return "🔥 Quente"
+                    elif dias <= 14: return "⚠️ Morno"
+                    else: return "❄️ Frio"
                 
-                def aplicar_alertas(row):
-                    status = []
-                    if (row['MRR Bruto'] == row['Max_MRR_Exec'] and row['MRR Bruto'] > 0) or (row['Setup Bruto'] == row['Max_Setup_Exec'] and row['Setup Bruto'] > 0):
-                        status.append("🔥 Prioridade")
-                    if row['Dias na Mesa'] >= 15:
-                        status.append("❄️ Esfriando")
-                    return " | ".join(status) if status else "Em Andamento"
-                
-                df_open['Status'] = df_open.apply(aplicar_alertas, axis=1)
+                df_open['Status'] = df_open['Dias na Mesa'].apply(classificar_temperatura)
                 
                 # --- CARDS DE DESTAQUE DUPLO ---
                 col_dest1, col_dest2 = st.columns(2)
@@ -759,7 +781,7 @@ def tela_visao_comercial():
                                 <div style='font-size: 0.8rem; font-weight: 700; color: #1976d2; text-transform: uppercase;'>👑 Maior Contrato Recorrente</div>
                                 <div style='font-size: 1.4rem; font-weight: 900; color: #333;'>{maior_mrr['Cliente']}</div>
                                 <div style='margin-top: 10px; font-size: 0.9rem;'><strong>MRR:</strong> <span style='color:#1976d2; font-weight:bold;'>R$ {f_br(maior_mrr['MRR Bruto'])}</span></div>
-                                <div style='font-size: 0.9rem; color: #666;'>Executivo: {maior_mrr['Vendedor']} | {maior_mrr['Dias na Mesa']} dias abertos</div>
+                                <div style='font-size: 0.9rem; color: #666;'>Executivo: {maior_mrr['Vendedor']} | {maior_mrr['Status']} ({maior_mrr['Dias na Mesa']} dias)</div>
                             </div>
                         """, unsafe_allow_html=True)
                         
@@ -770,7 +792,7 @@ def tela_visao_comercial():
                                 <div style='font-size: 0.8rem; font-weight: 700; color: #ff6600; text-transform: uppercase;'>🚀 Maior Projeto (Setup)</div>
                                 <div style='font-size: 1.4rem; font-weight: 900; color: #333;'>{maior_setup['Cliente']}</div>
                                 <div style='margin-top: 10px; font-size: 0.9rem;'><strong>Setup:</strong> <span style='color:#ff6600; font-weight:bold;'>R$ {f_br(maior_setup['Setup Bruto'])}</span></div>
-                                <div style='font-size: 0.9rem; color: #666;'>Executivo: {maior_setup['Vendedor']} | {maior_setup['Dias na Mesa']} dias abertos</div>
+                                <div style='font-size: 0.9rem; color: #666;'>Executivo: {maior_setup['Vendedor']} | {maior_setup['Status']} ({maior_setup['Dias na Mesa']} dias)</div>
                             </div>
                         """, unsafe_allow_html=True)
                 
