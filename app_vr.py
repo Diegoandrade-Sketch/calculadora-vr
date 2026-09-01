@@ -578,11 +578,16 @@ def tela_visao_comercial():
         engine = get_db_engine()
         with engine.connect() as conn:
             query_dash = text("""
-                SELECT DISTINCT ON (n.id) n.id, COALESCE(o.ufcrmvalorprojeto::text, '0') AS setup_str, COALESCE(o.ufcrmvalorrecorrente::text, o.opportunity::text, '0') AS mrr_str,
-                TRIM(CONCAT(COALESCE(ab.name, ''), ' ', COALESCE(ab.lastname, ''))) AS "Vendedor"
+                SELECT DISTINCT ON (n.id) n.id, 
+                COALESCE(o.ufcrmvalorprojeto::text, '0') AS setup_str, 
+                COALESCE(o.ufcrmvalorrecorrente::text, o.opportunity::text, '0') AS mrr_str,
+                TRIM(CONCAT(COALESCE(ab.name, ''), ' ', COALESCE(ab.lastname, ''))) AS "Vendedor",
+                o.closedate,
+                COALESCE(c.title, 'Cliente Não Informado') AS "Cliente"
                 FROM orcamento_novo AS o 
                 JOIN negocio_novo AS n ON n.id = o.dealId
                 LEFT JOIN assignedby_novo AS ab ON ab.id = n.assignedById
+                LEFT JOIN company_novo AS c ON c.id = n.companyId
                 WHERE o.closedate >= :d_inicio AND o.closedate <= :d_fim AND n.closed = 'Y'
             """)
             df_dash = pd.read_sql(query_dash, conn, params={"d_inicio": data_inicio, "d_fim": data_fim})
@@ -594,14 +599,37 @@ def tela_visao_comercial():
             df_dash['Setup Bruto'] = df_dash['setup_str'].apply(parse_currency)
             df_dash['MRR Bruto'] = df_dash['mrr_str'].apply(parse_currency)
             df_dash['Total Bruto'] = df_dash['Setup Bruto'] + df_dash['MRR Bruto']
-            t_setup, t_mrr = df_dash['Setup Bruto'].sum(), df_dash['MRR Bruto'].sum()
+            df_dash['Data Fechamento'] = pd.to_datetime(df_dash['closedate']).dt.date
             
-            st.markdown("### 💰 Receita Adquirida no Período (Negócios Ganhos)")
-            col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
-            with col_kpi1: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #1976d2;"><div class="dash-title">Total de MRR (Mensalidade)</div><div style="font-size:1.8rem; font-weight:900; color:#262730;">R$ {f_br(t_mrr)}</div></div>""", unsafe_allow_html=True)
-            with col_kpi2: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #ff6600;"><div class="dash-title">Total de Setup (Serviços)</div><div style="font-size:1.8rem; font-weight:900; color:#262730;">R$ {f_br(t_setup)}</div></div>""", unsafe_allow_html=True)
-            with col_kpi3: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #2e7d32; background:#f4f6f9;"><div class="dash-title">Volume Total Fechado</div><div style="font-size:1.8rem; font-weight:900; color:#262730;">R$ {f_br(t_mrr + t_setup)}</div></div>""", unsafe_allow_html=True)
+            t_setup = df_dash['Setup Bruto'].sum()
+            t_mrr = df_dash['MRR Bruto'].sum()
+            t_geral = df_dash['Total Bruto'].sum()
+            tk_medio = t_geral / len(df_dash) if len(df_dash) > 0 else 0
             
+            st.markdown("### 💰 Receita Adquirida (Negócios Ganhos)")
+            col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
+            with col_kpi1: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #1976d2;"><div class="dash-title">Total MRR</div><div style="font-size:1.5rem; font-weight:900; color:#262730;">R$ {f_br(t_mrr)}</div></div>""", unsafe_allow_html=True)
+            with col_kpi2: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #ff6600;"><div class="dash-title">Total Setup</div><div style="font-size:1.5rem; font-weight:900; color:#262730;">R$ {f_br(t_setup)}</div></div>""", unsafe_allow_html=True)
+            with col_kpi3: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #2e7d32; background:#f4f6f9;"><div class="dash-title">Volume Fechado</div><div style="font-size:1.5rem; font-weight:900; color:#262730;">R$ {f_br(t_geral)}</div></div>""", unsafe_allow_html=True)
+            with col_kpi4: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #8e24aa;"><div class="dash-title">Ticket Médio</div><div style="font-size:1.5rem; font-weight:900; color:#262730;">R$ {f_br(tk_medio)}</div></div>""", unsafe_allow_html=True)
+            
+            st.markdown("<hr>", unsafe_allow_html=True)
+            
+            st.markdown("### 📈 Evolução de Receita Diária")
+            df_timeline = df_dash.groupby('Data Fechamento')[['Setup Bruto', 'MRR Bruto']].sum().reset_index()
+            if not df_timeline.empty:
+                df_timeline['Data Fechamento'] = pd.to_datetime(df_timeline['Data Fechamento']).dt.strftime('%d/%m/%Y')
+                st.dataframe(
+                    df_timeline,
+                    column_config={
+                        "Data Fechamento": "Data de Fechamento",
+                        "Setup Bruto": st.column_config.NumberColumn("Setup (R$)", format="R$ %.2f"),
+                        "MRR Bruto": st.column_config.NumberColumn("MRR (R$)", format="R$ %.2f")
+                    },
+                    use_container_width=True,
+                    hide_index=True
+                )
+                
             st.markdown("<hr>", unsafe_allow_html=True)
             st.markdown("### 📊 Análise de Performance Operacional")
             
@@ -622,13 +650,27 @@ def tela_visao_comercial():
                     df_prods['quantidade'] = pd.to_numeric(df_prods['quantidade'], errors='coerce').fillna(1)
                     df_top_prods = df_prods.groupby('Produto')['quantidade'].sum().reset_index()
                     df_top_prods = df_top_prods.sort_values(by='quantidade', ascending=False).head(10)
-                    df_top_prods = df_top_prods.rename(columns={'quantidade': 'Qtd Vendida'}).set_index('Produto')
-                    st.bar_chart(df_top_prods, color="#1976d2")
+                    
+                    max_qtd = int(df_top_prods['quantidade'].max())
+                    st.dataframe(
+                        df_top_prods,
+                        column_config={
+                            "Produto": st.column_config.TextColumn("Nome do Produto"),
+                            "quantidade": st.column_config.ProgressColumn(
+                                "Qtd Vendida",
+                                format="%d",
+                                min_value=0,
+                                max_value=max_qtd if max_qtd > 0 else 100
+                            )
+                        },
+                        use_container_width=True,
+                        hide_index=True
+                    )
                 else:
                     st.info("Sem dados de produtos no período selecionado.")
 
             with col_g2:
-                st.markdown("**📈 Curva ABC de Receita por Executivo**")
+                st.markdown("**🎯 Curva ABC de Receita por Executivo**")
                 df_abc = df_dash.groupby('Vendedor')['Total Bruto'].sum().reset_index()
                 df_abc = df_abc.sort_values(by='Total Bruto', ascending=False)
                 df_abc = df_abc[df_abc['Total Bruto'] > 0]
@@ -649,6 +691,18 @@ def tela_visao_comercial():
                     st.dataframe(df_exibicao, use_container_width=True, hide_index=True)
                 else:
                     st.info("Receita zerada no período para classificação.")
+                    
+            st.markdown("<hr>", unsafe_allow_html=True)
+            st.markdown("### 📋 Extrato Analítico (Drill-down)")
+            
+            df_raw = df_dash[['id', 'Cliente', 'Vendedor', 'Data Fechamento', 'Setup Bruto', 'MRR Bruto', 'Total Bruto']].copy()
+            df_raw = df_raw.rename(columns={'id': 'Negócio ID'})
+            df_raw['Data Fechamento'] = pd.to_datetime(df_raw['Data Fechamento']).dt.strftime('%d/%m/%Y')
+            
+            for col in ['Setup Bruto', 'MRR Bruto', 'Total Bruto']:
+                df_raw[col] = df_raw[col].apply(lambda x: f"R$ {f_br(x)}")
+                
+            st.dataframe(df_raw, use_container_width=True, hide_index=True)
 
     except Exception as e:
         st.error(f"Erro ao carregar dashboards: {e}")
