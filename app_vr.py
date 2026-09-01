@@ -1171,145 +1171,235 @@ def aplicativo_principal():
     # TELA NOVA: MÓDULO FINANCEIRO (FATURAMENTO)
     # ==========================================
     elif tela == "Faturamento":
+        import pandas as pd
+        import html
+        from sqlalchemy import text
+        import streamlit.components.v1 as components
+        
         st.markdown("<h1 class='hero-title'>CENTRAL DE FATURAMENTO</h1>", unsafe_allow_html=True)
         st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Geração do Documento Financeiro e Rateio Automático de Contratos</p>", unsafe_allow_html=True)
-
-        st.markdown("""<div class="cliente-container"><h3 style="margin:0; color:#262730;">1. Dados da Operação</h3></div>""", unsafe_allow_html=True)
         
-        c1, c2 = st.columns(2)
-        nome_fin = c1.text_input("Nome do Cliente", placeholder="Ex: Supermercados Dois Irmãos")
-        cnpj_fin = c2.text_area("CNPJs do Contrato", placeholder="Insira um ou mais CNPJs", height=68)
-
-        c3, c4, c5 = st.columns(3)
-        with c3:
-            setup_str = st.text_input("Valor Total do Setup (R$)", value=st.session_state.get('fin_setup_str', ""), placeholder="Ex: 15000,00")
-            st.session_state.fin_setup_str = setup_str
-            val_setup_fin = parse_currency(setup_str)
-            st.markdown(f"<div style='font-size:1rem; font-weight:bold; color:#ff6600; margin-top:-10px; margin-bottom:15px;'>R$ {f_br(val_setup_fin)}</div>", unsafe_allow_html=True)
-
-        with c4:
-            mensal_str = st.text_input("Valor Total da Mensalidade (R$)", value=st.session_state.get('fin_mensal_str', ""), placeholder="Ex: 2500,00")
-            st.session_state.fin_mensal_str = mensal_str
-            val_mensal_fin = parse_currency(mensal_str)
-            st.markdown(f"<div style='font-size:1rem; font-weight:bold; color:#2e7d32; margin-top:-10px; margin-bottom:15px;'>R$ {f_br(val_mensal_fin)}</div>", unsafe_allow_html=True)
-
-        with c5:
-            qtd_parcelas_fin = st.number_input("Qtd. de Parcelas do Setup", min_value=1, max_value=36, value=6, step=1)
-
-        st.markdown("""<br><div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">2. Parâmetros de Faturamento</h3></div>""", unsafe_allow_html=True)
+        # 1. Carregar Motor de Regras (Planilha do Excel)
+        @st.cache_data
+        def carregar_regras_rateio():
+            try:
+                df_regras = pd.read_excel("Rateio_GrupoRecifeSul - 2026.xlsx")
+                df_regras['Descrição'] = df_regras['Descrição'].astype(str).str.strip().str.upper()
+                return df_regras
+            except Exception as e:
+                st.error(f"⚠️ Arquivo de regras não encontrado. Verifique se 'Rateio_GrupoRecifeSul - 2026.xlsx' está na pasta raiz. Erro: {e}")
+                return pd.DataFrame()
+                
+        df_rateio = carregar_regras_rateio()
         
-        tipo_rateio = st.radio("Selecione a regra de divisão de faturamento:", ["Padrão da Unidade (Matriz 10% / VR Recife 90%)", "Ajuste Personalizado de Rateio"], horizontal=True)
-
-        if "Padrão" in tipo_rateio:
-            pct_matriz_setup = 10.0
-            pct_filial_setup = 90.0
-            pct_matriz_mensal = 10.0
-            pct_filial_mensal = 90.0
-            st.info("O sistema calculará automaticamente o repasse de 10% para a Matriz e 90% para a VR Recife.")
+        # 2. Buscar Negócios Ganhos Recentes
+        try:
+            engine = get_db_engine()
+            with engine.connect() as conn:
+                query_negocios = text("""
+                    SELECT n.id, COALESCE(c.title, 'Cliente Não Informado') AS cliente, n.closedate
+                    FROM negocio_novo n
+                    LEFT JOIN company_novo c ON c.id = n.companyId
+                    WHERE n.closed = 'Y' AND n.stageid LIKE '%WON%'
+                    ORDER BY n.closedate DESC
+                    LIMIT 100
+                """)
+                df_negocios = pd.read_sql(query_negocios, conn)
+        except Exception as e:
+            st.error(f"Erro ao buscar negócios no banco de dados: {e}")
+            df_negocios = pd.DataFrame()
+            
+        if df_negocios.empty:
+            st.warning("Nenhum negócio ganho encontrado ou erro de conexão.")
         else:
-            st.markdown("<strong style='color:#262730;'>Composição do Setup (Implantação)</strong>", unsafe_allow_html=True)
-            crs1, crs2 = st.columns(2)
-            pct_matriz_setup = crs1.number_input("% Rateio Matriz (Setup)", min_value=0.0, max_value=100.0, value=10.0, step=1.0)
-            pct_filial_setup = crs2.number_input("% Rateio VR Recife (Setup)", min_value=0.0, max_value=100.0, value=100.0 - pct_matriz_setup, step=1.0)
+            opcoes_negocios = ["Selecione um contrato..."] + df_negocios.apply(lambda row: f"{row['id']} - {row['cliente']}", axis=1).tolist()
             
-            st.markdown("<strong style='color:#262730;'>Composição da Mensalidade (Recorrente)</strong>", unsafe_allow_html=True)
-            crm1, crm2 = st.columns(2)
-            pct_matriz_mensal = crm1.number_input("% Rateio Matriz (Mensalidade)", min_value=0.0, max_value=100.0, value=10.0, step=1.0)
-            pct_filial_mensal = crm2.number_input("% Rateio VR Recife (Mensalidade)", min_value=0.0, max_value=100.0, value=100.0 - pct_matriz_mensal, step=1.0)
-
-            if round(pct_matriz_setup + pct_filial_setup, 2) != 100.0 or round(pct_matriz_mensal + pct_filial_mensal, 2) != 100.0:
-                st.warning("Atenção: A soma dos percentuais deve fechar exatamente em 100%.")
-
-        if st.button("Processar Composição Financeira", type="primary", use_container_width=True):
-            if val_setup_fin == 0 and val_mensal_fin == 0:
-                st.error("Insira o valor do Setup ou da Mensalidade para processar.")
-            elif round(pct_matriz_setup + pct_filial_setup, 2) == 100.0 and round(pct_matriz_mensal + pct_filial_mensal, 2) == 100.0:
-                st.session_state.fin_sim_ativa = True
+            st.markdown("""<div class="cliente-container"><h3 style="margin:0; color:#262730;">1. Seleção de Contrato (Ganhos Recentes)</h3></div><br>""", unsafe_allow_html=True)
+            
+            negocio_selecionado = st.selectbox("Busque pelo ID ou Nome do Cliente", opcoes_negocios)
+            
+            if negocio_selecionado != "Selecione um contrato...":
+                negocio_id = int(negocio_selecionado.split(" - ")[0])
+                cliente_nome = negocio_selecionado.split(" - ", 1)[1]
                 
-        if st.session_state.get('fin_sim_ativa'):
-            st.markdown("<hr><h2 style='text-align:center; color:#262730;'>ESPELHO DE FATURAMENTO</h2>", unsafe_allow_html=True)
-            
-            mensal_matriz = val_mensal_fin * (pct_matriz_mensal / 100.0)
-            mensal_filial = val_mensal_fin * (pct_filial_mensal / 100.0)
-            setup_matriz = val_setup_fin * (pct_matriz_setup / 100.0)
-            setup_filial = val_setup_fin * (pct_filial_setup / 100.0)
-            
-            parcela_matriz_base = round(setup_matriz / qtd_parcelas_fin, 2) if qtd_parcelas_fin > 0 else 0.0
-            parcela_filial_base = round(setup_filial / qtd_parcelas_fin, 2) if qtd_parcelas_fin > 0 else 0.0
-            
-            ultima_matriz = round(setup_matriz - (parcela_matriz_base * (qtd_parcelas_fin - 1)), 2) if qtd_parcelas_fin > 0 else 0.0
-            ultima_filial = round(setup_filial - (parcela_filial_base * (qtd_parcelas_fin - 1)), 2) if qtd_parcelas_fin > 0 else 0.0
-
-            col_res1, col_res2 = st.columns(2)
-            with col_res1:
-                st.markdown(f"""
-                <div style="background-color:#ffffff; border-top: 6px solid #262730; padding:20px; border-radius:8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
-                    <h4 style="margin:0; color:#262730;">VR SOFTWARE MATRIZ</h4>
-                    <hr>
-                    <p style="margin:0; color:#777; font-size:0.9rem;">Mensalidade Recorrente ({pct_matriz_mensal}%):</p>
-                    <h3 style="margin:0 0 15px 0; color:#2e7d32;">R$ {f_br(mensal_matriz)}</h3>
-                    <p style="margin:0; color:#777; font-size:0.9rem;">Total Implantação Setup ({pct_matriz_setup}%):</p>
-                    <h3 style="margin:0 0 15px 0; color:#ff6600;">R$ {f_br(setup_matriz)}</h3>
-                </div>
-                """, unsafe_allow_html=True)
+                # 3. Puxar Dados Estruturais do Negócio (CNPJs e Itens do Orçamento)
+                with engine.connect() as conn:
+                    # Busca de CNPJs no Grupo Econômico (Evitando duplicações)
+                    query_cnpjs = text("""
+                        SELECT DISTINCT ge.cnpj
+                        FROM grupoeconomico_novo ge
+                        JOIN itensorcamento_novo io ON io.id = ge.parentId133
+                        JOIN orcamento_novo o ON o.id = io.parentId7
+                        WHERE o.dealId = :deal_id AND ge.cnpj IS NOT NULL AND ge.cnpj != ''
+                    """)
+                    df_cnpjs = pd.read_sql(query_cnpjs, conn, params={"deal_id": negocio_id})
+                    
+                    # Busca de Produtos
+                    query_itens = text("""
+                        SELECT io.id, io.title, io.ufcrmvalorprojeto AS valor_setup, io.opportunity AS valor_mrr, io.qtdparcelas
+                        FROM itensorcamento_novo io
+                        JOIN orcamento_novo o ON o.id = io.parentId7
+                        WHERE o.dealId = :deal_id
+                    """)
+                    df_itens = pd.read_sql(query_itens, conn, params={"deal_id": negocio_id})
+                    
+                cnpjs_str = "\n".join(df_cnpjs['cnpj'].unique().tolist()) if not df_cnpjs.empty else "CNPJ não cadastrado no Grupo Econômico"
                 
-            with col_res2:
-                st.markdown(f"""
-                <div style="background-color:#ffffff; border-top: 6px solid #ff6600; padding:20px; border-radius:8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
-                    <h4 style="margin:0; color:#ff6600;">VR RECIFE</h4>
-                    <hr>
-                    <p style="margin:0; color:#777; font-size:0.9rem;">Mensalidade Recorrente ({pct_filial_mensal}%):</p>
-                    <h3 style="margin:0 0 15px 0; color:#2e7d32;">R$ {f_br(mensal_filial)}</h3>
-                    <p style="margin:0; color:#777; font-size:0.9rem;">Total Implantação Setup ({pct_filial_setup}%):</p>
-                    <h3 style="margin:0 0 15px 0; color:#ff6600;">R$ {f_br(setup_filial)}</h3>
-                </div>
-                """, unsafe_allow_html=True)
+                st.markdown("""<br><div class="cliente-container"><h3 style="margin:0; color:#262730;">2. Dados da Operação (Extração Automática)</h3></div><br>""", unsafe_allow_html=True)
+                
+                c1, c2 = st.columns(2)
+                nome_fin = c1.text_input("Nome do Cliente", value=cliente_nome, disabled=True)
+                cnpj_fin = c2.text_area("CNPJs do Contrato (Grupo Econômico)", value=cnpjs_str, height=68, disabled=True)
+                
+                if df_itens.empty:
+                    st.warning("Nenhum produto ou serviço financeiro encontrado no orçamento deste negócio.")
+                else:
+                    st.markdown("""<br><div class="mapeamento-container"><h3 style="margin:0; color:#ff6600;">3. Motor de Rateio (Validação por Produto)</h3></div><br>""", unsafe_allow_html=True)
+                    
+                    detalhes_rateio = []
+                    total_setup = 0.0
+                    total_mrr = 0.0
+                    setup_matriz_total = 0.0
+                    setup_filial_total = 0.0
+                    mrr_matriz_total = 0.0
+                    mrr_filial_total = 0.0
+                    max_parcelas = 1
+                    
+                    # 4. Cálculo Inteligente Linha a Linha
+                    for _, item in df_itens.iterrows():
+                        desc = str(item['title']).strip().upper()
+                        v_setup = float(item['valor_setup'] or 0)
+                        v_mrr = float(item['valor_mrr'] or 0)
+                        parcelas = int(item['qtdparcelas'] or 1)
+                        
+                        if parcelas > max_parcelas: max_parcelas = parcelas
+                        total_setup += v_setup
+                        total_mrr += v_mrr
+                        
+                        # Tenta encontrar a regra exata na planilha
+                        regra = df_rateio[df_rateio['Descrição'] == desc]
+                        
+                        if not regra.empty:
+                            pct_matriz = float(regra.iloc[0]['% VR']) / 100.0
+                            pct_filial = float(regra.iloc[0]['% Unidade']) / 100.0
+                            status_regra = "✅ Planilha"
+                        else:
+                            # Tentativa de Match Parcial (ex: contém a palavra no nome)
+                            match_parcial = df_rateio[df_rateio['Descrição'].apply(lambda x: str(x) in desc or desc in str(x))]
+                            if not match_parcial.empty:
+                                pct_matriz = float(match_parcial.iloc[0]['% VR']) / 100.0
+                                pct_filial = float(match_parcial.iloc[0]['% Unidade']) / 100.0
+                                status_regra = "⚠️ Parcial"
+                            else:
+                                # Regra Default de Segurança caso seja um produto novo não tabelado
+                                pct_matriz = 0.10
+                                pct_filial = 0.90
+                                status_regra = "⚙️ Padrão (10/90)"
+                                
+                        s_matriz, s_filial = v_setup * pct_matriz, v_setup * pct_filial
+                        m_matriz, m_filial = v_mrr * pct_matriz, v_mrr * pct_filial
+                        
+                        setup_matriz_total += s_matriz
+                        setup_filial_total += s_filial
+                        mrr_matriz_total += m_matriz
+                        mrr_filial_total += m_filial
+                        
+                        detalhes_rateio.append({
+                            "Produto/Serviço": item['title'],
+                            "Valor Setup": f"R$ {f_br(v_setup)}",
+                            "Valor MRR": f"R$ {f_br(v_mrr)}",
+                            "Rateio (Matriz / Recife)": f"{int(pct_matriz*100)}% / {int(pct_filial*100)}%",
+                            "Mapeamento": status_regra
+                        })
+                        
+                    # Tabela de Auditoria Linha a Linha para o Financeiro conferir
+                    st.dataframe(pd.DataFrame(detalhes_rateio), use_container_width=True, hide_index=True)
+                    
+                    qtd_parcelas_fin = st.number_input("Qtd. de Parcelas do Setup (Maior prazo capturado no Orçamento)", min_value=1, max_value=36, value=max_parcelas, step=1)
+                    
+                    st.markdown("<hr><h2 style='text-align:center; color:#262730;'>ESPELHO DE FATURAMENTO</h2>", unsafe_allow_html=True)
+                    
+                    # Cálculo de parcelamento corrigindo possíveis dízimas residuais na última parcela
+                    parcela_matriz_base = round(setup_matriz_total / qtd_parcelas_fin, 2) if qtd_parcelas_fin > 0 else 0.0
+                    parcela_filial_base = round(setup_filial_total / qtd_parcelas_fin, 2) if qtd_parcelas_fin > 0 else 0.0
+                    
+                    ultima_matriz = round(setup_matriz_total - (parcela_matriz_base * (qtd_parcelas_fin - 1)), 2) if qtd_parcelas_fin > 0 else 0.0
+                    ultima_filial = round(setup_filial_total - (parcela_filial_base * (qtd_parcelas_fin - 1)), 2) if qtd_parcelas_fin > 0 else 0.0
 
-            st.markdown("<br><h4 style='color:#262730;'>Cronograma de Faturamento</h4>", unsafe_allow_html=True)
-            
-            lista_parcelas = []
-            html_linhas_tabela = ""
-            
-            if qtd_parcelas_fin > 0 and val_setup_fin > 0:
-                for i in range(1, qtd_parcelas_fin + 1):
-                    v_matriz = ultima_matriz if i == qtd_parcelas_fin else parcela_matriz_base
-                    v_filial = ultima_filial if i == qtd_parcelas_fin else parcela_filial_base
-                    lista_parcelas.append({
-                        "Parcela": f"{i}/{qtd_parcelas_fin} (Setup)",
-                        "Cobrança VR Matriz": f"R$ {f_br(v_matriz)}",
-                        "Cobrança VR Recife": f"R$ {f_br(v_filial)}",
-                        "Total Mês": f"R$ {f_br(v_matriz + v_filial)}"
-                    })
-                    html_linhas_tabela += f"<tr><td>{i}/{qtd_parcelas_fin}</td><td class='highlight'>R$ {f_br(v_matriz)}</td><td class='highlight'>R$ {f_br(v_filial)}</td><td>R$ {f_br(v_matriz + v_filial)}</td></tr>"
-            
-            if val_mensal_fin > 0:
-                lista_parcelas.append({
-                    "Parcela": "Mensalidade (Após Implantação)",
-                    "Cobrança VR Matriz": f"R$ {f_br(mensal_matriz)}",
-                    "Cobrança VR Recife": f"R$ {f_br(mensal_filial)}",
-                    "Total Mês": f"R$ {f_br(mensal_matriz + mensal_filial)}"
-                })
-                html_linhas_tabela += f"<tr><td class='highlight-mensal'>Mensalidade (Recorrente)</td><td class='highlight-mensal'>R$ {f_br(mensal_matriz)}</td><td class='highlight-mensal'>R$ {f_br(mensal_filial)}</td><td class='highlight-mensal'>R$ {f_br(mensal_matriz + mensal_filial)}</td></tr>"
-            
-            st.dataframe(pd.DataFrame(lista_parcelas), use_container_width=True, hide_index=True)
+                    col_res1, col_res2 = st.columns(2)
+                    with col_res1:
+                        st.markdown(f"""
+                        <div style="background-color:#ffffff; border-top: 6px solid #262730; padding:20px; border-radius:8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+                            <h4 style="margin:0; color:#262730;">VR SOFTWARE MATRIZ</h4>
+                            <hr>
+                            <p style="margin:0; color:#777; font-size:0.9rem;">Mensalidade Recorrente:</p>
+                            <h3 style="margin:0 0 15px 0; color:#2e7d32;">R$ {f_br(mrr_matriz_total)}</h3>
+                            <p style="margin:0; color:#777; font-size:0.9rem;">Total Implantação Setup:</p>
+                            <h3 style="margin:0 0 15px 0; color:#ff6600;">R$ {f_br(setup_matriz_total)}</h3>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                    with col_res2:
+                        st.markdown(f"""
+                        <div style="background-color:#ffffff; border-top: 6px solid #ff6600; padding:20px; border-radius:8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+                            <h4 style="margin:0; color:#ff6600;">VR RECIFE</h4>
+                            <hr>
+                            <p style="margin:0; color:#777; font-size:0.9rem;">Mensalidade Recorrente:</p>
+                            <h3 style="margin:0 0 15px 0; color:#2e7d32;">R$ {f_br(mrr_filial_total)}</h3>
+                            <p style="margin:0; color:#777; font-size:0.9rem;">Total Implantação Setup:</p>
+                            <h3 style="margin:0 0 15px 0; color:#ff6600;">R$ {f_br(setup_filial_total)}</h3>
+                        </div>
+                        """, unsafe_allow_html=True)
 
-            st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("Gerar Documento de Boas-Vindas (PDF)", use_container_width=True):
-                st.session_state.html_welcome_pack = renderizar_welcome_pack(
-                    nome=html.escape(nome_fin), cnpjs=html.escape(cnpj_fin), val_setup=val_setup_fin, val_mensal=val_mensal_fin, parcelas_html=html_linhas_tabela
-                )
-                st.session_state.show_welcome_pack = True
-                st.rerun()
+                    st.markdown("<br><h4 style='color:#262730;'>Cronograma de Faturamento</h4>", unsafe_allow_html=True)
+                    
+                    lista_parcelas = []
+                    html_linhas_tabela = ""
+                    
+                    if qtd_parcelas_fin > 0 and total_setup > 0:
+                        for i in range(1, qtd_parcelas_fin + 1):
+                            v_matriz = ultima_matriz if i == qtd_parcelas_fin else parcela_matriz_base
+                            v_filial = ultima_filial if i == qtd_parcelas_fin else parcela_filial_base
+                            lista_parcelas.append({
+                                "Parcela": f"{i}/{qtd_parcelas_fin} (Setup)",
+                                "Cobrança VR Matriz": f"R$ {f_br(v_matriz)}",
+                                "Cobrança VR Recife": f"R$ {f_br(v_filial)}",
+                                "Total Mês": f"R$ {f_br(v_matriz + v_filial)}"
+                            })
+                            html_linhas_tabela += f"<tr><td>{i}/{qtd_parcelas_fin}</td><td class='highlight'>R$ {f_br(v_matriz)}</td><td class='highlight'>R$ {f_br(v_filial)}</td><td>R$ {f_br(v_matriz + v_filial)}</td></tr>"
+                    
+                    if total_mrr > 0:
+                        lista_parcelas.append({
+                            "Parcela": "Mensalidade (Após Implantação)",
+                            "Cobrança VR Matriz": f"R$ {f_br(mrr_matriz_total)}",
+                            "Cobrança VR Recife": f"R$ {f_br(mrr_filial_total)}",
+                            "Total Mês": f"R$ {f_br(mrr_matriz_total + mrr_filial_total)}"
+                        })
+                        html_linhas_tabela += f"<tr><td class='highlight-mensal'>Mensalidade (Recorrente)</td><td class='highlight-mensal'>R$ {f_br(mrr_matriz_total)}</td><td class='highlight-mensal'>R$ {f_br(mrr_filial_total)}</td><td class='highlight-mensal'>R$ {f_br(mrr_matriz_total + mrr_filial_total)}</td></tr>"
+                    
+                    st.dataframe(pd.DataFrame(lista_parcelas), use_container_width=True, hide_index=True)
 
-        if st.session_state.get('show_welcome_pack', False):
-            st.markdown("---")
-            st.markdown("<h2 style='text-align:center; color:#ff6600;'>Visualização do Documento Digital</h2>", unsafe_allow_html=True)
-            st.info("Clique no botão 'Salvar PDF / Imprimir' dentro do quadro abaixo.")
-            components.html(st.session_state.html_welcome_pack, height=1000, scrolling=True)
-            col_fw1, col_fw2, col_fw3 = st.columns([1, 1, 1])
-            if col_fw2.button("Fechar Visualização", use_container_width=True): 
-                st.session_state.show_welcome_pack = False
-                st.rerun()
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("Gerar Documento de Boas-Vindas (PDF)", use_container_width=True):
+                        st.session_state.html_welcome_pack = renderizar_welcome_pack(
+                            nome=html.escape(nome_fin), 
+                            cnpjs=html.escape(cnpj_fin), 
+                            val_setup=total_setup, 
+                            val_mensal=total_mrr, 
+                            parcelas_html=html_linhas_tabela
+                        )
+                        st.session_state.show_welcome_pack = True
+                        st.rerun()
+
+                if st.session_state.get('show_welcome_pack', False):
+                    st.markdown("---")
+                    st.markdown("<h2 style='text-align:center; color:#ff6600;'>Visualização do Documento Digital</h2>", unsafe_allow_html=True)
+                    st.info("Clique no botão 'Salvar PDF / Imprimir' dentro do quadro abaixo para gerar o documento da operação selecionada.")
+                    components.html(st.session_state.html_welcome_pack, height=1000, scrolling=True)
+                    col_fw1, col_fw2, col_fw3 = st.columns([1, 1, 1])
+                    if col_fw2.button("Fechar Visualização", use_container_width=True): 
+                        st.session_state.show_welcome_pack = False
+                        st.rerun()
 
     # ==========================================
     # TELA GERADOR DE PROPOSTA
