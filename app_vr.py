@@ -17,10 +17,9 @@ import hashlib
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
-APP_VERSION = "v6.3.0 - Security & Finance Hub"
+APP_VERSION = "v6.3.1 - Security & Finance Hub"
 CACHE_FILE = "cache_vr.json"
 
-# Contador Mestre para evitar o Crash de Tela Branca (React Desync)
 if 'form_rc' not in st.session_state: st.session_state.form_rc = 0
 
 if 'data_vault' not in st.session_state:
@@ -301,7 +300,6 @@ def tela_login():
                             if not resultado.empty:
                                 user = resultado.iloc[0]
                                 senha_hash = get_senha_hash(senha)
-                                # A validação 'user['senha'] == senha' é mantida apenas provisoriamente para evitar bloqueio enquanto o banco migra os usuários antigos para hash.
                                 if user['senha'] == senha_hash or user['senha'] == senha or user['primeiro_acesso']:
                                     st.session_state.user_email = email; st.session_state.user_role = user['nivel_acesso']; st.session_state.user_name = user['nome']
                                     st.session_state.unidade_nome = user['nome_unidade'] if pd.notna(user['nome_unidade']) else "VR Software"
@@ -536,13 +534,12 @@ def tela_comissionamento():
     try:
         engine = get_db_engine()
         with engine.connect() as conn:
-            # Proteção contra erros de tipagem e Extração rica (Nome e Sobrenome do Vendedor + UF da Empresa)
             query_bitrix = text("""
                 SELECT DISTINCT ON (n.id)
                     n.id AS "Proposta ID",
                     TRIM(CONCAT(COALESCE(ab.name, ''), ' ', COALESCE(ab.lastname, ''))) AS "Vendedor", 
                     e.title AS "Cliente",
-                    COALESCE(e.uf, 'N/I') AS "Estado",
+                    COALESCE(e.ufcrmintegraoreceitauf, 'N/I') AS "Estado",
                     o.closedate AS data_bruta,
                     COALESCE(o.ufcrmvalorprojeto::text, '0') AS setup_str,
                     COALESCE(o.ufcrmvalorrecorrente::text, o.opportunity::text, '0') AS mrr_str
@@ -557,7 +554,8 @@ def tela_comissionamento():
             df_base = pd.read_sql(query_bitrix, conn, params={"d_inicio": data_inicio, "d_fim": data_fim})
             
     except Exception as e:
-        st.error(f"Erro real: {e}")
+        print(f"Erro técnico silencioso: {e}")
+        st.error("Falha ao comunicar com o banco de dados. Tente novamente mais tarde.")
 
     if df_base.empty:
         st.info(f"Nenhum fechamento encontrado no período selecionado.")
