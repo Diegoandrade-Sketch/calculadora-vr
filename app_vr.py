@@ -1483,8 +1483,7 @@ def aplicativo_principal():
             if st.button("Fechar Documento"):
                 del st.session_state['temp_html_welcome']
                 st.rerun()
-    ```
-
+                
     # ==========================================
     # TELA GERADOR DE PROPOSTA
     # ==========================================
