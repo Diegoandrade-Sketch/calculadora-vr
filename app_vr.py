@@ -1311,6 +1311,180 @@ def aplicativo_principal():
                 st.session_state.show_welcome_pack = False
                 st.rerun()
 
+    elif tela == "Financeiro - Boas-Vindas":
+        import pandas as pd
+        from sqlalchemy import text
+        import streamlit.components.v1 as components
+        import html
+        from datetime import datetime, timedelta
+
+        st.markdown("<h1 class='hero-title'>FINANCEIRO - BOAS-VINDAS</h1>", unsafe_allow_html=True)
+        
+        # Filtros Padronizados
+        st.markdown("**Filtros de Busca**")
+        c1, c2, c3, c4 = st.columns(4)
+        data_inicio = c1.date_input("Data Início", datetime.today() - timedelta(days=30))
+        data_fim = c2.date_input("Data Fim", datetime.today())
+        uf_filtro = c3.text_input("UF")
+        executivo_filtro = c4.text_input("Executivo")
+        
+        c5, c6, c7 = st.columns([2, 2, 1])
+        cnpj_filtro = c5.text_input("CNPJ")
+        cliente_filtro = c6.text_input("Nome/Descrição do Cliente")
+        id_negocio = c7.text_input("ID do Negócio")
+
+        if st.button("Ver Extrato", use_container_width=True):
+            engine = get_db_engine()
+            
+            with engine.connect() as conn:
+                # Se o usuário preencheu o ID, processa diretamente o extrato do contrato
+                if id_negocio.strip():
+                    negocio_id = int(id_negocio.strip())
+                    
+                    query_negocio = text("SELECT COALESCE(c.title, 'Cliente Não Informado') AS cliente FROM negocio_novo n LEFT JOIN company_novo c ON c.id = n.companyId WHERE n.id = :deal_id")
+                    result_neg = conn.execute(query_negocio, {"deal_id": negocio_id}).fetchone()
+                    cliente_nome = result_neg[0] if result_neg else "Cliente Não Encontrado"
+
+                    query_cnpjs = text("""
+                        SELECT DISTINCT ge.cnpj
+                        FROM grupoeconomico_novo ge
+                        JOIN itensorcamento_novo io ON io.id = ge.parentId133
+                        JOIN orcamento_novo o ON o.id = io.parentId7
+                        WHERE o.dealId = :deal_id AND ge.cnpj IS NOT NULL AND ge.cnpj != ''
+                    """)
+                    df_cnpjs = pd.read_sql(query_cnpjs, conn, params={"deal_id": negocio_id})
+                    cnpjs_str = "\n".join(df_cnpjs['cnpj'].unique().tolist()) if not df_cnpjs.empty else "CNPJ não cadastrado"
+
+                    query_itens = text("""
+                        SELECT 
+                            io.id, 
+                            io.title, 
+                            io.ufcrmvalorprojeto AS valor_setup, 
+                            io.opportunity AS valor_mrr, 
+                            io.qtdparcelas,
+                            COALESCE(p.percentual_matriz, 10.0) AS pct_matriz,
+                            COALESCE(p.percentual_filial, 90.0) AS pct_filial
+                        FROM itensorcamento_novo io
+                        JOIN orcamento_novo o ON o.id = io.parentId7
+                        LEFT JOIN product p ON p.id = io.ufcrmCodigo
+                        WHERE o.dealId = :deal_id
+                    """)
+                    df_itens = pd.read_sql(query_itens, conn, params={"deal_id": negocio_id})
+                    
+                    if df_itens.empty:
+                        st.error("Nenhum produto financeiro encontrado neste contrato.")
+                    else:
+                        st.success(f"**Cliente:** {cliente_nome} | **CNPJs mapeados:** {len(df_cnpjs)}")
+                        
+                        detalhes_rateio = []
+                        total_setup, total_mrr = 0.0, 0.0
+                        setup_matriz_total, setup_filial_total = 0.0, 0.0
+                        mrr_matriz_total, mrr_filial_total = 0.0, 0.0
+                        max_parcelas = 1
+
+                        for _, item in df_itens.iterrows():
+                            v_setup = parse_currency(str(item['valor_setup'] or '0'))
+                            v_mrr = parse_currency(str(item['valor_mrr'] or '0'))
+                            parcelas = int(item['qtdparcelas'] or 1)
+                            if parcelas > max_parcelas: max_parcelas = parcelas
+                            
+                            total_setup += v_setup
+                            total_mrr += v_mrr
+                            
+                            pct_matriz = float(item['pct_matriz']) / 100.0
+                            pct_filial = float(item['pct_filial']) / 100.0
+                                    
+                            s_matriz, s_filial = v_setup * pct_matriz, v_setup * pct_filial
+                            m_matriz, m_filial = v_mrr * pct_matriz, v_mrr * pct_filial
+                            
+                            setup_matriz_total += s_matriz
+                            setup_filial_total += s_filial
+                            mrr_matriz_total += m_matriz
+                            mrr_filial_total += m_filial
+                            
+                            detalhes_rateio.append({
+                                "Produto/Serviço": item['title'],
+                                "Setup": f"R$ {f_br(v_setup)}",
+                                "MRR": f"R$ {f_br(v_mrr)}",
+                                "Rateio (Matriz/Filial)": f"{int(pct_matriz*100)}% / {int(pct_filial*100)}%"
+                            })
+
+                        st.dataframe(pd.DataFrame(detalhes_rateio), use_container_width=True, hide_index=True)
+                        
+                        qtd_parcelas_fin = st.number_input("Parcelas do Setup", min_value=1, max_value=36, value=max_parcelas, step=1)
+                        
+                        parcela_matriz_base = round(setup_matriz_total / qtd_parcelas_fin, 2) if qtd_parcelas_fin > 0 else 0.0
+                        parcela_filial_base = round(setup_filial_total / qtd_parcelas_fin, 2) if qtd_parcelas_fin > 0 else 0.0
+                        ultima_matriz = round(setup_matriz_total - (parcela_matriz_base * (qtd_parcelas_fin - 1)), 2) if qtd_parcelas_fin > 0 else 0.0
+                        ultima_filial = round(setup_filial_total - (parcela_filial_base * (qtd_parcelas_fin - 1)), 2) if qtd_parcelas_fin > 0 else 0.0
+
+                        st.markdown("**Cronograma de Faturamento**")
+                        lista_parcelas, html_linhas_tabela = [], ""
+                        
+                        if qtd_parcelas_fin > 0 and total_setup > 0:
+                            for i in range(1, qtd_parcelas_fin + 1):
+                                v_matriz = ultima_matriz if i == qtd_parcelas_fin else parcela_matriz_base
+                                v_filial = ultima_filial if i == qtd_parcelas_fin else parcela_filial_base
+                                lista_parcelas.append({"Parcela": f"{i}/{qtd_parcelas_fin} (Setup)", "Matriz": f"R$ {f_br(v_matriz)}", "Recife": f"R$ {f_br(v_filial)}", "Total": f"R$ {f_br(v_matriz + v_filial)}"})
+                                html_linhas_tabela += f"<tr><td>{i}/{qtd_parcelas_fin}</td><td>R$ {f_br(v_matriz)}</td><td>R$ {f_br(v_filial)}</td><td>R$ {f_br(v_matriz + v_filial)}</td></tr>"
+                        
+                        if total_mrr > 0:
+                            lista_parcelas.append({"Parcela": "Mensalidade (Recorrente)", "Matriz": f"R$ {f_br(mrr_matriz_total)}", "Recife": f"R$ {f_br(mrr_filial_total)}", "Total": f"R$ {f_br(mrr_matriz_total + mrr_filial_total)}"})
+                            html_linhas_tabela += f"<tr><td>Mensalidade</td><td>R$ {f_br(mrr_matriz_total)}</td><td>R$ {f_br(mrr_filial_total)}</td><td>R$ {f_br(mrr_matriz_total + mrr_filial_total)}</td></tr>"
+                        
+                        st.dataframe(pd.DataFrame(lista_parcelas), use_container_width=True, hide_index=True)
+                        
+                        st.session_state.temp_html_welcome = renderizar_welcome_pack(
+                            nome=html.escape(cliente_nome), 
+                            cnpjs=html.escape(cnpjs_str), 
+                            val_setup=total_setup, 
+                            val_mensal=total_mrr, 
+                            parcelas_html=html_linhas_tabela
+                        )
+
+                # Se o usuário NÃO preencheu o ID, realiza a busca na base usando os outros filtros para ajudar a encontrar
+                else:
+                    filtros_sql = []
+                    params_sql = {"dt_inicio": data_inicio, "dt_fim": data_fim}
+                    
+                    if uf_filtro:
+                        filtros_sql.append("n.uf = :uf")
+                        params_sql["uf"] = uf_filtro.upper()
+                    if executivo_filtro:
+                        filtros_sql.append("n.assignedbyid_name ILIKE :executivo")
+                        params_sql["executivo"] = f"%{executivo_filtro}%"
+                    if cliente_filtro:
+                        filtros_sql.append("c.title ILIKE :cliente")
+                        params_sql["cliente"] = f"%{cliente_filtro}%"
+
+                    condicoes_str = " AND ".join(filtros_sql)
+                    if condicoes_str:
+                        condicoes_str = " AND " + condicoes_str
+                        
+                    query_busca = text(f"""
+                        SELECT n.id AS "ID do Negócio", COALESCE(c.title, 'Não Informado') AS "Cliente", n.closedate AS "Data", n.assignedbyid_name AS "Executivo"
+                        FROM negocio_novo n
+                        LEFT JOIN company_novo c ON c.id = n.companyId
+                        WHERE n.closed = 'Y' AND n.stageid LIKE '%WON%' AND n.closedate BETWEEN :dt_inicio AND :dt_fim {condicoes_str}
+                        ORDER BY n.closedate DESC LIMIT 50
+                    """)
+                    
+                    df_busca = pd.read_sql(query_busca, conn, params=params_sql)
+                    if df_busca.empty:
+                        st.warning("Nenhum contrato encontrado com estes filtros.")
+                    else:
+                        st.info("Copie o 'ID do Negócio' na tabela abaixo e cole no filtro acima para gerar o rateio e o PDF.")
+                        st.dataframe(df_busca, use_container_width=True, hide_index=True)
+
+        if st.session_state.get('temp_html_welcome'):
+            st.markdown("---")
+            st.markdown("**Documento de Boas-Vindas**")
+            components.html(st.session_state.temp_html_welcome, height=600, scrolling=True)
+            if st.button("Fechar Documento"):
+                del st.session_state['temp_html_welcome']
+                st.rerun()
+    ```
+
     # ==========================================
     # TELA GERADOR DE PROPOSTA
     # ==========================================
