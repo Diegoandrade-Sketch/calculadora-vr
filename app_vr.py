@@ -1604,7 +1604,7 @@ def aplicativo_principal():
                 cfg1, cfg2, cfg3 = st.columns(3)
                 with cfg1:
                     mapeamento_ativo = st.toggle("Mapeamento Inteligente", value=False)
-                    st.toggle("Modo Apresentação", key="modo_apresentacao")
+                   # st.toggle("Modo Apresentação", key="modo_apresentacao")
                     perfil_venda = st.selectbox("Perfil do Cliente", ["Com Despesas", "Sem Despesas"])
                     exibir_media_loja = st.toggle("Exibir Media por Loja", value=False)
                 with cfg2:
