@@ -569,7 +569,7 @@ def tela_visao_comercial():
     import datetime 
     import pandas as pd
     
-# Motor Gráfico HTML/CSS - Arquitetura em GRID (Alinhamento Corrigido para a Esquerda)
+# Motor Gráfico HTML/CSS - Arquitetura em GRID (Elástico e Sem Espaços Vazios)
     def render_html_bar_chart(df_chart, col_label, col_value, cor_barra):
         if df_chart is None or df_chart.empty:
             return "<div style='color:#999; font-style:italic;'>Sem dados para exibir.</div>"
@@ -585,8 +585,8 @@ def tela_visao_comercial():
             pct = (val / max_v) * 100 
             v_str = f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             
-            # HTML em linha única: Coluna 1 (Label Direita) | Coluna 2 (Barra) | Coluna 3 (Valor Esquerda)
-            html += f"<div style='display: grid; grid-template-columns: 35% 1fr auto; gap: 15px; align-items: center; width: 100%;'><div style='text-align: right; font-family: sans-serif; font-size: 0.85rem; color: #444; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;' title='{lbl}'>{lbl}</div><div style='width: 100%; height: 24px;'><div style='width: {pct}%; background-color: {cor_barra}; height: 100%; border-radius: 0px 4px 4px 0px; min-width: 3px;'></div></div><div style='font-family: sans-serif; font-size: 0.85rem; font-weight: 700; color: #222; white-space: nowrap; text-align: left;'>R$ {v_str}</div></div>"
+            # HTML em linha única: Coluna 1 (Elástica até 45%) | Coluna 2 (Barra) | Coluna 3 (Valor Esquerda)
+            html += f"<div style='display: grid; grid-template-columns: fit-content(45%) 1fr auto; gap: 15px; align-items: center; width: 100%;'><div style='text-align: right; font-family: sans-serif; font-size: 0.85rem; color: #444; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;' title='{lbl}'>{lbl}</div><div style='width: 100%; height: 24px;'><div style='width: {pct}%; background-color: {cor_barra}; height: 100%; border-radius: 0px 4px 4px 0px; min-width: 3px;'></div></div><div style='font-family: sans-serif; font-size: 0.85rem; font-weight: 700; color: #222; white-space: nowrap; text-align: left;'>R$ {v_str}</div></div>"
             
         html += "</div>"
         return html
