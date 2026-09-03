@@ -1178,7 +1178,7 @@ def aplicativo_principal():
                 render_nav_button("Diagnóstico")
                 
         elif role == "financeiro":
-            with st.expander("Financeiro", expanded=True):
+            with st.expander("Controladoria Financeira", expanded=True):
                 render_nav_button("Início")
                 render_nav_button("Faturamento")
                 render_nav_button("Comissionamento")
