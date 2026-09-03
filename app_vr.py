@@ -581,7 +581,6 @@ def tela_visao_comercial():
         engine = get_db_engine()
         with engine.connect() as conn:
             
-            # --- CARREGAMENTO DE NEGÓCIOS FECHADOS ---
             try:
                 query_dash = text("""
                     SELECT DISTINCT ON (n.id) n.id, 
@@ -618,7 +617,6 @@ def tela_visao_comercial():
                 """)
                 df_dash = pd.read_sql(query_fallback, conn, params={"d_inicio": data_inicio, "d_fim": data_fim})
                 
-            # --- CARREGAMENTO DE PIPELINE ATIVO ---
             query_open = text("""
                 SELECT DISTINCT ON (n.id) n.id, 
                 COALESCE(o.ufcrmvalorprojeto::text, '0') AS setup_str, 
@@ -636,7 +634,6 @@ def tela_visao_comercial():
             """)
             df_open = pd.read_sql(query_open, conn)
             
-            # --- LIMPEZA E FILTROS ---
             if not df_dash.empty: df_dash = df_dash[df_dash['processovendaid'].astype(str) != '2812']
             if not df_open.empty: df_open = df_open[df_open['processovendaid'].astype(str) != '2812']
             
@@ -650,14 +647,29 @@ def tela_visao_comercial():
             if vendedor_sel != "Todos":
                 if not df_dash.empty: df_dash = df_dash[df_dash['Vendedor'] == vendedor_sel]
                 if not df_open.empty: df_open = df_open[df_open['Vendedor'] == vendedor_sel]
-                
-            # --- NOVO: CONTROLE DE VISÃO ---
+            
+            # --- NOVA BUSCA DE PRODUTOS SINCRONIZADA ---
+            df_produtos = pd.DataFrame()
+            if not df_dash.empty:
+                ids_fechados = df_dash['id'].tolist()
+                ids_str = ",".join(map(str, ids_fechados))
+                query_prod = text(f"""
+                    SELECT io.title AS "Produto", 
+                           COUNT(DISTINCT o.dealId) AS "Adesão (Contratos)",
+                           SUM(COALESCE(io.ufcrmvalorprojeto, 0)) AS "Setup Bruto",
+                           SUM(COALESCE(io.opportunity, 0)) AS "MRR Bruto"
+                    FROM itensorcamento_novo io
+                    JOIN orcamento_novo o ON o.id = io.parentid7
+                    WHERE o.dealId IN ({ids_str})
+                    GROUP BY io.title
+                    ORDER BY "Adesão (Contratos)" DESC
+                """)
+                df_produtos = pd.read_sql(query_prod, conn)
+                if not df_produtos.empty:
+                    df_produtos['Total Bruto'] = df_produtos['Setup Bruto'] + df_produtos['MRR Bruto']
+
             st.markdown("<br>", unsafe_allow_html=True)
-            modo_exibicao = st.radio(
-                "Formato de Exibição",
-                ["Visão Completa", "Visão Gráfica"],
-                horizontal=True
-            )
+            modo_exibicao = st.radio("Formato de Exibição", ["Visão Completa", "Visão Gráfica"], horizontal=True)
             st.markdown("<hr style='margin-top: 5px;'>", unsafe_allow_html=True)
                 
             # === BLOCO 1: NEGÓCIOS FECHADOS ===
@@ -696,7 +708,7 @@ def tela_visao_comercial():
                 
                 if modo_exibicao == "Visão Completa":
                     st.markdown("<hr>", unsafe_allow_html=True)
-                    st.markdown("### 🗺️ Análise Geográfica e Força de Vendas")
+                    st.markdown("### 🗺️ Análise de Vendas e Origem")
                     
                     def gerar_tabela_analitica(df, agrupador):
                         grp = df.groupby(agrupador).agg(
@@ -718,12 +730,25 @@ def tela_visao_comercial():
                             columns={'Setup_Soma': 'Setup', 'TM_Setup': 'T.M. Setup', 'MRR_Soma': 'MRR', 'TM_MRR': 'T.M. MRR', 'Total_Soma': 'Volume Total'}
                         )
                     
-                    st.markdown("**Volume e Ticket Médio por Região (UF)**")
-                    st.dataframe(gerar_tabela_analitica(df_dash, 'Estado'), use_container_width=True, hide_index=True)
+                    st.markdown("**Performance por Origem de Negócio**")
+                    st.dataframe(gerar_tabela_analitica(df_dash, 'Origem'), use_container_width=True, hide_index=True)
 
-                    st.markdown("<br>**Volume e Ticket Médio por Executivo**", unsafe_allow_html=True)
-                    st.dataframe(gerar_tabela_analitica(df_dash, 'Vendedor'), use_container_width=True, hide_index=True)
-                        
+                    c_tab1, c_tab2 = st.columns(2)
+                    with c_tab1:
+                        st.markdown("**Desempenho por Região (UF)**")
+                        st.dataframe(gerar_tabela_analitica(df_dash, 'Estado'), use_container_width=True, hide_index=True)
+                    with c_tab2:
+                        st.markdown("**Desempenho por Executivo**")
+                        st.dataframe(gerar_tabela_analitica(df_dash, 'Vendedor'), use_container_width=True, hide_index=True)
+
+                    if not df_produtos.empty:
+                        st.markdown("**Desempenho por Produto / Módulo**")
+                        df_prod_show = df_produtos.copy()
+                        for col in ['Setup Bruto', 'MRR Bruto', 'Total Bruto']:
+                            df_prod_show[col] = df_prod_show[col].apply(lambda x: f"R$ {f_br(float(x))}")
+                        df_prod_show = df_prod_show.rename(columns={'Setup Bruto': 'Total Setup', 'MRR Bruto': 'Total MRR', 'Total Bruto': 'Volume Final'})
+                        st.dataframe(df_prod_show, use_container_width=True, hide_index=True)
+
                     st.markdown("<hr>", unsafe_allow_html=True)
                     st.markdown("### 📋 Extrato Analítico Interativo (Fechados)")
                     df_exibicao = df_dash[['Vendedor', 'id', 'Cliente', 'Origem', 'Data Fechamento', 'Setup Bruto', 'MRR Bruto', 'Total Bruto', 'processovendaid']].copy()
@@ -751,15 +776,27 @@ def tela_visao_comercial():
                 else:
                     st.markdown("<hr>", unsafe_allow_html=True)
                     st.markdown("### 📊 Gráficos de Performance (Fechados)")
+                    
                     col_g1, col_g2 = st.columns(2)
                     with col_g1:
                         st.markdown("**Volume Total por Região (UF)**")
-                        df_uf_graf = df_dash.groupby('Estado')[['Total Bruto']].sum()
-                        st.bar_chart(df_uf_graf)
+                        df_uf_graf = df_dash.groupby('Estado', as_index=False)['Total Bruto'].sum()
+                        st.bar_chart(df_uf_graf, x='Estado', y='Total Bruto')
                     with col_g2:
                         st.markdown("**Volume Total por Executivo**")
-                        df_exec_graf = df_dash.groupby('Vendedor')[['Total Bruto']].sum()
-                        st.bar_chart(df_exec_graf)
+                        df_exec_graf = df_dash.groupby('Vendedor', as_index=False)['Total Bruto'].sum()
+                        st.bar_chart(df_exec_graf, x='Vendedor', y='Total Bruto')
+
+                    col_g3, col_g4 = st.columns(2)
+                    with col_g3:
+                        st.markdown("**Volume por Origem de Negócio**")
+                        df_origem_graf = df_dash.groupby('Origem', as_index=False)['Total Bruto'].sum()
+                        st.bar_chart(df_origem_graf, x='Origem', y='Total Bruto')
+                    with col_g4:
+                        if not df_produtos.empty:
+                            st.markdown("**Top 10 Produtos por Volume**")
+                            df_prod_graf = df_produtos.sort_values('Total Bruto', ascending=False).head(10)
+                            st.bar_chart(df_prod_graf, x='Produto', y='Total Bruto')
 
             # === BLOCO 2: PIPELINE ATIVO ===
             st.markdown("<hr>", unsafe_allow_html=True)
@@ -785,7 +822,6 @@ def tela_visao_comercial():
                 
                 df_open['Status'] = df_open['Dias na Mesa'].apply(classificar_temperatura)
                 
-                # --- TOTALIZADORES GLOBAIS ---
                 t_open_setup = df_open['Setup Bruto'].sum()
                 t_open_mrr = df_open['MRR Bruto'].sum()
                 t_open_geral = df_open['Total Projetado'].sum()
@@ -798,12 +834,9 @@ def tela_visao_comercial():
                 if modo_exibicao == "Visão Completa":
                     st.markdown("<br>", unsafe_allow_html=True)
 
-                    # --- CARDS DE DESTAQUE DUPLO ---
                     col_dest1, col_dest2 = st.columns(2)
-                    
                     maior_mrr_idx = df_open['MRR Bruto'].idxmax()
                     maior_mrr = df_open.loc[maior_mrr_idx] if df_open['MRR Bruto'].max() > 0 else None
-                    
                     maior_setup_idx = df_open['Setup Bruto'].idxmax()
                     maior_setup = df_open.loc[maior_setup_idx] if df_open['Setup Bruto'].max() > 0 else None
                     
@@ -829,7 +862,6 @@ def tela_visao_comercial():
                                 </div>
                             """, unsafe_allow_html=True)
                     
-                    # --- EXTRATO INTERATIVO PIPELINE ATIVO ---
                     st.markdown("**Radar de Negociações Abertas (Interativo)**")
                     df_open_view = df_open[['id', 'Cliente', 'Status', 'Data Criação', 'Data Prevista', 'Vendedor', 'Setup Bruto', 'MRR Bruto', 'Total Projetado', 'processovendaid']].copy()
                     for col in ['Setup Bruto', 'MRR Bruto', 'Total Projetado']: df_open_view[col] = df_open_view[col].apply(lambda x: f"R$ {f_br(x)}")
@@ -861,15 +893,15 @@ def tela_visao_comercial():
                 else:
                     st.markdown("<br>", unsafe_allow_html=True)
                     st.markdown("### 📊 Gráficos de Pipeline (Abertos)")
-                    col_g3, col_g4 = st.columns(2)
-                    with col_g3:
+                    col_g5, col_g6 = st.columns(2)
+                    with col_g5:
                         st.markdown("**Volume Projetado por Temperatura (Status)**")
-                        df_status_graf = df_open.groupby('Status')[['Total Projetado']].sum()
-                        st.bar_chart(df_status_graf)
-                    with col_g4:
+                        df_status_graf = df_open.groupby('Status', as_index=False)['Total Projetado'].sum()
+                        st.bar_chart(df_status_graf, x='Status', y='Total Projetado')
+                    with col_g6:
                         st.markdown("**Volume Projetado por Executivo**")
-                        df_exec_aberto_graf = df_open.groupby('Vendedor')[['Total Projetado']].sum()
-                        st.bar_chart(df_exec_aberto_graf)
+                        df_exec_aberto_graf = df_open.groupby('Vendedor', as_index=False)['Total Projetado'].sum()
+                        st.bar_chart(df_exec_aberto_graf, x='Vendedor', y='Total Projetado')
             else:
                 st.info("Não há propostas ativas no funil no momento para o filtro selecionado.")
 
