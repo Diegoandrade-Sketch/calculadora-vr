@@ -1162,10 +1162,11 @@ def aplicativo_principal():
         elif st.session_state.user_role == "financeiro":
             abas = ["Início", "Faturamento", "Comissionamento"]
         else:
-            # A Visão Comercial agora é liberada na lista base para Vendedores, Projetos e Admin
+            # A Visão Comercial liberada na lista base para Vendedores, Projetos e Admin
             abas = ["Início", "Diagnóstico", "Gerador de Proposta", "Minhas Propostas", "Consulta de Preco", "Visão Comercial"]
             
-            if st.session_state.user_role in ["admin", "projetos"] and not st.toggle("Simular Visão Vendedor"): 
+            # Unificamos o toggle com uma 'key' para evitar o erro DuplicateElementId
+            if st.session_state.user_role in ["admin", "projetos"] and not st.toggle("Simular Visão Vendedor", key="toggle_simular_vendedor"): 
                 abas.append("Painel Admin")
                 if st.session_state.user_role == "admin":
                     abas.append("Faturamento")
