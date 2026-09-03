@@ -978,43 +978,119 @@ def tela_visao_comercial():
     except Exception as e:
         st.error(f"Ocorreu um erro interno na tela comercial. Detalhe técnico: {e}")
         
-@st.dialog("Detalhamento de Despesas (VExpenses)", width="large")
-def modal_extrato_vexpenses(nome_projeto_vexpenses, data_inicio, data_fim):
-    st.markdown(f"<h3 style='color:#262730; margin-bottom: 5px;'>{nome_projeto_vexpenses}</h3>", unsafe_allow_html=True)
-    st.markdown("<span style='color:#777; font-weight:bold;'>Detalhamento de Gastos Lançados no Aplicativo</span><hr>", unsafe_allow_html=True)
+def tela_controle_despesas():
+    import datetime 
+    import pandas as pd
+    from sqlalchemy import text, create_engine
     
-    try:
-        from sqlalchemy import create_engine, text
-        import pandas as pd
+    # Motor Gráfico HTML/CSS - Mesma arquitetura da Visão Comercial
+    def render_html_bar_chart(df_chart, col_label, col_value, cor_barra):
+        if df_chart is None or df_chart.empty:
+            return "<div style='color:#999; font-style:italic;'>Sem dados para exibir.</div>"
         
+        df_chart = df_chart.sort_values(by=col_value, ascending=False)
+        max_v = df_chart[col_value].max()
+        if max_v <= 0: max_v = 1
+        
+        html = "<table style='width: 100%; border-collapse: collapse; margin-top: 15px; font-family: sans-serif;'>"
+        for _, row in df_chart.iterrows():
+            lbl = str(row[col_label])
+            val = float(row[col_value])
+            pct = (val / max_v) * 100 
+            v_str = f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            
+            html += "<tr style='border-bottom: 1px solid #f0f2f6;'>"
+            html += f"<td style='width: 35%; padding: 10px 5px; text-align: left; font-size: 0.85rem; color: #444; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px;' title='{lbl}'>{lbl}</td>"
+            html += f"<td style='width: 45%; padding: 10px 15px; vertical-align: middle;'>"
+            html += f"<div style='width: 100%; background-color: #e9ecef; height: 18px; border-radius: 10px; overflow: hidden;'>"
+            html += f"<div style='width: {pct}%; background-color: {cor_barra}; height: 100%; border-radius: 10px 0 0 10px; min-width: 2px;'></div>"
+            html += "</div></td>"
+            html += f"<td style='width: 20%; padding: 10px 5px; text-align: right; font-size: 0.85rem; font-weight: 700; color: #222; white-space: nowrap;'>R$ {v_str}</td>"
+            html += "</tr>"
+        html += "</table>"
+        return html
+
+    st.markdown("<h1 class='hero-title'>CONTROLE DE DESPESAS</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Auditoria e Espelho de Lançamentos (VExpenses)</p>", unsafe_allow_html=True)
+
+    try:
+        hoje = datetime.date.today()
+        c1, c2 = st.columns(2)
+        data_inicio = c1.date_input("Período Início", hoje.replace(day=1), format="DD/MM/YYYY", key="desp_in")
+        data_fim = c2.date_input("Período Fim", hoje, format="DD/MM/YYYY", key="desp_fim")
+
+        # Configura a conexão apontando direto para o banco VExpenses
         engine_bitrix = get_db_engine()
         url_vex = engine_bitrix.url.set(database='vexpenses')
         engine_vex = create_engine(url_vex)
-        
-        with engine_vex.connect() as conn:
-            query_detalhe = text("""
-                SELECT e.date AS "Data",
-                       e.title AS "Descrição do Gasto",
-                       e.value AS "Valor (R$)"
+
+        with engine_vex.connect() as conn_vex:
+            # Puxa tudo: Data, Nome do Analista, Nome do Projeto, Descrição e Valor
+            query_vex = text("""
+                SELECT e.date AS data_despesa,
+                       COALESCE(tm.name, 'Usuário Não Identificado') AS colaborador,
+                       COALESCE(p.name, 'Sem Projeto Vinculado') AS projeto,
+                       e.title AS descricao,
+                       COALESCE(e.value, 0) AS valor
                 FROM public.expenses e
-                JOIN public.relatorioprojeto rp ON e.id = rp.id_expense
-                JOIN public.projects p ON p.id = rp.id_project
+                LEFT JOIN public.teammembers tm ON e.user_id = tm.id
+                LEFT JOIN public.relatorioprojeto rp ON e.id = rp.id_expense
+                LEFT JOIN public.projects p ON p.id = rp.id_project
                 WHERE e.date >= :d_inicio AND e.date <= :d_fim
-                AND LOWER(TRIM(p.name)) = :nome_projeto
                 ORDER BY e.date DESC
             """)
-            # Busca ignorando maiúsculas e espaços
-            nome_busca = str(nome_projeto_vexpenses).lower().strip()
-            df_detalhes = pd.read_sql(query_detalhe, conn, params={"d_inicio": data_inicio, "d_fim": data_fim, "nome_projeto": nome_busca})
+            df_despesas = pd.read_sql(query_vex, conn_vex, params={"d_inicio": data_inicio, "d_fim": data_fim})
+
+        if not df_despesas.empty:
             
-            if df_detalhes.empty:
-                st.warning("Nenhuma despesa individual encontrada no VExpenses para este projeto no período selecionado. Verifique se o nome do projeto está idêntico nos dois sistemas.")
-            else:
-                df_detalhes['Data'] = pd.to_datetime(df_detalhes['Data']).dt.strftime('%d/%m/%Y')
-                df_detalhes['Valor (R$)'] = df_detalhes['Valor (R$)'].apply(lambda x: f"R$ {f_br(x)}")
-                st.dataframe(df_detalhes, use_container_width=True, hide_index=True)
+            # --- CÁLCULOS KPI ---
+            total_gasto = df_despesas['valor'].sum()
+            qtd_lancamentos = len(df_despesas)
+            tk_medio = total_gasto / qtd_lancamentos if qtd_lancamentos > 0 else 0
+            
+            # --- BLOCO 1: RESUMO ---
+            with st.expander("📊 Resumo de Gastos do Período", expanded=True):
+                col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
+                with col_kpi1: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #d32f2f;"><div class="dash-title">Custo Total (VExpenses)</div><div style="font-size:1.5rem; font-weight:900; color:#d32f2f;">R$ {f_br(total_gasto)}</div></div>""", unsafe_allow_html=True)
+                with col_kpi2: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #1976d2;"><div class="dash-title">Volume de Despesas</div><div style="font-size:1.5rem; font-weight:900;">{qtd_lancamentos} lançamentos</div></div>""", unsafe_allow_html=True)
+                with col_kpi3: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #ff6600; background:#f4f6f9;"><div class="dash-title">Ticket Médio por Gasto</div><div style="font-size:1.5rem; font-weight:900;">R$ {f_br(tk_medio)}</div></div>""", unsafe_allow_html=True)
+
+            # --- BLOCO 2: GRÁFICOS (RANKING) ---
+            with st.expander("📈 Análise de Concentração de Gastos", expanded=True):
+                estilo_titulo = "<div style='background: #ffffff; padding: 10px 15px; border-radius: 6px; box-shadow: 0 2px 5px rgba(0,0,0,0.08); border: 1px solid #eaebf0; color: #262730; font-weight: 700; font-size: 0.95rem; margin-bottom: 5px;'>{}</div>"
+                col_g1, col_g2 = st.columns(2)
+                
+                with col_g1:
+                    st.markdown(estilo_titulo.format("Top Gastos por Colaborador"), unsafe_allow_html=True)
+                    df_colab = df_despesas.groupby('colaborador', as_index=False)['valor'].sum()
+                    st.markdown(render_html_bar_chart(df_colab, 'colaborador', 'valor', '#ff6600'), unsafe_allow_html=True)
+                    
+                with col_g2:
+                    st.markdown(estilo_titulo.format("Top Gastos por Projeto / Cliente"), unsafe_allow_html=True)
+                    df_proj = df_despesas.groupby('projeto', as_index=False)['valor'].sum().head(15) # Exibe até 15 projetos
+                    st.markdown(render_html_bar_chart(df_proj, 'projeto', 'valor', '#1976d2'), unsafe_allow_html=True)
+
+            # --- BLOCO 3: EXTRATO COMPLETO ---
+            with st.expander("📋 Extrato Completo de Lançamentos", expanded=True):
+                df_visual = df_despesas.copy()
+                df_visual['data_despesa'] = pd.to_datetime(df_visual['data_despesa']).dt.strftime('%d/%m/%Y')
+                df_visual.columns = ['Data', 'Colaborador', 'Projeto / Cliente', 'Descrição do Gasto', 'Valor Bruto (R$)']
+                
+                # Aplica a máscara visual monetária
+                df_visual['Valor (R$)'] = df_visual['Valor Bruto (R$)'].apply(lambda x: f"R$ {f_br(x)}")
+                
+                # Exibe a tabela sem o índice e usando apenas as colunas amigáveis
+                st.dataframe(
+                    df_visual[['Data', 'Colaborador', 'Projeto / Cliente', 'Descrição do Gasto', 'Valor (R$)']], 
+                    use_container_width=True, 
+                    hide_index=True
+                )
+
+        else:
+            st.info("Nenhum lançamento financeiro encontrado no VExpenses para este período.")
+
     except Exception as e:
-        st.error(f"Erro ao carregar detalhes: {e}")
+        st.error(f"Erro ao gerar painel espelho do VExpenses: {e}")
 
 def tela_controle_despesas():
     import datetime 
