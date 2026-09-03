@@ -654,15 +654,15 @@ def tela_visao_comercial():
                 ids_fechados = df_dash['id'].tolist()
                 ids_str = ",".join(map(str, ids_fechados))
                 
-                # Trazemos os valores como texto puro para evitar erros de tipagem no PostgreSQL
+                # Nomes das colunas padronizados para minúsculo para evitar conflito com o PostgreSQL
                 query_prod = text(f"""
                     SELECT io.title AS "Produto", 
-                           o.dealId,
+                           o.dealid AS deal_id,
                            COALESCE(io.ufcrmvalorprojeto::text, '0') AS setup_str,
                            COALESCE(io.opportunity::text, '0') AS mrr_str
                     FROM itensorcamento_novo io
                     JOIN orcamento_novo o ON o.id = io.parentid7
-                    WHERE o.dealId IN ({ids_str})
+                    WHERE o.dealid IN ({ids_str})
                 """)
                 df_prod_raw = pd.read_sql(query_prod, conn)
                 
@@ -671,9 +671,9 @@ def tela_visao_comercial():
                     df_prod_raw['Setup Bruto'] = df_prod_raw['setup_str'].apply(parse_currency)
                     df_prod_raw['MRR Bruto'] = df_prod_raw['mrr_str'].apply(parse_currency)
                     
-                    # Agrupamos e somamos no Pandas (Blindado contra erros de banco)
+                    # Agrupamos pelo nome exato que o SQL retornou (deal_id)
                     df_produtos = df_prod_raw.groupby('Produto').agg(
-                        Adesao_Contratos=('dealId', 'nunique'),
+                        Adesao_Contratos=('deal_id', 'nunique'),
                         Setup_Bruto=('Setup Bruto', 'sum'),
                         MRR_Bruto=('MRR Bruto', 'sum')
                     ).reset_index()
