@@ -944,13 +944,15 @@ def tela_visao_comercial():
                         render_extrato_abertos(df_open_visual, df_open_view)
                     else:
                         st.markdown("<br>", unsafe_allow_html=True)
+                        estilo_titulo = "<div style='background: #ffffff; padding: 10px 15px; border-radius: 6px; box-shadow: 0 2px 5px rgba(0,0,0,0.08); border: 1px solid #eaebf0; color: #262730; font-weight: 700; font-size: 0.95rem; margin-bottom: 5px;'>{}</div>"
+                        
                         col_g5, col_g6 = st.columns(2)
                         with col_g5:
-                            st.markdown("**Volume Projetado por Temperatura (Status)**")
+                            st.markdown(estilo_titulo.format("Volume Projetado por Temperatura (Status)"), unsafe_allow_html=True)
                             df_status_graf = df_open.groupby('Status', as_index=False)['Total Projetado'].sum()
                             st.markdown(render_html_bar_chart(df_status_graf, 'Status', 'Total Projetado', '#d32f2f'), unsafe_allow_html=True)
                         with col_g6:
-                            st.markdown("**Volume Projetado por Executivo**")
+                            st.markdown(estilo_titulo.format("Volume Projetado por Executivo"), unsafe_allow_html=True)
                             df_exec_aberto_graf = df_open.groupby('Vendedor', as_index=False)['Total Projetado'].sum()
                             st.markdown(render_html_bar_chart(df_exec_aberto_graf, 'Vendedor', 'Total Projetado', '#ed6c02'), unsafe_allow_html=True)
             else:
@@ -958,6 +960,7 @@ def tela_visao_comercial():
 
     except Exception as e:
         st.error(f"Ocorreu um erro interno na tela comercial. Detalhe técnico: {e}")
+        
 def tela_comissionamento():
     st.markdown("<h1 class='hero-title'>COMISSIONAMENTO</h1>", unsafe_allow_html=True)
     st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Auditoria e Fechamento de Pagamentos Integrado ao Bitrix24</p>", unsafe_allow_html=True)
