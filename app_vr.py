@@ -978,10 +978,72 @@ def tela_visao_comercial():
     except Exception as e:
         st.error(f"Ocorreu um erro interno na tela comercial. Detalhe técnico: {e}")
         
+@st.dialog("Detalhamento de Despesas (VExpenses)", width="large")
+def modal_extrato_vexpenses(nome_projeto_vexpenses, data_inicio, data_fim):
+    st.markdown(f"<h3 style='color:#262730; margin-bottom: 5px;'>{nome_projeto_vexpenses}</h3>", unsafe_allow_html=True)
+    st.markdown("<span style='color:#777; font-weight:bold;'>Detalhamento de Gastos Lançados no Aplicativo</span><hr>", unsafe_allow_html=True)
+    
+    try:
+        from sqlalchemy import create_engine, text
+        import pandas as pd
+        
+        engine_bitrix = get_db_engine()
+        url_vex = engine_bitrix.url.set(database='vexpenses')
+        engine_vex = create_engine(url_vex)
+        
+        with engine_vex.connect() as conn:
+            query_detalhe = text("""
+                SELECT e.date AS "Data",
+                       e.title AS "Descrição do Gasto",
+                       e.value AS "Valor (R$)"
+                FROM public.expenses e
+                JOIN public.relatorioprojeto rp ON e.id = rp.id_expense
+                JOIN public.projects p ON p.id = rp.id_project
+                WHERE e.date >= :d_inicio AND e.date <= :d_fim
+                AND LOWER(TRIM(p.name)) = :nome_projeto
+                ORDER BY e.date DESC
+            """)
+            # Busca ignorando maiúsculas e espaços
+            nome_busca = str(nome_projeto_vexpenses).lower().strip()
+            df_detalhes = pd.read_sql(query_detalhe, conn, params={"d_inicio": data_inicio, "d_fim": data_fim, "nome_projeto": nome_busca})
+            
+            if df_detalhes.empty:
+                st.warning("Nenhuma despesa individual encontrada no VExpenses para este projeto no período selecionado. Verifique se o nome do projeto está idêntico nos dois sistemas.")
+            else:
+                df_detalhes['Data'] = pd.to_datetime(df_detalhes['Data']).dt.strftime('%d/%m/%Y')
+                df_detalhes['Valor (R$)'] = df_detalhes['Valor (R$)'].apply(lambda x: f"R$ {f_br(x)}")
+                st.dataframe(df_detalhes, use_container_width=True, hide_index=True)
+    except Exception as e:
+        st.error(f"Erro ao carregar detalhes: {e}")
+
 def tela_controle_despesas():
     import datetime 
     import pandas as pd
-    from sqlalchemy import text
+    import unicodedata
+    from sqlalchemy import text, create_engine
+    
+    # Fragmento Isolado para a Tabela Interativa
+    @st.fragment
+    def render_tabela_interativa_despesas(df_vis, d_in, d_fim):
+        edited_df = st.data_editor(
+            df_vis,
+            key="grid_despesas",
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Ver Detalhes": st.column_config.CheckboxColumn("Ver", default=False),
+                "_Nome_VExpenses": None # Oculta a coluna técnica de busca
+            },
+            disabled=[col for col in df_vis.columns if col not in ["Ver Detalhes", "_Nome_VExpenses"]]
+        )
+        linhas_sel = edited_df[edited_df["Ver Detalhes"] == True]
+        if not linhas_sel.empty:
+            nome_proj_bitrix = str(linhas_sel.iloc[0]["Cliente / Projeto"])
+            nome_vex = str(linhas_sel.iloc[0]["_Nome_VExpenses"])
+            
+            # Se encontrou no cruzamento, usa o nome do VExpenses para a busca no modal
+            nome_busca = nome_vex if nome_vex != 'nan' and nome_vex.strip() != '' else nome_proj_bitrix
+            modal_extrato_vexpenses(nome_busca, d_in, d_fim)
 
     st.markdown("<h1 class='hero-title'>CONTROLE DE DESPESAS</h1>", unsafe_allow_html=True)
     st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Análise de Margem: Previsto (Proposta) vs. Realizado (VExpenses)</p>", unsafe_allow_html=True)
@@ -992,19 +1054,12 @@ def tela_controle_despesas():
         data_inicio = c1.date_input("Período Início", hoje.replace(day=1), format="DD/MM/YYYY", key="desp_in")
         data_fim = c2.date_input("Período Fim", hoje, format="DD/MM/YYYY", key="desp_fim")
 
-        # ==========================================
-        # 1. ÁREA DE BUSCA NO BANCO DE DADOS
-        # ==========================================
-        from sqlalchemy import create_engine
-
         engine_bitrix = get_db_engine()
-        
-        # Clona a conexão atual e troca apenas o nome do banco para 'vexpenses'
         url_vex = engine_bitrix.url.set(database='vexpenses')
         engine_vex = create_engine(url_vex)
 
-        # PASSO A: Conecta no banco BITRIX e puxa o previsto
         with engine_bitrix.connect() as conn_bitrix:
+            # Filtro rigoroso: Apenas pipeline 2812 (Despesas de Projeto)
             query_bitrix = text("""
                 SELECT n.id AS deal_id, 
                        c.title AS nome_cliente_bitrix,
@@ -1014,14 +1069,15 @@ def tela_controle_despesas():
                 JOIN negocio_novo AS n ON n.id = o.dealId
                 LEFT JOIN company_novo AS c ON c.id = n.companyId
                 LEFT JOIN assignedby_novo AS ab ON ab.id = n.assignedById
-                WHERE o.closedate >= :d_inicio AND o.closedate <= :d_fim AND n.closed = 'Y'
+                WHERE o.closedate >= :d_inicio AND o.closedate <= :d_fim 
+                AND n.closed = 'Y' 
+                AND n.processovendaid = '2812' 
             """)
             df_previsto = pd.read_sql(query_bitrix, conn_bitrix, params={"d_inicio": data_inicio, "d_fim": data_fim})
 
             if not df_previsto.empty:
                 df_previsto['previsto_setup'] = df_previsto['previsto_setup_str'].apply(parse_currency)
 
-        # PASSO B: Conecta no banco VEXPENSES e puxa o realizado
         with engine_vex.connect() as conn_vex:
             query_vexpenses = text("""
                 SELECT p.name AS nome_projeto_vexpenses,
@@ -1034,6 +1090,58 @@ def tela_controle_despesas():
                 GROUP BY p.name
             """)
             df_realizado = pd.read_sql(query_vexpenses, conn_vex, params={"d_inicio": data_inicio, "d_fim": data_fim})
+
+        if not df_previsto.empty:
+            
+            # Função para limpar textos (remove acentos, espaços e maiúsculas) para forçar o cruzamento
+            def normalize_string(s):
+                if pd.isna(s): return ""
+                s = str(s).lower().strip()
+                return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
+
+            df_previsto['chave_cruzamento'] = df_previsto['nome_cliente_bitrix'].apply(normalize_string)
+            
+            if not df_realizado.empty:
+                df_realizado['chave_cruzamento'] = df_realizado['nome_projeto_vexpenses'].apply(normalize_string)
+                # Left join: Mantém tudo que foi vendido e tenta achar o gasto correspondente
+                df_dash = pd.merge(df_previsto, df_realizado, on='chave_cruzamento', how='left')
+            else:
+                df_dash = df_previsto.copy()
+                df_dash['gasto_realizado'] = 0.0
+                df_dash['nome_projeto_vexpenses'] = ""
+
+            df_dash['gasto_realizado'] = df_dash['gasto_realizado'].fillna(0)
+            df_dash['Saldo (Lucro/Prejuízo)'] = df_dash['previsto_setup'] - df_dash['gasto_realizado']
+            
+            t_previsto = df_dash['previsto_setup'].sum()
+            t_realizado = df_dash['gasto_realizado'].sum()
+            t_saldo = df_dash['Saldo (Lucro/Prejuízo)'].sum()
+            cor_saldo = "#2e7d32" if t_saldo >= 0 else "#d32f2f"
+
+            with st.expander("📊 Resumo de Margem do Período", expanded=True):
+                col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
+                with col_kpi1: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #1976d2;"><div class="dash-title">Total Orçado (Vendido)</div><div style="font-size:1.5rem; font-weight:900;">R$ {f_br(t_previsto)}</div></div>""", unsafe_allow_html=True)
+                with col_kpi2: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #ff6600;"><div class="dash-title">Total Gasto (VExpenses)</div><div style="font-size:1.5rem; font-weight:900;">R$ {f_br(t_realizado)}</div></div>""", unsafe_allow_html=True)
+                with col_kpi3: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid {cor_saldo}; background:#f4f6f9;"><div class="dash-title">Saldo (Margem)</div><div style="font-size:1.5rem; font-weight:900; color:{cor_saldo};">R$ {f_br(t_saldo)}</div></div>""", unsafe_allow_html=True)
+
+            with st.expander("📋 Detalhamento por Projeto (Previsto vs Realizado)", expanded=True):
+                df_exibicao = df_dash[['nome_cliente_bitrix', 'executivo_vendas', 'previsto_setup', 'gasto_realizado', 'Saldo (Lucro/Prejuízo)', 'nome_projeto_vexpenses']].copy()
+                df_exibicao.columns = ['Cliente / Projeto', 'Executivo', 'Previsto (R$)', 'Realizado (R$)', 'Saldo (R$)', '_Nome_VExpenses']
+                
+                for col in ['Previsto (R$)', 'Realizado (R$)', 'Saldo (R$)']:
+                    df_exibicao[col] = df_exibicao[col].apply(lambda x: f"R$ {f_br(x)}")
+                
+                # Prepara os dados para a tabela interativa
+                df_visual = df_exibicao.copy()
+                df_visual.insert(0, "Ver Detalhes", False)
+                
+                render_tabela_interativa_despesas(df_visual, data_inicio, data_fim)
+
+        else:
+            st.info("Nenhuma Despesa de Projeto foi contabilizada como Ganha no Bitrix para este período selecionado.")
+
+    except Exception as e:
+        st.error(f"Erro ao gerar painel de despesas: {e}")
 
         # ==========================================
         # 2. MOTOR DE CRUZAMENTO (NORMALIZAÇÃO)
