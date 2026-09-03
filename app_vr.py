@@ -1152,13 +1152,31 @@ def aplicativo_principal():
         elif st.session_state.user_role == "financeiro":
             abas = ["Início", "Faturamento", "Comissionamento"]
         else:
-            abas = ["Início", "Diagnóstico", "Gerador de Proposta", "Minhas Propostas", "Consulta de Preco"]
+            # A Visão Comercial agora é liberada na lista base para Vendedores, Projetos e Admin
+            abas = ["Início", "Diagnóstico", "Gerador de Proposta", "Minhas Propostas", "Consulta de Preco", "Visão Comercial"]
+            
             if st.session_state.user_role in ["admin", "projetos"] and not st.toggle("Simular Visão Vendedor"): 
                 abas.append("Painel Admin")
                 if st.session_state.user_role == "admin":
                     abas.append("Faturamento")
                     abas.append("Visão do Gestor")
+                    abas.append("Comissionamento")
+            
+            # 1. Regra para telas compartilhadas entre Gestão (Ex: Oculta se simular vendedor)
+            simulando_vendedor = st.toggle("Simular Visão Vendedor")
+            
+            if not simulando_vendedor:
+                if st.session_state.user_role in ["admin", "projetos"]: 
+                    abas.append("Painel Admin")
+                
+                # 2. ADICIONE AQUI OS PERFIS QUE PODEM VER A VISÃO COMERCIAL
+                if st.session_state.user_role in ["admin", "financeiro", "projetos"]:
                     abas.append("Visão Comercial")
+
+                # 3. Telas exclusivas do Administrador
+                if st.session_state.user_role == "admin":
+                    abas.append("Faturamento")
+                    abas.append("Visão do Gestor")
                     abas.append("Comissionamento")
         
         if st.session_state.aba_atual not in abas: st.session_state.aba_atual = abas[0]
