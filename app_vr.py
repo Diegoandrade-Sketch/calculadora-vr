@@ -661,7 +661,6 @@ def tela_visao_comercial():
         engine = get_db_engine()
         with engine.connect() as conn:
             
-            try:
                 try:
                 query_dash = text("""
                     SELECT DISTINCT ON (n.id) n.id, 
