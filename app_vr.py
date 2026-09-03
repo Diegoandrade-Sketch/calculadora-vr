@@ -569,7 +569,7 @@ def tela_visao_comercial():
     import datetime 
     import pandas as pd
     
-    # Motor Gráfico Corrigido: Margem de segurança de 25% para o texto do valor numérico
+# Motor Gráfico HTML/CSS - Arquitetura em GRID (Alinhamento Perfeito)
     def render_html_bar_chart(df_chart, col_label, col_value, cor_barra):
         if df_chart is None or df_chart.empty:
             return "<div style='color:#999; font-style:italic;'>Sem dados para exibir.</div>"
@@ -578,16 +578,15 @@ def tela_visao_comercial():
         max_v = df_chart[col_value].max()
         if max_v <= 0: max_v = 1
         
-        html = "<div style='display: flex; flex-direction: column; gap: 12px; margin-top: 15px;'>"
+        html = "<div style='display: flex; flex-direction: column; gap: 12px; margin-top: 15px; width: 100%;'>"
         for _, row in df_chart.iterrows():
             lbl = str(row[col_label])
             val = float(row[col_value])
-            # Trava a largura máxima da barra em 75% para garantir espaço linear para o texto
-            pct = (val / max_v) * 75 
+            pct = (val / max_v) * 100 # Com o Grid protegendo o texto, a barra pode usar 100% do trilho
             v_str = f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             
-            # String única blindada contra quebras do Markdown (white-space: nowrap adicionado no span)
-            html += f"<div style='display: flex; align-items: center; width: 100%;'><div style='width: 35%; text-align: right; padding-right: 15px; font-family: sans-serif; font-size: 0.85rem; color: #444; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;' title='{lbl}'>{lbl}</div><div style='width: 65%; display: flex; align-items: center;'><div style='width: {pct}%; background-color: {cor_barra}; height: 24px; border-radius: 0px 4px 4px 0px; min-width: 3px;'></div><span style='margin-left: 10px; font-family: sans-serif; font-size: 0.85rem; font-weight: 700; color: #222; white-space: nowrap;'>R$ {v_str}</span></div></div>"
+            # HTML em linha única: Coluna 1 (Label) | Coluna 2 (Barra) | Coluna 3 (Valor protegido)
+            html += f"<div style='display: grid; grid-template-columns: 35% 1fr auto; gap: 15px; align-items: center; width: 100%;'><div style='text-align: right; font-family: sans-serif; font-size: 0.85rem; color: #444; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;' title='{lbl}'>{lbl}</div><div style='width: 100%; height: 24px;'><div style='width: {pct}%; background-color: {cor_barra}; height: 100%; border-radius: 0px 4px 4px 0px; min-width: 3px;'></div></div><div style='font-family: sans-serif; font-size: 0.85rem; font-weight: 700; color: #222; white-space: nowrap; text-align: right;'>R$ {v_str}</div></div>"
             
         html += "</div>"
         return html
@@ -824,7 +823,7 @@ def tela_visao_comercial():
                             st.dataframe(df_prod_show, use_container_width=True, hide_index=True)
 
                     # Bloco do Extrato mantido recolhido por padrão para otimizar espaço
-                    with st.expander("📋 Extrato Analítico Interativo (Fechados)", expanded=False):
+                    with st.expander("📋 Extrato Analítico Interativo (Fechados)", expanded=True):
                         df_exibicao = df_dash[['Vendedor', 'id', 'Cliente', 'Origem', 'Data Fechamento', 'Setup Bruto', 'MRR Bruto', 'Total Bruto', 'processovendaid']].copy()
                         df_exibicao['Data Fechamento'] = pd.to_datetime(df_exibicao['Data Fechamento']).dt.strftime('%d/%m/%Y')
                         for col in ['Setup Bruto', 'MRR Bruto', 'Total Bruto']: df_exibicao[col] = df_exibicao[col].apply(lambda x: f"R$ {f_br(x)}")
