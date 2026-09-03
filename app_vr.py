@@ -569,7 +569,7 @@ def tela_visao_comercial():
     import datetime 
     import pandas as pd
     
-    # Motor Gráfico HTML/CSS Imune a erros de Biblioteca do Servidor
+# Motor Gráfico HTML/CSS Imune a erros de Markdown do Servidor
     def render_html_bar_chart(df_chart, col_label, col_value, cor_barra):
         if df_chart is None or df_chart.empty:
             return "<div style='color:#999; font-style:italic;'>Sem dados para exibir.</div>"
@@ -585,17 +585,9 @@ def tela_visao_comercial():
             pct = (val / max_v) * 100
             v_str = f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             
-            html += f"""
-            <div style='display: flex; align-items: center; width: 100%;'>
-                <div style='width: 35%; text-align: right; padding-right: 15px; font-family: sans-serif; font-size: 0.85rem; color: #444; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;' title='{lbl}'>
-                    {lbl}
-                </div>
-                <div style='width: 65%; display: flex; align-items: center;'>
-                    <div style='width: {pct}%; background-color: {cor_barra}; height: 24px; border-radius: 0px 4px 4px 0px; min-width: 3px;'></div>
-                    <span style='margin-left: 10px; font-family: sans-serif; font-size: 0.85rem; font-weight: 700; color: #222;'>R$ {v_str}</span>
-                </div>
-            </div>
-            """
+            # HTML compactado em uma única linha para evitar gatilho de bloco de código no Markdown
+            html += f"<div style='display: flex; align-items: center; width: 100%;'><div style='width: 35%; text-align: right; padding-right: 15px; font-family: sans-serif; font-size: 0.85rem; color: #444; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;' title='{lbl}'>{lbl}</div><div style='width: 65%; display: flex; align-items: center;'><div style='width: {pct}%; background-color: {cor_barra}; height: 24px; border-radius: 0px 4px 4px 0px; min-width: 3px;'></div><span style='margin-left: 10px; font-family: sans-serif; font-size: 0.85rem; font-weight: 700; color: #222;'>R$ {v_str}</span></div></div>"
+            
         html += "</div>"
         return html
 
