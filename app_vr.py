@@ -661,7 +661,7 @@ def tela_visao_comercial():
         engine = get_db_engine()
         with engine.connect() as conn:
             
-                try:
+            try:
                 query_dash = text("""
                     SELECT DISTINCT ON (n.id) n.id, 
                     COALESCE(o.ufcrmvalorprojeto::text, '0') AS setup_str, 
@@ -743,6 +743,7 @@ def tela_visao_comercial():
                 if vendedor_sel != "Todos":
                     if not df_dash.empty: df_dash = df_dash[df_dash['Vendedor'] == vendedor_sel]
                     if not df_open.empty: df_open = df_open[df_open['Vendedor'] == vendedor_sel]
+            # ---------------------------------------------
             
             # --- BUSCA DE PRODUTOS ---
             df_produtos = pd.DataFrame()
