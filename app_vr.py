@@ -506,6 +506,65 @@ def renderizar_welcome_pack(nome, cnpjs, val_setup, val_mensal, parcelas_html):
     </html>
     """
 
+# ==========================================
+# NOVA TELA: COMISSIONAMENTO OTIMIZADA E VISÃO COMERCIAL
+# ==========================================
+MAPA_PROCESSOS = {
+    "2726": "NOVOS NEGÓCIOS", "2806": "NOVOS PRODUTOS CLIENTE VR", "2728": "NOVAS LOJAS CLIENTE VR",
+    "5968": "O3 CLOUD - NOVOS NEGÓCIOS", "2724": "O3 CLOUD - BASE DE CLIENTES",
+    "5998": "SKY ONE - NOVOS NEGÓCIOS", "6000": "SKY ONE - BASE DE CLIENTES",
+    "2816": "ATUALIZAÇÃO DE VALORES", "2730": "TROCA DE CNPJ", "2810": "CUSTOMIZAÇÃO/DESENVOLVIMENTO",
+    "2818": "INSTALAÇÃO TÉCNICA", "2812": "DESPESA DE PROJETO", "2814": "ACESSO TEMPORÁRIO",
+    "2820": "SERVIÇOS DE TREINAMENTO", "2718": "CONTROLLER 360 (DESATIVADO)",
+    "2720": "MASTERFISCO (DESATIVADO)", "2722": "OMNICHANNEL (DESATIVADO)",
+    "3626": "NOVOS NEGÓCIOS - CONTROLLER 360 (DESATIVADO)", "3632": "NOVOS NEGÓCIOS - OMNICHANNEL (DESATIVADO)",
+    "3630": "NOVOS NEGÓCIOS - MASTERFISCO (DESATIVADO)"
+}
+
+@st.dialog("Extrato de Liquidação por Produto", width="large")
+def modal_extrato_venda(proposta_id, nome_cliente, processo_id):
+    nome_processo = MAPA_PROCESSOS.get(str(processo_id), "Processo Não Mapeado / Outros")
+    st.markdown(f"<h3 style='color:#262730; margin-bottom: 5px;'>{nome_cliente}</h3>", unsafe_allow_html=True)
+    st.markdown(f"<span style='color:#777; font-weight:bold;'>Negócio ID: #{proposta_id} | Origem: {nome_processo}</span><hr>", unsafe_allow_html=True)
+    
+    try:
+        engine = get_db_engine()
+        with engine.connect() as conn:
+            query_itens = text("""
+                SELECT io.title AS "Produto/Serviço", io.quantidade AS "Qtd", COALESCE(io.ufcrmvalorproduto::text, '0') AS "val_unit_str", io.ufcrmtipoproduto AS "Tipo ID"
+                FROM itensorcamento_novo AS io JOIN orcamento_novo AS o ON o.id = io.parentid7 WHERE o.dealid = :pid
+            """)
+            df_itens = pd.read_sql(query_itens, conn, params={"pid": proposta_id})
+            if df_itens.empty:
+                st.warning("Nenhum item detalhado encontrado no banco para esta proposta.")
+                return
+
+            df_itens['Valor Unit. (R$)'] = df_itens['val_unit_str'].apply(parse_currency)
+            df_itens['Qtd'] = pd.to_numeric(df_itens['Qtd'], errors='coerce').fillna(1)
+            df_itens['Valor Total (R$)'] = df_itens['Qtd'] * df_itens['Valor Unit. (R$)']
+            df_itens['% Comissão'] = 0.0
+            df_itens['Tag'] = 'Não Classificado'
+            
+            for index, row in df_itens.iterrows():
+                tipo = pd.to_numeric(row['Tipo ID'], errors='coerce')
+                nome = str(row['Produto/Serviço']).lower()
+                
+                if str(processo_id) == '2812':
+                    df_itens.at[index, '% Comissão'], df_itens.at[index, 'Tag'] = 0.0, 'Despesa de Projeto (Isento)'
+                else:
+                    if tipo == 604: df_itens.at[index, '% Comissão'], df_itens.at[index, 'Tag'] = 5.0, 'Mensalidade'
+                    elif any(kw in nome for kw in ['despesa', 'km', 'hospedagem', 'alimentação', 'passagem', 'viagem']): df_itens.at[index, '% Comissão'], df_itens.at[index, 'Tag'] = 0.0, 'Despesa (Isento)'
+                    elif tipo in [606, 608, 610]: df_itens.at[index, '% Comissão'], df_itens.at[index, 'Tag'] = 5.0, 'Setup/Serviço'
+
+            df_itens['Comissão (R$)'] = df_itens['Valor Total (R$)'] * (df_itens['% Comissão'] / 100)
+            colunas_monetarias = ['Valor Unit. (R$)', 'Valor Total (R$)', 'Comissão (R$)']
+            for col in colunas_monetarias:
+                df_itens[col] = df_itens[col].apply(lambda x: f"R$ {f_br(x)}" if pd.notnull(x) else "R$ 0,00")
+            df_itens['% Comissão'] = df_itens['% Comissão'].apply(lambda x: f"{x}%")
+            st.dataframe(df_itens[['Produto/Serviço', 'Tag', 'Qtd', 'Valor Unit. (R$)', 'Valor Total (R$)', '% Comissão', 'Comissão (R$)']], use_container_width=True, hide_index=True)
+    except Exception as e:
+        st.error("Falha ao carregar detalhamento. Tente novamente.")
+
 def tela_visao_comercial():
     import datetime 
     import pandas as pd
@@ -864,7 +923,6 @@ def tela_visao_comercial():
 
     except Exception as e:
         st.error(f"Ocorreu um erro interno na tela comercial. Detalhe técnico: {e}")
-
 def tela_comissionamento():
     st.markdown("<h1 class='hero-title'>COMISSIONAMENTO</h1>", unsafe_allow_html=True)
     st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Auditoria e Fechamento de Pagamentos Integrado ao Bitrix24</p>", unsafe_allow_html=True)
