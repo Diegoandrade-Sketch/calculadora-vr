@@ -717,16 +717,26 @@ def tela_visao_comercial():
             if not df_dash.empty: df_dash = df_dash[df_dash['processovendaid'].astype(str) != '2812']
             if not df_open.empty: df_open = df_open[df_open['processovendaid'].astype(str) != '2812']
             
-            lista_vendedores = []
-            if not df_dash.empty: lista_vendedores.extend(df_dash['Vendedor'].dropna().unique().tolist())
-            if not df_open.empty: lista_vendedores.extend(df_open['Vendedor'].dropna().unique().tolist())
-            lista_vendedores = sorted(list(set([v for v in lista_vendedores if v.strip() != ''])))
+            if not df_dash.empty: df_dash = df_dash[df_dash['processovendaid'].astype(str) != '2812']
+            if not df_open.empty: df_open = df_open[df_open['processovendaid'].astype(str) != '2812']
             
-            vendedor_sel = st.selectbox("Auditoria Estratégica por Executivo", ["Todos"] + lista_vendedores)
-            
-            if vendedor_sel != "Todos":
-                if not df_dash.empty: df_dash = df_dash[df_dash['Vendedor'] == vendedor_sel]
-                if not df_open.empty: df_open = df_open[df_open['Vendedor'] == vendedor_sel]
+            # --- CONTROLE DE ACESSO E FILTRO DE ESCOPO ---
+            if st.session_state.user_role == "vendedor":
+                nome_logado = str(st.session_state.user_name).strip().lower()
+                if not df_dash.empty: df_dash = df_dash[df_dash['Vendedor'].str.lower().str.strip() == nome_logado]
+                if not df_open.empty: df_open = df_open[df_open['Vendedor'].str.lower().str.strip() == nome_logado]
+            else:
+                lista_vendedores = []
+                if not df_dash.empty: lista_vendedores.extend(df_dash['Vendedor'].dropna().unique().tolist())
+                if not df_open.empty: lista_vendedores.extend(df_open['Vendedor'].dropna().unique().tolist())
+                lista_vendedores = sorted(list(set([v for v in lista_vendedores if v.strip() != ''])))
+                
+                vendedor_sel = st.selectbox("Auditoria Estratégica por Executivo", ["Todos"] + lista_vendedores)
+                
+                if vendedor_sel != "Todos":
+                    if not df_dash.empty: df_dash = df_dash[df_dash['Vendedor'] == vendedor_sel]
+                    if not df_open.empty: df_open = df_open[df_open['Vendedor'] == vendedor_sel]
+            # ---------------------------------------------
             
             # --- BUSCA DE PRODUTOS ---
             df_produtos = pd.DataFrame()
