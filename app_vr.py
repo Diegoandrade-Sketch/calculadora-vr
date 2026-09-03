@@ -998,11 +998,11 @@ def tela_controle_despesas():
         engine = get_db_engine()
         with engine.connect() as conn:
             
-            # Consulta Simulada 1: O que foi VENDIDO (Bitrix)
+            # Consulta Simulada 1: O que foi VENDIDO (Bitrix) - Trazendo como TEXTO
             query_bitrix = text("""
                 SELECT n.id AS deal_id, 
                        c.title AS nome_cliente_bitrix,
-                       COALESCE(o.ufcrmvalorprojeto::numeric, 0) AS previsto_setup,
+                       COALESCE(o.ufcrmvalorprojeto::text, '0') AS previsto_setup_str,
                        TRIM(CONCAT(COALESCE(ab.name, ''), ' ', COALESCE(ab.lastname, ''))) AS executivo_vendas
                 FROM orcamento_novo AS o
                 JOIN negocio_novo AS n ON n.id = o.dealId
@@ -1011,6 +1011,10 @@ def tela_controle_despesas():
                 WHERE o.closedate >= :d_inicio AND o.closedate <= :d_fim AND n.closed = 'Y'
             """)
             df_previsto = pd.read_sql(query_bitrix, conn, params={"d_inicio": data_inicio, "d_fim": data_fim})
+
+            # Usa a mesma função de conversão financeira do seu sistema
+            if not df_previsto.empty:
+                df_previsto['previsto_setup'] = df_previsto['previsto_setup_str'].apply(parse_currency)
 
             # Consulta Simulada 2: O que foi GASTO (VExpenses)
             query_vexpenses = text("""
