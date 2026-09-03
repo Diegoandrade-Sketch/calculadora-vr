@@ -989,24 +989,27 @@ def tela_controle_despesas():
     try:
         hoje = datetime.date.today()
         
-        # --- FILTROS DE DATA ---
-        c1, c2 = st.columns(2)
+        # --- FILTROS DE DATA & OPÇÕES RÁPIDAS ---
+        c1, c2, c3 = st.columns([1, 1, 2])
         data_inicio = c1.date_input("Período Início", hoje.replace(day=1), format="DD/MM/YYYY", key="desp_in")
         data_fim = c2.date_input("Período Fim", hoje, format="DD/MM/YYYY", key="desp_fim")
+        
+        # Toggle para ignorar percurso na base
+        ocultar_percurso = st.toggle("🚫 Ocultar despesas de 'Percurso'", value=False)
 
         engine_bitrix = get_db_engine()
         url_vex = engine_bitrix.url.set(database='vexpenses')
         engine_vex = create_engine(url_vex)
 
         with engine_vex.connect() as conn_vex:
-            # JOIN adicionado para buscar o nome correto do 'Tipo de Despesa'
             query_vex = text("""
                 SELECT e.date AS data_despesa,
                        COALESCE(tm.name, 'Usuário Não Identificado') AS colaborador,
                        COALESCE(p.name, 'Sem Projeto Vinculado') AS projeto,
                        COALESCE(et.description, 'Outros') AS tipo_despesa,
                        e.title AS descricao,
-                       COALESCE(e.value, 0) AS valor
+                       COALESCE(e.value, 0) AS valor,
+                       e.reimbursable
                 FROM public.expenses e
                 LEFT JOIN public.teammembers tm ON e.user_id = tm.id
                 LEFT JOIN public.relatorioprojeto rp ON e.id = rp.id_expense
@@ -1019,42 +1022,71 @@ def tela_controle_despesas():
 
         if not df_base.empty:
             
-            # --- ÁREA DE FILTROS EXECUTIVOS ---
-            st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
-            col_f1, col_f2 = st.columns(2)
+            # --- 1. PADRONIZAÇÃO ESTÉTICA (Title Case) ---
+            df_base['colaborador'] = df_base['colaborador'].astype(str).str.title()
+            df_base['projeto'] = df_base['projeto'].astype(str).str.title()
+            df_base['tipo_despesa'] = df_base['tipo_despesa'].astype(str).str.title()
+            df_base['descricao'] = df_base['descricao'].astype(str).str.capitalize()
             
+            # --- 2. DIVISÃO DE EQUIPES ---
+            time_comercial = [
+                'Diego Andrade', 'Diego Cavalcanti', 'Ricardo Araujo', 'Artur Neto', 
+                'Bruno Costa', 'Claudio Anjos', 'João Marcos', 'Hermani Souza', 'Matheus Zimke'
+            ]
+            time_comercial_formatado = [nome.title() for nome in time_comercial]
+            df_base['equipe'] = df_base['colaborador'].apply(lambda x: "Comercial" if x in time_comercial_formatado else "Projetos")
+
+            # Tratamento da flag reembolsável
+            df_base['reembolsavel_str'] = df_base['reimbursable'].apply(lambda x: "Sim" if x in [True, 'true', 'True', 1, '1', 't', 'T'] else "Não")
+
+            # --- 3. FILTROS VISUAIS ---
+            st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
+            col_f0, col_f1, col_f2, col_f3 = st.columns(4)
+            
+            equipe_list = ["Todos", "Comercial", "Projetos"]
             resp_list = ["Todos"] + sorted(df_base['colaborador'].unique().tolist())
             tipo_list = ["Todos"] + sorted(df_base['tipo_despesa'].unique().tolist())
             
-            resp_sel = col_f1.selectbox("Filtrar por Responsável", resp_list)
-            tipo_sel = col_f2.selectbox("Filtrar por Categoria", tipo_list)
+            equipe_sel = col_f0.selectbox("Filtrar Equipe", equipe_list)
+            resp_sel = col_f1.selectbox("Responsável", resp_list)
+            tipo_sel = col_f2.selectbox("Categoria", tipo_list)
+            reemb_sel = col_f3.selectbox("Reembolsável?", ["Todos", "Sim", "Não"])
             
-            # Aplica os filtros na base
+            # --- 4. APLICAÇÃO DOS FILTROS ---
             df_despesas = df_base.copy()
+            
+            if ocultar_percurso:
+                df_despesas = df_despesas[~df_despesas['tipo_despesa'].str.contains('Percurso', case=False, na=False)]
+            if equipe_sel != "Todos":
+                df_despesas = df_despesas[df_despesas['equipe'] == equipe_sel]
             if resp_sel != "Todos":
                 df_despesas = df_despesas[df_despesas['colaborador'] == resp_sel]
             if tipo_sel != "Todos":
                 df_despesas = df_despesas[df_despesas['tipo_despesa'] == tipo_sel]
+            if reemb_sel != "Todos":
+                df_despesas = df_despesas[df_despesas['reembolsavel_str'] == reemb_sel]
             
             if df_despesas.empty:
                 st.warning("Nenhuma despesa encontrada para os filtros selecionados.")
                 return
 
-            # --- CÁLCULOS KPI ---
+            # --- 5. CÁLCULOS KPI ESTRATÉGICOS ---
             total_gasto = df_despesas['valor'].sum()
             qtd_lancamentos = len(df_despesas)
-            tk_medio = total_gasto / qtd_lancamentos if qtd_lancamentos > 0 else 0
+            
+            # Calcula o ticket com base nas pessoas únicas que viajaram/gastaram no período
+            qtd_viajantes = df_despesas['colaborador'].nunique()
+            custo_medio_colab = total_gasto / qtd_viajantes if qtd_viajantes > 0 else 0
             
             # --- BLOCO 1: RESUMO ---
-            with st.expander("📊 Resumo de Gastos do Período", expanded=True):
+            with st.expander("Resumo de Gastos do Período", expanded=True):
                 col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
                 with col_kpi1: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #d32f2f;"><div class="dash-title">Custo Total</div><div style="font-size:1.5rem; font-weight:900; color:#d32f2f;">R$ {f_br(total_gasto)}</div></div>""", unsafe_allow_html=True)
-                with col_kpi2: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #1976d2;"><div class="dash-title">Volume de Despesas</div><div style="font-size:1.5rem; font-weight:900;">{qtd_lancamentos} lançamentos</div></div>""", unsafe_allow_html=True)
-                with col_kpi3: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #ff6600; background:#f4f6f9;"><div class="dash-title">Ticket Médio</div><div style="font-size:1.5rem; font-weight:900;">R$ {f_br(tk_medio)}</div></div>""", unsafe_allow_html=True)
+                with col_kpi2: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #1976d2;"><div class="dash-title">Volume de Lançamentos</div><div style="font-size:1.5rem; font-weight:900;">{qtd_lancamentos} lançamentos</div></div>""", unsafe_allow_html=True)
+                with col_kpi3: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #ff6600; background:#f4f6f9;"><div class="dash-title">Custo Médio por Executivo</div><div style="font-size:1.5rem; font-weight:900;">R$ {f_br(custo_medio_colab)}</div></div>""", unsafe_allow_html=True)
 
-            # --- BLOCO 2: MATRIZ DE DESPESAS (Substitui o visual do PowerBI) ---
-            with st.expander("🧩 Matriz de Despesas (Responsável x Categoria)", expanded=True):
-                # Cria a tabela dinâmica igual ao Excel/PBI
+            # --- BLOCO 2: MATRIZ DE DESPESAS ---
+            with st.expander("Matriz de Despesas (Responsável x Categoria)", expanded=True):
                 df_pivot = pd.pivot_table(
                     df_despesas, 
                     values='valor', 
@@ -1064,30 +1096,27 @@ def tela_controle_despesas():
                     fill_value=0
                 )
                 
-                # Adiciona coluna de Total Geral e ordena por quem gastou mais
                 df_pivot['Total Geral'] = df_pivot.sum(axis=1)
                 df_pivot = df_pivot.sort_values(by='Total Geral', ascending=False)
                 
-                # Formatação visual (coloca um traço onde for zero para limpar a visão)
+                # Mascara os zeros com traço para visual limpo
                 for col in df_pivot.columns:
                     df_pivot[col] = df_pivot[col].apply(lambda x: f"R$ {f_br(x)}" if x > 0 else "-")
                     
                 st.dataframe(df_pivot, use_container_width=True)
 
             # --- BLOCO 3: EXTRATO COMPLETO ---
-            with st.expander("📋 Extrato Completo de Lançamentos", expanded=True):
+            with st.expander("Extrato Completo de Lançamentos", expanded=True):
                 df_visual = df_despesas.copy()
                 df_visual['data_despesa'] = pd.to_datetime(df_visual['data_despesa']).dt.strftime('%d/%m/%Y')
                 
-                # Reorganiza a ordem das colunas para ficar mais intuitivo
-                df_visual = df_visual[['data_despesa', 'colaborador', 'tipo_despesa', 'projeto', 'descricao', 'valor']]
-                df_visual.columns = ['Data', 'Responsável', 'Tipo', 'Projeto / Cliente', 'Descrição do Gasto', 'Valor Bruto']
+                df_visual = df_visual[['data_despesa', 'equipe', 'colaborador', 'tipo_despesa', 'projeto', 'descricao', 'reembolsavel_str', 'valor']]
+                df_visual.columns = ['Data', 'Equipe', 'Responsável', 'Tipo', 'Projeto / Cliente', 'Descrição do Gasto', 'Reembolsável?', 'Valor Bruto']
                 
-                # Máscara Monetária
                 df_visual['Valor (R$)'] = df_visual['Valor Bruto'].apply(lambda x: f"R$ {f_br(x)}")
                 
                 st.dataframe(
-                    df_visual[['Data', 'Responsável', 'Tipo', 'Projeto / Cliente', 'Descrição do Gasto', 'Valor (R$)']], 
+                    df_visual[['Data', 'Equipe', 'Responsável', 'Tipo', 'Projeto / Cliente', 'Descrição do Gasto', 'Reembolsável?', 'Valor (R$)']], 
                     use_container_width=True, 
                     hide_index=True
                 )
