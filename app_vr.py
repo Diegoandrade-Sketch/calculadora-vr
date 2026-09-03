@@ -506,65 +506,6 @@ def renderizar_welcome_pack(nome, cnpjs, val_setup, val_mensal, parcelas_html):
     </html>
     """
 
-# ==========================================
-# NOVA TELA: COMISSIONAMENTO OTIMIZADA E VISÃO COMERCIAL
-# ==========================================
-MAPA_PROCESSOS = {
-    "2726": "NOVOS NEGÓCIOS", "2806": "NOVOS PRODUTOS CLIENTE VR", "2728": "NOVAS LOJAS CLIENTE VR",
-    "5968": "O3 CLOUD - NOVOS NEGÓCIOS", "2724": "O3 CLOUD - BASE DE CLIENTES",
-    "5998": "SKY ONE - NOVOS NEGÓCIOS", "6000": "SKY ONE - BASE DE CLIENTES",
-    "2816": "ATUALIZAÇÃO DE VALORES", "2730": "TROCA DE CNPJ", "2810": "CUSTOMIZAÇÃO/DESENVOLVIMENTO",
-    "2818": "INSTALAÇÃO TÉCNICA", "2812": "DESPESA DE PROJETO", "2814": "ACESSO TEMPORÁRIO",
-    "2820": "SERVIÇOS DE TREINAMENTO", "2718": "CONTROLLER 360 (DESATIVADO)",
-    "2720": "MASTERFISCO (DESATIVADO)", "2722": "OMNICHANNEL (DESATIVADO)",
-    "3626": "NOVOS NEGÓCIOS - CONTROLLER 360 (DESATIVADO)", "3632": "NOVOS NEGÓCIOS - OMNICHANNEL (DESATIVADO)",
-    "3630": "NOVOS NEGÓCIOS - MASTERFISCO (DESATIVADO)"
-}
-
-@st.dialog("Extrato de Liquidação por Produto", width="large")
-def modal_extrato_venda(proposta_id, nome_cliente, processo_id):
-    nome_processo = MAPA_PROCESSOS.get(str(processo_id), "Processo Não Mapeado / Outros")
-    st.markdown(f"<h3 style='color:#262730; margin-bottom: 5px;'>{nome_cliente}</h3>", unsafe_allow_html=True)
-    st.markdown(f"<span style='color:#777; font-weight:bold;'>Negócio ID: #{proposta_id} | Origem: {nome_processo}</span><hr>", unsafe_allow_html=True)
-    
-    try:
-        engine = get_db_engine()
-        with engine.connect() as conn:
-            query_itens = text("""
-                SELECT io.title AS "Produto/Serviço", io.quantidade AS "Qtd", COALESCE(io.ufcrmvalorproduto::text, '0') AS "val_unit_str", io.ufcrmtipoproduto AS "Tipo ID"
-                FROM itensorcamento_novo AS io JOIN orcamento_novo AS o ON o.id = io.parentid7 WHERE o.dealid = :pid
-            """)
-            df_itens = pd.read_sql(query_itens, conn, params={"pid": proposta_id})
-            if df_itens.empty:
-                st.warning("Nenhum item detalhado encontrado no banco para esta proposta.")
-                return
-
-            df_itens['Valor Unit. (R$)'] = df_itens['val_unit_str'].apply(parse_currency)
-            df_itens['Qtd'] = pd.to_numeric(df_itens['Qtd'], errors='coerce').fillna(1)
-            df_itens['Valor Total (R$)'] = df_itens['Qtd'] * df_itens['Valor Unit. (R$)']
-            df_itens['% Comissão'] = 0.0
-            df_itens['Tag'] = 'Não Classificado'
-            
-            for index, row in df_itens.iterrows():
-                tipo = pd.to_numeric(row['Tipo ID'], errors='coerce')
-                nome = str(row['Produto/Serviço']).lower()
-                
-                if str(processo_id) == '2812':
-                    df_itens.at[index, '% Comissão'], df_itens.at[index, 'Tag'] = 0.0, 'Despesa de Projeto (Isento)'
-                else:
-                    if tipo == 604: df_itens.at[index, '% Comissão'], df_itens.at[index, 'Tag'] = 5.0, 'Mensalidade'
-                    elif any(kw in nome for kw in ['despesa', 'km', 'hospedagem', 'alimentação', 'passagem', 'viagem']): df_itens.at[index, '% Comissão'], df_itens.at[index, 'Tag'] = 0.0, 'Despesa (Isento)'
-                    elif tipo in [606, 608, 610]: df_itens.at[index, '% Comissão'], df_itens.at[index, 'Tag'] = 5.0, 'Setup/Serviço'
-
-            df_itens['Comissão (R$)'] = df_itens['Valor Total (R$)'] * (df_itens['% Comissão'] / 100)
-            colunas_monetarias = ['Valor Unit. (R$)', 'Valor Total (R$)', 'Comissão (R$)']
-            for col in colunas_monetarias:
-                df_itens[col] = df_itens[col].apply(lambda x: f"R$ {f_br(x)}" if pd.notnull(x) else "R$ 0,00")
-            df_itens['% Comissão'] = df_itens['% Comissão'].apply(lambda x: f"{x}%")
-            st.dataframe(df_itens[['Produto/Serviço', 'Tag', 'Qtd', 'Valor Unit. (R$)', 'Valor Total (R$)', '% Comissão', 'Comissão (R$)']], use_container_width=True, hide_index=True)
-    except Exception as e:
-        st.error("Falha ao carregar detalhamento. Tente novamente.")
-
 def tela_visao_comercial():
     import datetime 
     import pandas as pd
@@ -648,13 +589,12 @@ def tela_visao_comercial():
                 if not df_dash.empty: df_dash = df_dash[df_dash['Vendedor'] == vendedor_sel]
                 if not df_open.empty: df_open = df_open[df_open['Vendedor'] == vendedor_sel]
             
-            # --- NOVA BUSCA DE PRODUTOS SINCRONIZADA ---
+            # --- BUSCA DE PRODUTOS BLINDADA E SINCRONIZADA ---
             df_produtos = pd.DataFrame()
             if not df_dash.empty:
                 ids_fechados = df_dash['id'].tolist()
                 ids_str = ",".join(map(str, ids_fechados))
                 
-                # Nomes das colunas padronizados para minúsculo para evitar conflito com o PostgreSQL
                 query_prod = text(f"""
                     SELECT io.title AS "Produto", 
                            o.dealid AS deal_id,
@@ -667,11 +607,9 @@ def tela_visao_comercial():
                 df_prod_raw = pd.read_sql(query_prod, conn)
                 
                 if not df_prod_raw.empty:
-                    # Usamos a sua função segura de conversão de moeda
                     df_prod_raw['Setup Bruto'] = df_prod_raw['setup_str'].apply(parse_currency)
                     df_prod_raw['MRR Bruto'] = df_prod_raw['mrr_str'].apply(parse_currency)
                     
-                    # Agrupamos pelo nome exato que o SQL retornou (deal_id)
                     df_produtos = df_prod_raw.groupby('Produto').agg(
                         Adesao_Contratos=('deal_id', 'nunique'),
                         Setup_Bruto=('Setup Bruto', 'sum'),
@@ -685,6 +623,11 @@ def tela_visao_comercial():
                     })
                     df_produtos['Total Bruto'] = df_produtos['Setup Bruto'] + df_produtos['MRR Bruto']
                     df_produtos = df_produtos.sort_values('Adesão (Contratos)', ascending=False)
+
+            # --- CONTROLE DE VISÃO RESTAURADO ---
+            st.markdown("<br>", unsafe_allow_html=True)
+            modo_exibicao = st.radio("Formato de Exibição", ["Visão Completa", "Visão Gráfica"], horizontal=True)
+            st.markdown("<hr style='margin-top: 5px;'>", unsafe_allow_html=True)
                 
             # === BLOCO 1: NEGÓCIOS FECHADOS ===
             if df_dash.empty:
