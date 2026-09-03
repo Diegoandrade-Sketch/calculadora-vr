@@ -1291,6 +1291,7 @@ def aplicativo_principal():
                 
             with st.expander("Inteligência Estratégica", expanded=True):
                 render_nav_button("Visão Comercial")
+                render_nav_button("Controle de Despesas")
                 
             if not simulando:
                 if role == "admin":
