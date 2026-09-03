@@ -2417,6 +2417,11 @@ def aplicativo_principal():
         tela_visao_comercial()
     elif tela == "Comissionamento":
         tela_comissionamento()
+        # ==========================================
+    # TELA CONTROLE DE DESPESAS
+    # ==========================================
+    elif tela == "Controle de Despesas":
+        tela_controle_despesas()
 
 # ==========================================
 # ROTEADOR DE SEGURANÇA
