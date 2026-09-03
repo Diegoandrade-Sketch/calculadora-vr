@@ -653,24 +653,38 @@ def tela_visao_comercial():
             if not df_dash.empty:
                 ids_fechados = df_dash['id'].tolist()
                 ids_str = ",".join(map(str, ids_fechados))
+                
+                # Trazemos os valores como texto puro para evitar erros de tipagem no PostgreSQL
                 query_prod = text(f"""
                     SELECT io.title AS "Produto", 
-                           COUNT(DISTINCT o.dealId) AS "Adesão (Contratos)",
-                           SUM(COALESCE(io.ufcrmvalorprojeto, 0)) AS "Setup Bruto",
-                           SUM(COALESCE(io.opportunity, 0)) AS "MRR Bruto"
+                           o.dealId,
+                           COALESCE(io.ufcrmvalorprojeto::text, '0') AS setup_str,
+                           COALESCE(io.opportunity::text, '0') AS mrr_str
                     FROM itensorcamento_novo io
                     JOIN orcamento_novo o ON o.id = io.parentid7
                     WHERE o.dealId IN ({ids_str})
-                    GROUP BY io.title
-                    ORDER BY "Adesão (Contratos)" DESC
                 """)
-                df_produtos = pd.read_sql(query_prod, conn)
-                if not df_produtos.empty:
+                df_prod_raw = pd.read_sql(query_prod, conn)
+                
+                if not df_prod_raw.empty:
+                    # Usamos a sua função segura de conversão de moeda
+                    df_prod_raw['Setup Bruto'] = df_prod_raw['setup_str'].apply(parse_currency)
+                    df_prod_raw['MRR Bruto'] = df_prod_raw['mrr_str'].apply(parse_currency)
+                    
+                    # Agrupamos e somamos no Pandas (Blindado contra erros de banco)
+                    df_produtos = df_prod_raw.groupby('Produto').agg(
+                        Adesao_Contratos=('dealId', 'nunique'),
+                        Setup_Bruto=('Setup Bruto', 'sum'),
+                        MRR_Bruto=('MRR Bruto', 'sum')
+                    ).reset_index()
+                    
+                    df_produtos = df_produtos.rename(columns={
+                        'Adesao_Contratos': 'Adesão (Contratos)', 
+                        'Setup_Bruto': 'Setup Bruto', 
+                        'MRR_Bruto': 'MRR Bruto'
+                    })
                     df_produtos['Total Bruto'] = df_produtos['Setup Bruto'] + df_produtos['MRR Bruto']
-
-            st.markdown("<br>", unsafe_allow_html=True)
-            modo_exibicao = st.radio("Formato de Exibição", ["Visão Completa", "Visão Gráfica"], horizontal=True)
-            st.markdown("<hr style='margin-top: 5px;'>", unsafe_allow_html=True)
+                    df_produtos = df_produtos.sort_values('Adesão (Contratos)', ascending=False)
                 
             # === BLOCO 1: NEGÓCIOS FECHADOS ===
             if df_dash.empty:
