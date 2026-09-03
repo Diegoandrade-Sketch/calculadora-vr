@@ -1213,42 +1213,6 @@ def aplicativo_principal():
 
         # Alimenta o motor central com a aba selecionada nas gavetas
         tela = st.session_state.aba_atual
-
-        if tela == "Gerador de Proposta":
-            st.write("---")
-            mapeamento_ativo = st.toggle("Mapeamento Inteligente", value=False)
-            st.toggle("Modo Apresentação", key="modo_apresentacao")
-            perfil_venda = st.selectbox("Perfil do Cliente", ["Com Despesas", "Sem Despesas"])
-            
-            c_md = st.session_state.get('modo_desconto', 'Total')
-            n_md = st.radio("Modo de Desconto", ["Total", "Item"], index=0 if c_md == "Total" else 1, key=f"ui_modo_desconto_{rc}", on_change=mark_unsaved)
-            st.session_state.modo_desconto = n_md
-            
-            if st.session_state.modo_desconto == "Total":
-                c_desc = float(st.session_state.get('g_desc_mensalidade', 0.0))
-                n_desc = st.number_input("Desconto Total Mensalidade (%)", 0.0, 100.0, value=c_desc, step=0.5, key=f"ui_g_desc_mensalidade_{rc}", on_change=mark_unsaved)
-                st.session_state.g_desc_mensalidade = n_desc
-            else:
-                st.info("Desconto Ativado por Item (Acesse as engrenagens na coluna de Sistemas).")
-                st.session_state.g_desc_mensalidade = 0.0
-                
-            exibir_detalhe_desc = st.toggle("Exibir Desconto na Tela", value=True)
-            exibir_media_loja = st.toggle("Exibir Media por Loja", value=False)
-            
-            c_fat = st.session_state.get('g_faturamento', "Na assinatura")
-            op_fat = ["Na assinatura", "30 dias", "60 dias", "Após implantação"]
-            n_fat = st.selectbox("Início Mensalidade", op_fat, index=op_fat.index(c_fat) if c_fat in op_fat else 0, key=f"ui_g_faturamento_{rc}", on_change=mark_unsaved)
-            st.session_state.g_faturamento = n_fat
-            
-            c_parc = int(st.session_state.get('g_parcelas_setup', 4))
-            op_parc = [1, 2, 3, 4, 5, 6, 10, 12]
-            n_parc = st.selectbox("Parcelas Setup", op_parc, index=op_parc.index(c_parc) if c_parc in op_parc else 3, key=f"ui_g_parcelas_{rc}", on_change=mark_unsaved)
-            st.session_state.g_parcelas_setup = n_parc
-            
-            c_reg = st.session_state.get('g_regra_desp', "Faturamento na assinatura")
-            op_reg = ["Faturamento na assinatura", "Faturamento pós Implantação"]
-            n_reg = st.selectbox("Faturamento Despesas", op_reg, index=op_reg.index(c_reg) if c_reg in op_reg else 0, key=f"ui_g_regra_desp_{rc}", on_change=mark_unsaved)
-            st.session_state.g_regra_desp = n_reg
             
         st.write("---")
         if st.button("Sair (Logout)", use_container_width=True): st.session_state.clear(); st.rerun()
