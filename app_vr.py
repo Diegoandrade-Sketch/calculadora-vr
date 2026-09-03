@@ -850,24 +850,27 @@ def tela_visao_comercial():
                         render_extrato_fechados(df_visual, df_exibicao)
                 else:
                     with st.expander("📊 Gráficos de Performance (Fechados)", expanded=True):
+                        # Estilo do título com fundo branco e sombreamento suave
+                        estilo_titulo = "<div style='background: #ffffff; padding: 10px 15px; border-radius: 6px; box-shadow: 0 2px 5px rgba(0,0,0,0.08); border: 1px solid #eaebf0; color: #262730; font-weight: 700; font-size: 0.95rem; margin-bottom: 5px;'>{}</div>"
+                        
                         col_g1, col_g2 = st.columns(2)
                         with col_g1:
-                            st.markdown("**Volume Total por Região (UF)**")
+                            st.markdown(estilo_titulo.format("Volume Total por Região (UF)"), unsafe_allow_html=True)
                             df_uf_graf = df_dash.groupby('Estado', as_index=False)['Total Bruto'].sum()
                             st.markdown(render_html_bar_chart(df_uf_graf, 'Estado', 'Total Bruto', '#1976d2'), unsafe_allow_html=True)
                         with col_g2:
-                            st.markdown("**Volume Total por Executivo**")
+                            st.markdown(estilo_titulo.format("Volume Total por Executivo"), unsafe_allow_html=True)
                             df_exec_graf = df_dash.groupby('Vendedor', as_index=False)['Total Bruto'].sum()
                             st.markdown(render_html_bar_chart(df_exec_graf, 'Vendedor', 'Total Bruto', '#ff6600'), unsafe_allow_html=True)
 
                         col_g3, col_g4 = st.columns(2)
                         with col_g3:
-                            st.markdown("**Volume por Origem de Negócio**")
+                            st.markdown(estilo_titulo.format("Volume por Origem de Negócio"), unsafe_allow_html=True)
                             df_origem_graf = df_dash.groupby('Origem', as_index=False)['Total Bruto'].sum()
                             st.markdown(render_html_bar_chart(df_origem_graf, 'Origem', 'Total Bruto', '#2e7d32'), unsafe_allow_html=True)
                         with col_g4:
                             if not df_produtos.empty:
-                                st.markdown("**Top 10 Produtos por Volume**")
+                                st.markdown(estilo_titulo.format("Top 10 Produtos por Volume"), unsafe_allow_html=True)
                                 df_prod_graf = df_produtos.sort_values('Total Bruto', ascending=False).head(10)
                                 st.markdown(render_html_bar_chart(df_prod_graf, 'Produto', 'Total Bruto', '#8e24aa'), unsafe_allow_html=True)
 
