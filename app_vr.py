@@ -1157,59 +1157,61 @@ def aplicativo_principal():
         if st.session_state.has_unsaved_changes and st.session_state.perma_nome_cliente:
             st.markdown("<div style='background-color:#fff3cd; color:#856404; padding:8px; border-radius:4px; font-size:0.8rem; border-left:3px solid #ffeeba; margin-bottom:15px;'>Atenção: Alterações não salvas</div>", unsafe_allow_html=True)
 
-        # Estilo para os cabeçalhos de menu (sem emojis, padrão executivo)
-        estilo_menu = "<div style='font-size:0.75rem; font-weight:700; color:#888; text-transform:uppercase; letter-spacing:1px; margin: 20px 0 10px 5px;'>{}</div>"
-        
-        # Função construtora de botões de navegação
-        def render_nav_button(label):
-            is_active = (st.session_state.get('aba_atual') == label)
-            if st.button(label, type="primary" if is_active else "secondary", use_container_width=True):
-                st.session_state.aba_atual = label
-                st.rerun()
-                
-        # Garantir valor inicial de aba_atual 
+        # Garantir valor inicial para evitar erros de renderização
         if 'aba_atual' not in st.session_state or not st.session_state.aba_atual:
             st.session_state.aba_atual = "Diagnóstico" if st.session_state.user_role == "consultor" else "Início"
 
         role = st.session_state.user_role
         
+        # Motor de renderização dos botões limpos
+        def render_nav_button(label):
+            is_active = (st.session_state.get('aba_atual') == label)
+            if st.button(label, type="primary" if is_active else "secondary", use_container_width=True):
+                st.session_state.aba_atual = label
+                st.rerun()
+
+        # ---------------------------------------------
+        # CONSTRUÇÃO DO MENU EM GAVETAS (EXPANDERS)
+        # ---------------------------------------------
         if role == "consultor":
-            st.markdown(estilo_menu.format("Operação Comercial"), unsafe_allow_html=True)
-            render_nav_button("Diagnóstico")
-            
+            with st.expander("Operação Comercial", expanded=True):
+                render_nav_button("Diagnóstico")
+                
         elif role == "financeiro":
-            st.markdown(estilo_menu.format("Controladoria Financeira"), unsafe_allow_html=True)
-            render_nav_button("Início")
-            render_nav_button("Faturamento")
-            render_nav_button("Comissionamento")
-            
+            with st.expander("Controladoria Financeira", expanded=True):
+                render_nav_button("Início")
+                render_nav_button("Faturamento")
+                render_nav_button("Comissionamento")
+                
         else:
             simulando = st.toggle("Simular Visão Vendedor", key="toggle_simular_vendedor") if role in ["admin", "projetos"] else False
             
-            st.markdown(estilo_menu.format("Operação Comercial"), unsafe_allow_html=True)
-            render_nav_button("Início")
-            render_nav_button("Diagnóstico")
-            render_nav_button("Gerador de Proposta")
-            render_nav_button("Minhas Propostas")
-            render_nav_button("Consulta de Preco")
-            
-            st.markdown(estilo_menu.format("Inteligência Estratégica"), unsafe_allow_html=True)
-            render_nav_button("Visão Comercial")
-            
+            with st.expander("Operação Comercial", expanded=True):
+                render_nav_button("Início")
+                render_nav_button("Diagnóstico")
+                render_nav_button("Gerador de Proposta")
+                render_nav_button("Minhas Propostas")
+                render_nav_button("Consulta de Preco")
+                
+            with st.expander("Inteligência Estratégica", expanded=True):
+                render_nav_button("Visão Comercial")
+                
             if not simulando:
                 if role == "admin":
-                    st.markdown(estilo_menu.format("Controladoria Financeira"), unsafe_allow_html=True)
-                    render_nav_button("Faturamento")
-                    render_nav_button("Comissionamento")
-                    
-                    st.markdown(estilo_menu.format("Backoffice e Gestão"), unsafe_allow_html=True)
-                    render_nav_button("Visão do Gestor")
-                    render_nav_button("Painel Admin")
+                    # Gavetas gerenciais iniciam fechadas para não poluir a visão
+                    with st.expander("Controladoria Financeira", expanded=False):
+                        render_nav_button("Faturamento")
+                        render_nav_button("Comissionamento")
+                        
+                    with st.expander("Backoffice e Gestão", expanded=False):
+                        render_nav_button("Visão do Gestor")
+                        render_nav_button("Painel Admin")
+                        
                 elif role == "projetos":
-                    st.markdown(estilo_menu.format("Backoffice e Gestão"), unsafe_allow_html=True)
-                    render_nav_button("Painel Admin")
+                    with st.expander("Backoffice e Gestão", expanded=False):
+                        render_nav_button("Painel Admin")
 
-        # Mantém o motor atual funcionando com a variável 'tela'
+        # Alimenta o motor central com a aba selecionada nas gavetas
         tela = st.session_state.aba_atual
 
         if tela == "Gerador de Proposta":
