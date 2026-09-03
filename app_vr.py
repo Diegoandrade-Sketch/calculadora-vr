@@ -995,10 +995,16 @@ def tela_controle_despesas():
         # ==========================================
         # 1. ÁREA DE BUSCA NO BANCO DE DADOS
         # ==========================================
-        engine = get_db_engine()
-        with engine.connect() as conn:
-            
-            # Consulta Simulada 1: O que foi VENDIDO (Bitrix) - Trazendo como TEXTO
+        from sqlalchemy import create_engine
+
+        engine_bitrix = get_db_engine()
+        
+        # Clona a conexão atual e troca apenas o nome do banco para 'vexpenses'
+        url_vex = engine_bitrix.url.set(database='vexpenses')
+        engine_vex = create_engine(url_vex)
+
+        # PASSO A: Conecta no banco BITRIX e puxa o previsto
+        with engine_bitrix.connect() as conn_bitrix:
             query_bitrix = text("""
                 SELECT n.id AS deal_id, 
                        c.title AS nome_cliente_bitrix,
@@ -1010,13 +1016,13 @@ def tela_controle_despesas():
                 LEFT JOIN assignedby_novo AS ab ON ab.id = n.assignedById
                 WHERE o.closedate >= :d_inicio AND o.closedate <= :d_fim AND n.closed = 'Y'
             """)
-            df_previsto = pd.read_sql(query_bitrix, conn, params={"d_inicio": data_inicio, "d_fim": data_fim})
+            df_previsto = pd.read_sql(query_bitrix, conn_bitrix, params={"d_inicio": data_inicio, "d_fim": data_fim})
 
-            # Usa a mesma função de conversão financeira do seu sistema
             if not df_previsto.empty:
                 df_previsto['previsto_setup'] = df_previsto['previsto_setup_str'].apply(parse_currency)
 
-            # Consulta Simulada 2: O que foi GASTO (VExpenses) com Estrutura Real
+        # PASSO B: Conecta no banco VEXPENSES e puxa o realizado
+        with engine_vex.connect() as conn_vex:
             query_vexpenses = text("""
                 SELECT p.name AS nome_projeto_vexpenses,
                        SUM(e.value) AS gasto_realizado,
@@ -1027,7 +1033,7 @@ def tela_controle_despesas():
                 WHERE e.date >= :d_inicio AND e.date <= :d_fim
                 GROUP BY p.name
             """)
-            df_realizado = pd.read_sql(query_vexpenses, conn, params={"d_inicio": data_inicio, "d_fim": data_fim})
+            df_realizado = pd.read_sql(query_vexpenses, conn_vex, params={"d_inicio": data_inicio, "d_fim": data_fim})
 
         # ==========================================
         # 2. MOTOR DE CRUZAMENTO (NORMALIZAÇÃO)
