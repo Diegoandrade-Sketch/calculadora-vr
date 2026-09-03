@@ -662,11 +662,13 @@ def tela_visao_comercial():
         with engine.connect() as conn:
             
             try:
+                try:
                 query_dash = text("""
                     SELECT DISTINCT ON (n.id) n.id, 
                     COALESCE(o.ufcrmvalorprojeto::text, '0') AS setup_str, 
                     COALESCE(o.ufcrmvalorrecorrente::text, o.opportunity::text, '0') AS mrr_str,
                     TRIM(CONCAT(COALESCE(ab.name, ''), ' ', COALESCE(ab.lastname, ''))) AS "Vendedor",
+                    ab.email AS vendedor_email,
                     o.closedate,
                     COALESCE(c.title, 'Cliente Não Informado') AS "Cliente",
                     COALESCE(c.ufcrmintegraoreceitauf, 'N/I') AS "Estado",
@@ -685,6 +687,7 @@ def tela_visao_comercial():
                     COALESCE(o.ufcrmvalorprojeto::text, '0') AS setup_str, 
                     COALESCE(o.ufcrmvalorrecorrente::text, o.opportunity::text, '0') AS mrr_str,
                     TRIM(CONCAT(COALESCE(ab.name, ''), ' ', COALESCE(ab.lastname, ''))) AS "Vendedor",
+                    ab.email AS vendedor_email,
                     o.closedate,
                     COALESCE(c.title, 'Cliente Não Informado') AS "Cliente",
                     COALESCE(c.ufcrmintegraoreceitauf, 'N/I') AS "Estado",
@@ -702,6 +705,7 @@ def tela_visao_comercial():
                 COALESCE(o.ufcrmvalorprojeto::text, '0') AS setup_str, 
                 COALESCE(o.ufcrmvalorrecorrente::text, o.opportunity::text, '0') AS mrr_str,
                 TRIM(CONCAT(COALESCE(ab.name, ''), ' ', COALESCE(ab.lastname, ''))) AS "Vendedor",
+                ab.email AS vendedor_email,
                 n.processovendaid,
                 COALESCE(c.title, 'Cliente Não Informado') AS "Cliente",
                 COALESCE(n.begindate, CURRENT_DATE) AS data_inicio_negocio,
@@ -717,14 +721,18 @@ def tela_visao_comercial():
             if not df_dash.empty: df_dash = df_dash[df_dash['processovendaid'].astype(str) != '2812']
             if not df_open.empty: df_open = df_open[df_open['processovendaid'].astype(str) != '2812']
             
-            if not df_dash.empty: df_dash = df_dash[df_dash['processovendaid'].astype(str) != '2812']
-            if not df_open.empty: df_open = df_open[df_open['processovendaid'].astype(str) != '2812']
-            
             # --- CONTROLE DE ACESSO E FILTRO DE ESCOPO ---
             if st.session_state.user_role == "vendedor":
-                nome_logado = str(st.session_state.user_name).strip().lower()
-                if not df_dash.empty: df_dash = df_dash[df_dash['Vendedor'].str.lower().str.strip() == nome_logado]
-                if not df_open.empty: df_open = df_open[df_open['Vendedor'].str.lower().str.strip() == nome_logado]
+                email_logado = str(st.session_state.user_email).strip().lower()
+                
+                # Filtra estritamente pelo e-mail do vendedor no CRM
+                if not df_dash.empty: 
+                    df_dash['vendedor_email'] = df_dash['vendedor_email'].fillna('').astype(str).str.lower().str.strip()
+                    df_dash = df_dash[df_dash['vendedor_email'] == email_logado]
+                    
+                if not df_open.empty: 
+                    df_open['vendedor_email'] = df_open['vendedor_email'].fillna('').astype(str).str.lower().str.strip()
+                    df_open = df_open[df_open['vendedor_email'] == email_logado]
             else:
                 lista_vendedores = []
                 if not df_dash.empty: lista_vendedores.extend(df_dash['Vendedor'].dropna().unique().tolist())
@@ -736,7 +744,6 @@ def tela_visao_comercial():
                 if vendedor_sel != "Todos":
                     if not df_dash.empty: df_dash = df_dash[df_dash['Vendedor'] == vendedor_sel]
                     if not df_open.empty: df_open = df_open[df_open['Vendedor'] == vendedor_sel]
-            # ---------------------------------------------
             
             # --- BUSCA DE PRODUTOS ---
             df_produtos = pd.DataFrame()
