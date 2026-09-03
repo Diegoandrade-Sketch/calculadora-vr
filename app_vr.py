@@ -978,6 +978,95 @@ def tela_visao_comercial():
     except Exception as e:
         st.error(f"Ocorreu um erro interno na tela comercial. Detalhe técnico: {e}")
         
+def tela_controle_despesas():
+    import datetime 
+    import pandas as pd
+    from sqlalchemy import text
+
+    st.markdown("<h1 class='hero-title'>CONTROLE DE DESPESAS</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Análise de Margem: Previsto (Proposta) vs. Realizado (VExpenses)</p>", unsafe_allow_html=True)
+
+    try:
+        hoje = datetime.date.today()
+        c1, c2 = st.columns(2)
+        data_inicio = c1.date_input("Período Início", hoje.replace(day=1), format="DD/MM/YYYY", key="desp_in")
+        data_fim = c2.date_input("Período Fim", hoje, format="DD/MM/YYYY", key="desp_fim")
+
+        # ==========================================
+        # 1. ÁREA DE BUSCA NO BANCO DE DADOS
+        # ==========================================
+        engine = get_db_engine()
+        with engine.connect() as conn:
+            
+            # Consulta Simulada 1: O que foi VENDIDO (Bitrix)
+            query_bitrix = text("""
+                SELECT n.id AS deal_id, 
+                       c.title AS nome_cliente_bitrix,
+                       COALESCE(o.ufcrmvalorprojeto::numeric, 0) AS previsto_setup,
+                       TRIM(CONCAT(COALESCE(ab.name, ''), ' ', COALESCE(ab.lastname, ''))) AS executivo_vendas
+                FROM orcamento_novo AS o
+                JOIN negocio_novo AS n ON n.id = o.dealId
+                LEFT JOIN company_novo AS c ON c.id = n.companyId
+                LEFT JOIN assignedby_novo AS ab ON ab.id = n.assignedById
+                WHERE o.closedate >= :d_inicio AND o.closedate <= :d_fim AND n.closed = 'Y'
+            """)
+            df_previsto = pd.read_sql(query_bitrix, conn, params={"d_inicio": data_inicio, "d_fim": data_fim})
+
+            # Consulta Simulada 2: O que foi GASTO (VExpenses)
+            query_vexpenses = text("""
+                SELECT p.name AS nome_projeto_vexpenses,
+                       SUM(e.value) AS gasto_realizado,
+                       COUNT(e.id) AS qtd_despesas
+                FROM expenses e
+                JOIN projects p ON p.id = e.project_id
+                WHERE e.date >= :d_inicio AND e.date <= :d_fim
+                GROUP BY p.name
+            """)
+            df_realizado = pd.read_sql(query_vexpenses, conn, params={"d_inicio": data_inicio, "d_fim": data_fim})
+
+        # ==========================================
+        # 2. MOTOR DE CRUZAMENTO (NORMALIZAÇÃO)
+        # ==========================================
+        if not df_previsto.empty and not df_realizado.empty:
+            # Padroniza os textos: tudo minúsculo e sem espaços sobrando nas pontas
+            df_previsto['chave_cruzamento'] = df_previsto['nome_cliente_bitrix'].fillna('').astype(str).str.lower().str.strip()
+            df_realizado['chave_cruzamento'] = df_realizado['nome_projeto_vexpenses'].fillna('').astype(str).str.lower().str.strip()
+
+            # Une as tabelas baseadas no nome normalizado
+            df_dash = pd.merge(df_previsto, df_realizado, on='chave_cruzamento', how='left')
+            df_dash['gasto_realizado'] = df_dash['gasto_realizado'].fillna(0)
+            df_dash['Saldo (Lucro/Prejuízo)'] = df_dash['previsto_setup'] - df_dash['gasto_realizado']
+            
+            t_previsto = df_dash['previsto_setup'].sum()
+            t_realizado = df_dash['gasto_realizado'].sum()
+            t_saldo = df_dash['Saldo (Lucro/Prejuízo)'].sum()
+            cor_saldo = "#2e7d32" if t_saldo >= 0 else "#d32f2f" # Verde se lucro, Vermelho se prejuízo
+
+            # ==========================================
+            # 3. INTERFACE DE EXIBIÇÃO (PADRÃO VISÃO COMERCIAL)
+            # ==========================================
+            with st.expander("📊 Resumo de Margem do Período", expanded=True):
+                col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
+                with col_kpi1: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #1976d2;"><div class="dash-title">Total Orçado (Vendido)</div><div style="font-size:1.5rem; font-weight:900;">R$ {f_br(t_previsto)}</div></div>""", unsafe_allow_html=True)
+                with col_kpi2: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #ff6600;"><div class="dash-title">Total Gasto (VExpenses)</div><div style="font-size:1.5rem; font-weight:900;">R$ {f_br(t_realizado)}</div></div>""", unsafe_allow_html=True)
+                with col_kpi3: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid {cor_saldo}; background:#f4f6f9;"><div class="dash-title">Saldo (Margem)</div><div style="font-size:1.5rem; font-weight:900; color:{cor_saldo};">R$ {f_br(t_saldo)}</div></div>""", unsafe_allow_html=True)
+
+            with st.expander("📋 Detalhamento por Projeto (Previsto vs Realizado)", expanded=True):
+                df_exibicao = df_dash[['nome_cliente_bitrix', 'executivo_vendas', 'previsto_setup', 'gasto_realizado', 'Saldo (Lucro/Prejuízo)']].copy()
+                df_exibicao.columns = ['Cliente / Projeto', 'Executivo', 'Previsto (R$)', 'Realizado (R$)', 'Saldo (R$)']
+                
+                # Formatação visual de moeda
+                for col in ['Previsto (R$)', 'Realizado (R$)', 'Saldo (R$)']:
+                    df_exibicao[col] = df_exibicao[col].apply(lambda x: f"R$ {f_br(x)}")
+                
+                st.dataframe(df_exibicao, use_container_width=True, hide_index=True)
+
+        else:
+            st.info("Não há dados suficientes no período para cruzar as informações do Bitrix com o VExpenses.")
+
+    except Exception as e:
+        st.error(f"Erro ao gerar painel de despesas: {e}")   
+        
 def tela_comissionamento():
     st.markdown("<h1 class='hero-title'>COMISSIONAMENTO</h1>", unsafe_allow_html=True)
     st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Auditoria e Fechamento de Pagamentos Integrado ao Bitrix24</p>", unsafe_allow_html=True)
