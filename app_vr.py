@@ -564,15 +564,15 @@ def modal_extrato_venda(proposta_id, nome_cliente, processo_id):
             st.dataframe(df_itens[['Produto/Serviço', 'Tag', 'Qtd', 'Valor Unit. (R$)', 'Valor Total (R$)', '% Comissão', 'Comissão (R$)']], use_container_width=True, hide_index=True)
     except Exception as e:
         st.error("Falha ao carregar detalhamento. Tente novamente.")
+
 def tela_visao_comercial():
-    import datetime # Garante que o módulo está disponível localmente
+    import datetime 
     import pandas as pd
     
     st.markdown("<h1 class='hero-title'>VISÃO COMERCIAL</h1>", unsafe_allow_html=True)
     st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Dashboard Estratégico de Vendas e Performance</p>", unsafe_allow_html=True)
     
     try:
-        # Trazendo os inputs de data para DENTRO da proteção contra falhas
         hoje = datetime.date.today()
         c1, c2 = st.columns(2)
         data_inicio = c1.date_input("Período Início", hoje.replace(day=1), format="DD/MM/YYYY")
@@ -651,6 +651,15 @@ def tela_visao_comercial():
                 if not df_dash.empty: df_dash = df_dash[df_dash['Vendedor'] == vendedor_sel]
                 if not df_open.empty: df_open = df_open[df_open['Vendedor'] == vendedor_sel]
                 
+            # --- NOVO: CONTROLE DE VISÃO ---
+            st.markdown("<br>", unsafe_allow_html=True)
+            modo_exibicao = st.radio(
+                "Formato de Exibição",
+                ["Visão Completa", "Visão Gráfica"],
+                horizontal=True
+            )
+            st.markdown("<hr style='margin-top: 5px;'>", unsafe_allow_html=True)
+                
             # === BLOCO 1: NEGÓCIOS FECHADOS ===
             if df_dash.empty:
                 st.warning("Nenhum negócio de receita comercial classificado como ganho neste período para o filtro selecionado.")
@@ -685,61 +694,72 @@ def tela_visao_comercial():
                 with col_kpi5: st.markdown(f"""<div class="dash-card" title="Média de valor dos negócios que possuem Setup" style="border-top: 5px solid #ff6600; opacity: 0.9;"><div class="dash-title">Ticket Médio Setup</div><div style="font-size:1.3rem; font-weight:900;">R$ {f_br(tk_medio_setup)}</div></div>""", unsafe_allow_html=True)
                 with col_kpi6: st.markdown(f"""<div class="dash-card" title="Média do volume total por cada negócio fechado" style="border-top: 5px solid #8e24aa;"><div class="dash-title">Ticket Médio Geral</div><div style="font-size:1.3rem; font-weight:900;">R$ {f_br(tk_medio)}</div></div>""", unsafe_allow_html=True)
                 
-                st.markdown("<hr>", unsafe_allow_html=True)
-                
-                st.markdown("### 🗺️ Análise Geográfica e Força de Vendas")
-                
-                def gerar_tabela_analitica(df, agrupador):
-                    grp = df.groupby(agrupador).agg(
-                        Setup_Soma=('Setup Bruto', 'sum'),
-                        MRR_Soma=('MRR Bruto', 'sum'),
-                        Total_Soma=('Total Bruto', 'sum'),
-                        Qtd_Setup=('Setup Bruto', lambda x: (x > 0).sum()),
-                        Qtd_MRR=('MRR Bruto', lambda x: (x > 0).sum())
-                    ).reset_index()
+                if modo_exibicao == "Visão Completa":
+                    st.markdown("<hr>", unsafe_allow_html=True)
+                    st.markdown("### 🗺️ Análise Geográfica e Força de Vendas")
                     
-                    grp['TM_Setup'] = (grp['Setup_Soma'] / grp['Qtd_Setup'].replace(0, 1)).fillna(0)
-                    grp['TM_MRR'] = (grp['MRR_Soma'] / grp['Qtd_MRR'].replace(0, 1)).fillna(0)
-                    
-                    grp = grp.sort_values(by='Total_Soma', ascending=False)
-                    for col in ['Setup_Soma', 'TM_Setup', 'MRR_Soma', 'TM_MRR', 'Total_Soma']: 
-                        grp[col] = grp[col].apply(lambda x: f"R$ {f_br(x)}")
+                    def gerar_tabela_analitica(df, agrupador):
+                        grp = df.groupby(agrupador).agg(
+                            Setup_Soma=('Setup Bruto', 'sum'),
+                            MRR_Soma=('MRR Bruto', 'sum'),
+                            Total_Soma=('Total Bruto', 'sum'),
+                            Qtd_Setup=('Setup Bruto', lambda x: (x > 0).sum()),
+                            Qtd_MRR=('MRR Bruto', lambda x: (x > 0).sum())
+                        ).reset_index()
                         
-                    return grp[[agrupador, 'Setup_Soma', 'TM_Setup', 'MRR_Soma', 'TM_MRR', 'Total_Soma']].rename(
-                        columns={'Setup_Soma': 'Setup', 'TM_Setup': 'T.M. Setup', 'MRR_Soma': 'MRR', 'TM_MRR': 'T.M. MRR', 'Total_Soma': 'Volume Total'}
-                    )
-                
-                st.markdown("**Volume e Ticket Médio por Região (UF)**")
-                st.dataframe(gerar_tabela_analitica(df_dash, 'Estado'), use_container_width=True, hide_index=True)
-
-                st.markdown("<br>**Volume e Ticket Médio por Executivo**", unsafe_allow_html=True)
-                st.dataframe(gerar_tabela_analitica(df_dash, 'Vendedor'), use_container_width=True, hide_index=True)
+                        grp['TM_Setup'] = (grp['Setup_Soma'] / grp['Qtd_Setup'].replace(0, 1)).fillna(0)
+                        grp['TM_MRR'] = (grp['MRR_Soma'] / grp['Qtd_MRR'].replace(0, 1)).fillna(0)
+                        
+                        grp = grp.sort_values(by='Total_Soma', ascending=False)
+                        for col in ['Setup_Soma', 'TM_Setup', 'MRR_Soma', 'TM_MRR', 'Total_Soma']: 
+                            grp[col] = grp[col].apply(lambda x: f"R$ {f_br(x)}")
+                            
+                        return grp[[agrupador, 'Setup_Soma', 'TM_Setup', 'MRR_Soma', 'TM_MRR', 'Total_Soma']].rename(
+                            columns={'Setup_Soma': 'Setup', 'TM_Setup': 'T.M. Setup', 'MRR_Soma': 'MRR', 'TM_MRR': 'T.M. MRR', 'Total_Soma': 'Volume Total'}
+                        )
                     
-                st.markdown("<hr>", unsafe_allow_html=True)
-                
-                st.markdown("### 📋 Extrato Analítico Interativo (Fechados)")
-                df_exibicao = df_dash[['Vendedor', 'id', 'Cliente', 'Origem', 'Data Fechamento', 'Setup Bruto', 'MRR Bruto', 'Total Bruto', 'processovendaid']].copy()
-                df_exibicao['Data Fechamento'] = pd.to_datetime(df_exibicao['Data Fechamento']).dt.strftime('%d/%m/%Y')
-                for col in ['Setup Bruto', 'MRR Bruto', 'Total Bruto']: df_exibicao[col] = df_exibicao[col].apply(lambda x: f"R$ {f_br(x)}")
-                
-                df_visual = df_exibicao[['Vendedor', 'id', 'Cliente', 'Origem', 'Data Fechamento', 'Setup Bruto', 'MRR Bruto', 'Total Bruto']].rename(columns={'id': 'Proposta ID'})
-                df_visual.insert(0, "Ver Extrato", False)
-                
-                edited_df = st.data_editor(
-                    df_visual, 
-                    key="grid_fechados",
-                    use_container_width=True, 
-                    hide_index=True, 
-                    column_config={"Ver Extrato": st.column_config.CheckboxColumn("Ver", default=False)}, 
-                    disabled=[col for col in df_visual.columns if col != "Ver Extrato"]
-                )
-                
-                linhas_sel = edited_df[edited_df["Ver Extrato"] == True]
-                if not linhas_sel.empty:
-                    prop_id = int(linhas_sel.iloc[0]["Proposta ID"])
-                    cli_nome = str(linhas_sel.iloc[0]["Cliente"])
-                    proc_id = str(df_exibicao.loc[df_exibicao["id"] == prop_id, "processovendaid"].values[0])
-                    modal_extrato_venda(prop_id, cli_nome, proc_id)
+                    st.markdown("**Volume e Ticket Médio por Região (UF)**")
+                    st.dataframe(gerar_tabela_analitica(df_dash, 'Estado'), use_container_width=True, hide_index=True)
+
+                    st.markdown("<br>**Volume e Ticket Médio por Executivo**", unsafe_allow_html=True)
+                    st.dataframe(gerar_tabela_analitica(df_dash, 'Vendedor'), use_container_width=True, hide_index=True)
+                        
+                    st.markdown("<hr>", unsafe_allow_html=True)
+                    st.markdown("### 📋 Extrato Analítico Interativo (Fechados)")
+                    df_exibicao = df_dash[['Vendedor', 'id', 'Cliente', 'Origem', 'Data Fechamento', 'Setup Bruto', 'MRR Bruto', 'Total Bruto', 'processovendaid']].copy()
+                    df_exibicao['Data Fechamento'] = pd.to_datetime(df_exibicao['Data Fechamento']).dt.strftime('%d/%m/%Y')
+                    for col in ['Setup Bruto', 'MRR Bruto', 'Total Bruto']: df_exibicao[col] = df_exibicao[col].apply(lambda x: f"R$ {f_br(x)}")
+                    
+                    df_visual = df_exibicao[['Vendedor', 'id', 'Cliente', 'Origem', 'Data Fechamento', 'Setup Bruto', 'MRR Bruto', 'Total Bruto']].rename(columns={'id': 'Proposta ID'})
+                    df_visual.insert(0, "Ver Extrato", False)
+                    
+                    edited_df = st.data_editor(
+                        df_visual, 
+                        key="grid_fechados",
+                        use_container_width=True, 
+                        hide_index=True, 
+                        column_config={"Ver Extrato": st.column_config.CheckboxColumn("Ver", default=False)}, 
+                        disabled=[col for col in df_visual.columns if col != "Ver Extrato"]
+                    )
+                    
+                    linhas_sel = edited_df[edited_df["Ver Extrato"] == True]
+                    if not linhas_sel.empty:
+                        prop_id = int(linhas_sel.iloc[0]["Proposta ID"])
+                        cli_nome = str(linhas_sel.iloc[0]["Cliente"])
+                        proc_id = str(df_exibicao.loc[df_exibicao["id"] == prop_id, "processovendaid"].values[0])
+                        modal_extrato_venda(prop_id, cli_nome, proc_id)
+                else:
+                    st.markdown("<hr>", unsafe_allow_html=True)
+                    st.markdown("### 📊 Gráficos de Performance (Fechados)")
+                    col_g1, col_g2 = st.columns(2)
+                    with col_g1:
+                        st.markdown("**Volume Total por Região (UF)**")
+                        df_uf_graf = df_dash.groupby('Estado')[['Total Bruto']].sum()
+                        st.bar_chart(df_uf_graf)
+                    with col_g2:
+                        st.markdown("**Volume Total por Executivo**")
+                        df_exec_graf = df_dash.groupby('Vendedor')[['Total Bruto']].sum()
+                        st.bar_chart(df_exec_graf)
 
             # === BLOCO 2: PIPELINE ATIVO ===
             st.markdown("<hr>", unsafe_allow_html=True)
@@ -775,68 +795,81 @@ def tela_visao_comercial():
                 with col_o2: st.markdown(f"""<div class="dash-card" title="Valor de Implantação/Projeto projetado de todas as propostas em andamento" style="border-top: 5px solid #888; background:#f9f9f9;"><div class="dash-title">Setup Projetado (Na Mesa)</div><div style="font-size:1.5rem; font-weight:900; color:#555;">R$ {f_br(t_open_setup)}</div></div>""", unsafe_allow_html=True)
                 with col_o3: st.markdown(f"""<div class="dash-card" title="Soma total de Setup e MRR que ainda está na mesa de negociação" style="border-top: 5px solid #262730;"><div class="dash-title">Volume Total em Aberto</div><div style="font-size:1.5rem; font-weight:900; color:#262730;">R$ {f_br(t_open_geral)}</div></div>""", unsafe_allow_html=True)
                 
-                st.markdown("<br>", unsafe_allow_html=True)
+                if modo_exibicao == "Visão Completa":
+                    st.markdown("<br>", unsafe_allow_html=True)
 
-                # --- CARDS DE DESTAQUE DUPLO ---
-                col_dest1, col_dest2 = st.columns(2)
-                
-                maior_mrr_idx = df_open['MRR Bruto'].idxmax()
-                maior_mrr = df_open.loc[maior_mrr_idx] if df_open['MRR Bruto'].max() > 0 else None
-                
-                maior_setup_idx = df_open['Setup Bruto'].idxmax()
-                maior_setup = df_open.loc[maior_setup_idx] if df_open['Setup Bruto'].max() > 0 else None
-                
-                with col_dest1:
-                    if maior_mrr is not None:
-                        st.markdown(f"""
-                            <div title="Oportunidade ativa com o maior valor de Recorrência (MRR)" style='background: #f4f8fb; border-left: 6px solid #1976d2; padding: 15px; border-radius: 5px; margin-bottom: 20px; cursor: help;'>
-                                <div style='font-size: 0.8rem; font-weight: 700; color: #1976d2; text-transform: uppercase;'>👑 Maior Contrato Recorrente</div>
-                                <div style='font-size: 1.4rem; font-weight: 900; color: #333;'>{maior_mrr['Cliente']}</div>
-                                <div style='margin-top: 10px; font-size: 0.9rem;'><strong>MRR:</strong> <span style='color:#1976d2; font-weight:bold;'>R$ {f_br(maior_mrr['MRR Bruto'])}</span></div>
-                                <div style='font-size: 0.9rem; color: #666;'>Executivo: {maior_mrr['Vendedor']} | {maior_mrr['Status']} ({maior_mrr['Dias na Mesa']} dias)</div>
-                            </div>
-                        """, unsafe_allow_html=True)
-                        
-                with col_dest2:
-                    if maior_setup is not None:
-                        st.markdown(f"""
-                            <div title="Oportunidade ativa com o maior valor de Implantação (Setup)" style='background: #fff8f3; border-left: 6px solid #ff6600; padding: 15px; border-radius: 5px; margin-bottom: 20px; cursor: help;'>
-                                <div style='font-size: 0.8rem; font-weight: 700; color: #ff6600; text-transform: uppercase;'>🚀 Maior Projeto (Setup)</div>
-                                <div style='font-size: 1.4rem; font-weight: 900; color: #333;'>{maior_setup['Cliente']}</div>
-                                <div style='margin-top: 10px; font-size: 0.9rem;'><strong>Setup:</strong> <span style='color:#ff6600; font-weight:bold;'>R$ {f_br(maior_setup['Setup Bruto'])}</span></div>
-                                <div style='font-size: 0.9rem; color: #666;'>Executivo: {maior_setup['Vendedor']} | {maior_setup['Status']} ({maior_setup['Dias na Mesa']} dias)</div>
-                            </div>
-                        """, unsafe_allow_html=True)
-                
-                # --- EXTRATO INTERATIVO PIPELINE ATIVO ---
-                st.markdown("**Radar de Negociações Abertas (Interativo)**")
-                df_open_view = df_open[['id', 'Cliente', 'Status', 'Data Criação', 'Data Prevista', 'Vendedor', 'Setup Bruto', 'MRR Bruto', 'Total Projetado', 'processovendaid']].copy()
-                for col in ['Setup Bruto', 'MRR Bruto', 'Total Projetado']: df_open_view[col] = df_open_view[col].apply(lambda x: f"R$ {f_br(x)}")
-                
-                df_open_visual = df_open_view[['id', 'Cliente', 'Status', 'Data Criação', 'Data Prevista', 'Vendedor', 'Setup Bruto', 'MRR Bruto', 'Total Projetado']].rename(columns={'id': 'Proposta ID', 'Setup Bruto': 'Setup', 'MRR Bruto': 'MRR'})
-                df_open_visual.insert(0, "Ver Extrato", False)
-                
-                edited_open_df = st.data_editor(
-                    df_open_visual, 
-                    key="grid_abertos",
-                    use_container_width=True, 
-                    hide_index=True, 
-                    column_config={
-                        "Ver Extrato": st.column_config.CheckboxColumn("Ver", default=False),
-                        "Status": st.column_config.TextColumn("Status", help="Temperatura com base nos dias na mesa:\n🔥 Quente: 0 a 7 dias\n⚠️ Morno: 8 a 14 dias\n❄️ Frio: 15+ dias"),
-                        "Setup": st.column_config.TextColumn("Setup", help="Valor Único de Implantação/Projeto"),
-                        "MRR": st.column_config.TextColumn("MRR", help="Valor Recorrente Mensal (Mensalidade)"),
-                        "Total Projetado": st.column_config.TextColumn("Total Projetado", help="Soma total de Setup + MRR desta proposta")
-                    }, 
-                    disabled=[col for col in df_open_visual.columns if col != "Ver Extrato"]
-                )
-                
-                linhas_open_sel = edited_open_df[edited_open_df["Ver Extrato"] == True]
-                if not linhas_open_sel.empty:
-                    prop_id = int(linhas_open_sel.iloc[0]["Proposta ID"])
-                    cli_nome = str(linhas_open_sel.iloc[0]["Cliente"])
-                    proc_id = str(df_open_view.loc[df_open_view["id"] == prop_id, "processovendaid"].values[0])
-                    modal_extrato_venda(prop_id, cli_nome, proc_id)
+                    # --- CARDS DE DESTAQUE DUPLO ---
+                    col_dest1, col_dest2 = st.columns(2)
+                    
+                    maior_mrr_idx = df_open['MRR Bruto'].idxmax()
+                    maior_mrr = df_open.loc[maior_mrr_idx] if df_open['MRR Bruto'].max() > 0 else None
+                    
+                    maior_setup_idx = df_open['Setup Bruto'].idxmax()
+                    maior_setup = df_open.loc[maior_setup_idx] if df_open['Setup Bruto'].max() > 0 else None
+                    
+                    with col_dest1:
+                        if maior_mrr is not None:
+                            st.markdown(f"""
+                                <div title="Oportunidade ativa com o maior valor de Recorrência (MRR)" style='background: #f4f8fb; border-left: 6px solid #1976d2; padding: 15px; border-radius: 5px; margin-bottom: 20px; cursor: help;'>
+                                    <div style='font-size: 0.8rem; font-weight: 700; color: #1976d2; text-transform: uppercase;'>👑 Maior Contrato Recorrente</div>
+                                    <div style='font-size: 1.4rem; font-weight: 900; color: #333;'>{maior_mrr['Cliente']}</div>
+                                    <div style='margin-top: 10px; font-size: 0.9rem;'><strong>MRR:</strong> <span style='color:#1976d2; font-weight:bold;'>R$ {f_br(maior_mrr['MRR Bruto'])}</span></div>
+                                    <div style='font-size: 0.9rem; color: #666;'>Executivo: {maior_mrr['Vendedor']} | {maior_mrr['Status']} ({maior_mrr['Dias na Mesa']} dias)</div>
+                                </div>
+                            """, unsafe_allow_html=True)
+                            
+                    with col_dest2:
+                        if maior_setup is not None:
+                            st.markdown(f"""
+                                <div title="Oportunidade ativa com o maior valor de Implantação (Setup)" style='background: #fff8f3; border-left: 6px solid #ff6600; padding: 15px; border-radius: 5px; margin-bottom: 20px; cursor: help;'>
+                                    <div style='font-size: 0.8rem; font-weight: 700; color: #ff6600; text-transform: uppercase;'>🚀 Maior Projeto (Setup)</div>
+                                    <div style='font-size: 1.4rem; font-weight: 900; color: #333;'>{maior_setup['Cliente']}</div>
+                                    <div style='margin-top: 10px; font-size: 0.9rem;'><strong>Setup:</strong> <span style='color:#ff6600; font-weight:bold;'>R$ {f_br(maior_setup['Setup Bruto'])}</span></div>
+                                    <div style='font-size: 0.9rem; color: #666;'>Executivo: {maior_setup['Vendedor']} | {maior_setup['Status']} ({maior_setup['Dias na Mesa']} dias)</div>
+                                </div>
+                            """, unsafe_allow_html=True)
+                    
+                    # --- EXTRATO INTERATIVO PIPELINE ATIVO ---
+                    st.markdown("**Radar de Negociações Abertas (Interativo)**")
+                    df_open_view = df_open[['id', 'Cliente', 'Status', 'Data Criação', 'Data Prevista', 'Vendedor', 'Setup Bruto', 'MRR Bruto', 'Total Projetado', 'processovendaid']].copy()
+                    for col in ['Setup Bruto', 'MRR Bruto', 'Total Projetado']: df_open_view[col] = df_open_view[col].apply(lambda x: f"R$ {f_br(x)}")
+                    
+                    df_open_visual = df_open_view[['id', 'Cliente', 'Status', 'Data Criação', 'Data Prevista', 'Vendedor', 'Setup Bruto', 'MRR Bruto', 'Total Projetado']].rename(columns={'id': 'Proposta ID', 'Setup Bruto': 'Setup', 'MRR Bruto': 'MRR'})
+                    df_open_visual.insert(0, "Ver Extrato", False)
+                    
+                    edited_open_df = st.data_editor(
+                        df_open_visual, 
+                        key="grid_abertos",
+                        use_container_width=True, 
+                        hide_index=True, 
+                        column_config={
+                            "Ver Extrato": st.column_config.CheckboxColumn("Ver", default=False),
+                            "Status": st.column_config.TextColumn("Status", help="Temperatura com base nos dias na mesa:\n🔥 Quente: 0 a 7 dias\n⚠️ Morno: 8 a 14 dias\n❄️ Frio: 15+ dias"),
+                            "Setup": st.column_config.TextColumn("Setup", help="Valor Único de Implantação/Projeto"),
+                            "MRR": st.column_config.TextColumn("MRR", help="Valor Recorrente Mensal (Mensalidade)"),
+                            "Total Projetado": st.column_config.TextColumn("Total Projetado", help="Soma total de Setup + MRR desta proposta")
+                        }, 
+                        disabled=[col for col in df_open_visual.columns if col != "Ver Extrato"]
+                    )
+                    
+                    linhas_open_sel = edited_open_df[edited_open_df["Ver Extrato"] == True]
+                    if not linhas_open_sel.empty:
+                        prop_id = int(linhas_open_sel.iloc[0]["Proposta ID"])
+                        cli_nome = str(linhas_open_sel.iloc[0]["Cliente"])
+                        proc_id = str(df_open_view.loc[df_open_view["id"] == prop_id, "processovendaid"].values[0])
+                        modal_extrato_venda(prop_id, cli_nome, proc_id)
+                else:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.markdown("### 📊 Gráficos de Pipeline (Abertos)")
+                    col_g3, col_g4 = st.columns(2)
+                    with col_g3:
+                        st.markdown("**Volume Projetado por Temperatura (Status)**")
+                        df_status_graf = df_open.groupby('Status')[['Total Projetado']].sum()
+                        st.bar_chart(df_status_graf)
+                    with col_g4:
+                        st.markdown("**Volume Projetado por Executivo**")
+                        df_exec_aberto_graf = df_open.groupby('Vendedor')[['Total Projetado']].sum()
+                        st.bar_chart(df_exec_aberto_graf)
             else:
                 st.info("Não há propostas ativas no funil no momento para o filtro selecionado.")
 
