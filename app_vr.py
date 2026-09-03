@@ -1635,6 +1635,36 @@ def aplicativo_principal():
             </div>
             """, unsafe_allow_html=True)
         else:
+            # --- COLE A GAVETA AQUI, LOGO ACIMA DOS DADOS DO CLIENTE ---
+            with st.expander("⚙️ Parâmetros da Simulação e Descontos", expanded=False):
+                cfg1, cfg2, cfg3 = st.columns(3)
+                with cfg1:
+                    mapeamento_ativo = st.toggle("Mapeamento Inteligente", value=False)
+                    st.toggle("Modo Apresentação", key="modo_apresentacao")
+                    perfil_venda = st.selectbox("Perfil do Cliente", ["Com Despesas", "Sem Despesas"])
+                    exibir_media_loja = st.toggle("Exibir Media por Loja", value=False)
+                with cfg2:
+                    c_md = st.session_state.get('modo_desconto', 'Total')
+                    n_md = st.radio("Modo de Desconto", ["Total", "Item"], index=0 if c_md == "Total" else 1, key=f"ui_modo_desconto_{rc}", on_change=mark_unsaved)
+                    st.session_state.modo_desconto = n_md
+                    if st.session_state.modo_desconto == "Total":
+                        c_desc = float(st.session_state.get('g_desc_mensalidade', 0.0))
+                        st.session_state.g_desc_mensalidade = st.number_input("Desconto Mensalidade (%)", 0.0, 100.0, value=c_desc, step=0.5, key=f"ui_g_desc_mensalidade_{rc}", on_change=mark_unsaved)
+                    else:
+                        st.info("Desconto Ativado por Item.")
+                        st.session_state.g_desc_mensalidade = 0.0
+                    exibir_detalhe_desc = st.toggle("Exibir Desconto na Tela", value=True)
+                with cfg3:
+                    c_fat = st.session_state.get('g_faturamento', "Na assinatura")
+                    op_fat = ["Na assinatura", "30 dias", "60 dias", "Após implantação"]
+                    st.session_state.g_faturamento = st.selectbox("Início Mensalidade", op_fat, index=op_fat.index(c_fat) if c_fat in op_fat else 0, key=f"ui_g_faturamento_{rc}", on_change=mark_unsaved)
+                    c_parc = int(st.session_state.get('g_parcelas_setup', 4))
+                    op_parc = [1, 2, 3, 4, 5, 6, 10, 12]
+                    st.session_state.g_parcelas_setup = st.selectbox("Parcelas Setup", op_parc, index=op_parc.index(c_parc) if c_parc in op_parc else 3, key=f"ui_g_parcelas_{rc}", on_change=mark_unsaved)
+                    c_reg = st.session_state.get('g_regra_desp', "Faturamento na assinatura")
+                    op_reg = ["Faturamento na assinatura", "Faturamento pós Implantação"]
+                    st.session_state.g_regra_desp = st.selectbox("Faturamento Despesas", op_reg, index=op_reg.index(c_reg) if c_reg in op_reg else 0, key=f"ui_g_regra_desp_{rc}", on_change=mark_unsaved)
+            # -------------------------------------------------------------
             st.markdown("""<div class="cliente-container"><h3 style="margin:0; color:#262730;">Dados do Cliente</h3></div>""", unsafe_allow_html=True)
             col_cli1, col_cli2 = st.columns([2, 1])
             with col_cli1: st.text_input("Razão Social / Nome Fantasia", value=st.session_state.perma_nome_cliente, key="widget_nome", on_change=atualiza_nome_cliente, placeholder="Ex: Supermercados Dois Irmãos")
