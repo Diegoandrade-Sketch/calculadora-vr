@@ -1162,29 +1162,17 @@ def aplicativo_principal():
         elif st.session_state.user_role == "financeiro":
             abas = ["Início", "Faturamento", "Comissionamento"]
         else:
-            # A Visão Comercial liberada na lista base para Vendedores, Projetos e Admin
+            # A Visão Comercial agora faz parte da lista base, disponível para a equipe comercial
             abas = ["Início", "Diagnóstico", "Gerador de Proposta", "Minhas Propostas", "Consulta de Preco", "Visão Comercial"]
             
-            # Unificamos o toggle com uma 'key' para evitar o erro DuplicateElementId
-            if st.session_state.user_role in ["admin", "projetos"] and not st.toggle("Simular Visão Vendedor", key="toggle_simular_vendedor"): 
-                abas.append("Painel Admin")
-                if st.session_state.user_role == "admin":
-                    abas.append("Faturamento")
-                    abas.append("Visão do Gestor")
-                    abas.append("Comissionamento")
+            # Criação do botão único com a trava de segurança (key)
+            simulando_vendedor = st.toggle("Simular Visão Vendedor", key="toggle_simular_vendedor")
             
-            # 1. Regra para telas compartilhadas entre Gestão (Ex: Oculta se simular vendedor)
-            simulando_vendedor = st.toggle("Simular Visão Vendedor")
-            
+            # Inserção das telas gerenciais apenas se o botão de simulação estiver desligado
             if not simulando_vendedor:
                 if st.session_state.user_role in ["admin", "projetos"]: 
                     abas.append("Painel Admin")
                 
-                # 2. ADICIONE AQUI OS PERFIS QUE PODEM VER A VISÃO COMERCIAL
-                if st.session_state.user_role in ["admin", "financeiro", "projetos"]:
-                    abas.append("Visão Comercial")
-
-                # 3. Telas exclusivas do Administrador
                 if st.session_state.user_role == "admin":
                     abas.append("Faturamento")
                     abas.append("Visão do Gestor")
