@@ -1016,13 +1016,14 @@ def tela_controle_despesas():
             if not df_previsto.empty:
                 df_previsto['previsto_setup'] = df_previsto['previsto_setup_str'].apply(parse_currency)
 
-            # Consulta Simulada 2: O que foi GASTO (VExpenses)
+            # Consulta Simulada 2: O que foi GASTO (VExpenses) com Estrutura Real
             query_vexpenses = text("""
                 SELECT p.name AS nome_projeto_vexpenses,
                        SUM(e.value) AS gasto_realizado,
                        COUNT(e.id) AS qtd_despesas
-                FROM expenses e
-                JOIN projects p ON p.id = e.project_id
+                FROM public.expenses e
+                JOIN public.relatorioprojeto rp ON e.id = rp.id_expense
+                JOIN public.projects p ON p.id = rp.id_project
                 WHERE e.date >= :d_inicio AND e.date <= :d_fim
                 GROUP BY p.name
             """)
