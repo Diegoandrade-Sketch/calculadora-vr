@@ -569,6 +569,36 @@ def tela_visao_comercial():
     import datetime 
     import pandas as pd
     
+    # Motor Gráfico HTML/CSS Imune a erros de Biblioteca do Servidor
+    def render_html_bar_chart(df_chart, col_label, col_value, cor_barra):
+        if df_chart is None or df_chart.empty:
+            return "<div style='color:#999; font-style:italic;'>Sem dados para exibir.</div>"
+        
+        df_chart = df_chart.sort_values(by=col_value, ascending=False)
+        max_v = df_chart[col_value].max()
+        if max_v <= 0: max_v = 1
+        
+        html = "<div style='display: flex; flex-direction: column; gap: 12px; margin-top: 15px;'>"
+        for _, row in df_chart.iterrows():
+            lbl = str(row[col_label])
+            val = float(row[col_value])
+            pct = (val / max_v) * 100
+            v_str = f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            
+            html += f"""
+            <div style='display: flex; align-items: center; width: 100%;'>
+                <div style='width: 35%; text-align: right; padding-right: 15px; font-family: sans-serif; font-size: 0.85rem; color: #444; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;' title='{lbl}'>
+                    {lbl}
+                </div>
+                <div style='width: 65%; display: flex; align-items: center;'>
+                    <div style='width: {pct}%; background-color: {cor_barra}; height: 24px; border-radius: 0px 4px 4px 0px; min-width: 3px;'></div>
+                    <span style='margin-left: 10px; font-family: sans-serif; font-size: 0.85rem; font-weight: 700; color: #222;'>R$ {v_str}</span>
+                </div>
+            </div>
+            """
+        html += "</div>"
+        return html
+
     st.markdown("<h1 class='hero-title'>VISÃO COMERCIAL</h1>", unsafe_allow_html=True)
     st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Dashboard Estratégico de Vendas e Performance</p>", unsafe_allow_html=True)
     
@@ -648,7 +678,7 @@ def tela_visao_comercial():
                 if not df_dash.empty: df_dash = df_dash[df_dash['Vendedor'] == vendedor_sel]
                 if not df_open.empty: df_open = df_open[df_open['Vendedor'] == vendedor_sel]
             
-            # --- BUSCA DE PRODUTOS BLINDADA E SINCRONIZADA ---
+            # --- BUSCA DE PRODUTOS ---
             df_produtos = pd.DataFrame()
             if not df_dash.empty:
                 ids_fechados = df_dash['id'].tolist()
@@ -675,15 +705,11 @@ def tela_visao_comercial():
                         MRR_Bruto=('MRR Bruto', 'sum')
                     ).reset_index()
                     
-                    df_produtos = df_produtos.rename(columns={
-                        'Adesao_Contratos': 'Adesão (Contratos)', 
-                        'Setup_Bruto': 'Setup Bruto', 
-                        'MRR_Bruto': 'MRR Bruto'
-                    })
+                    df_produtos = df_produtos.rename(columns={'Adesao_Contratos': 'Adesão (Contratos)', 'Setup_Bruto': 'Setup Bruto', 'MRR_Bruto': 'MRR Bruto'})
                     df_produtos['Total Bruto'] = df_produtos['Setup Bruto'] + df_produtos['MRR Bruto']
                     df_produtos = df_produtos.sort_values('Adesão (Contratos)', ascending=False)
 
-            # --- CONTROLE DE VISÃO RESTAURADO ---
+            # --- CONTROLE DE VISÃO ---
             st.markdown("<br>", unsafe_allow_html=True)
             modo_exibicao = st.radio("Formato de Exibição", ["Visão Completa", "Visão Gráfica"], horizontal=True)
             st.markdown("<hr style='margin-top: 5px;'>", unsafe_allow_html=True)
@@ -797,22 +823,22 @@ def tela_visao_comercial():
                     with col_g1:
                         st.markdown("**Volume Total por Região (UF)**")
                         df_uf_graf = df_dash.groupby('Estado', as_index=False)['Total Bruto'].sum()
-                        st.bar_chart(df_uf_graf, x='Estado', y='Total Bruto')
+                        st.markdown(render_html_bar_chart(df_uf_graf, 'Estado', 'Total Bruto', '#1976d2'), unsafe_allow_html=True)
                     with col_g2:
                         st.markdown("**Volume Total por Executivo**")
                         df_exec_graf = df_dash.groupby('Vendedor', as_index=False)['Total Bruto'].sum()
-                        st.bar_chart(df_exec_graf, x='Vendedor', y='Total Bruto')
+                        st.markdown(render_html_bar_chart(df_exec_graf, 'Vendedor', 'Total Bruto', '#ff6600'), unsafe_allow_html=True)
 
                     col_g3, col_g4 = st.columns(2)
                     with col_g3:
                         st.markdown("**Volume por Origem de Negócio**")
                         df_origem_graf = df_dash.groupby('Origem', as_index=False)['Total Bruto'].sum()
-                        st.bar_chart(df_origem_graf, x='Origem', y='Total Bruto')
+                        st.markdown(render_html_bar_chart(df_origem_graf, 'Origem', 'Total Bruto', '#2e7d32'), unsafe_allow_html=True)
                     with col_g4:
                         if not df_produtos.empty:
                             st.markdown("**Top 10 Produtos por Volume**")
                             df_prod_graf = df_produtos.sort_values('Total Bruto', ascending=False).head(10)
-                            st.bar_chart(df_prod_graf, x='Produto', y='Total Bruto')
+                            st.markdown(render_html_bar_chart(df_prod_graf, 'Produto', 'Total Bruto', '#8e24aa'), unsafe_allow_html=True)
 
             # === BLOCO 2: PIPELINE ATIVO ===
             st.markdown("<hr>", unsafe_allow_html=True)
@@ -913,11 +939,11 @@ def tela_visao_comercial():
                     with col_g5:
                         st.markdown("**Volume Projetado por Temperatura (Status)**")
                         df_status_graf = df_open.groupby('Status', as_index=False)['Total Projetado'].sum()
-                        st.bar_chart(df_status_graf, x='Status', y='Total Projetado')
+                        st.markdown(render_html_bar_chart(df_status_graf, 'Status', 'Total Projetado', '#d32f2f'), unsafe_allow_html=True)
                     with col_g6:
                         st.markdown("**Volume Projetado por Executivo**")
                         df_exec_aberto_graf = df_open.groupby('Vendedor', as_index=False)['Total Projetado'].sum()
-                        st.bar_chart(df_exec_aberto_graf, x='Vendedor', y='Total Projetado')
+                        st.markdown(render_html_bar_chart(df_exec_aberto_graf, 'Vendedor', 'Total Projetado', '#ed6c02'), unsafe_allow_html=True)
             else:
                 st.info("Não há propostas ativas no funil no momento para o filtro selecionado.")
 
