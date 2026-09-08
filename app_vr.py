@@ -977,6 +977,127 @@ def tela_visao_comercial():
 
     except Exception as e:
         st.error(f"Ocorreu um erro interno na tela comercial. Detalhe técnico: {e}")
+
+def tela_rentabilidade_projetos():
+    import datetime 
+    import pandas as pd
+    from sqlalchemy import text, create_engine
+    import streamlit as st
+    
+    st.markdown("<h1 class='hero-title'>RENTABILIDADE DE PROJETOS</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Análise de Margem: Previsto (Proposta) vs. Realizado (VExpenses)</p>", unsafe_allow_html=True)
+
+    try:
+        hoje = datetime.date.today()
+        c1, c2 = st.columns(2)
+        data_inicio = c1.date_input("Período Início", hoje.replace(day=1), format="DD/MM/YYYY", key="proj_in")
+        data_fim = c2.date_input("Período Fim", hoje, format="DD/MM/YYYY", key="proj_fim")
+
+        engine_bitrix = get_db_engine()
+        url_vex = engine_bitrix.url.set(database='vexpenses')
+        engine_vex = create_engine(url_vex)
+
+        with engine_bitrix.connect() as conn_bitrix:
+            query_bitrix = text("""
+                SELECT n.id::text AS deal_id, 
+                       c.title AS nome_cliente_bitrix,
+                       COALESCE(o.ufcrmvalorprojeto::text, '0') AS previsto_setup_str,
+                       TRIM(CONCAT(COALESCE(ab.name, ''), ' ', COALESCE(ab.lastname, ''))) AS executivo_vendas
+                FROM orcamento_novo AS o
+                JOIN negocio_novo AS n ON n.id = o.dealId
+                LEFT JOIN company_novo AS c ON c.id = n.companyId
+                LEFT JOIN assignedby_novo AS ab ON ab.id = n.assignedById
+                WHERE o.closedate >= :d_inicio AND o.closedate <= :d_fim 
+                AND n.closed = 'Y' 
+                AND n.processovendaid = '2812' 
+            """)
+            df_previsto = pd.read_sql(query_bitrix, conn_bitrix, params={"d_inicio": data_inicio, "d_fim": data_fim})
+
+            if not df_previsto.empty:
+                df_previsto['previsto_setup'] = df_previsto['previsto_setup_str'].apply(parse_currency)
+
+        with engine_vex.connect() as conn_vex:
+            query_vex_agg = text("""
+                SELECT rp.id_project::text AS id_project,
+                       SUM(e.value) AS gasto_realizado
+                FROM public.expenses e
+                JOIN public.relatorioprojeto rp ON e.id = rp.id_expense
+                WHERE e.date >= :d_inicio AND e.date <= :d_fim
+                GROUP BY rp.id_project
+            """)
+            df_realizado = pd.read_sql(query_vex_agg, conn_vex, params={"d_inicio": data_inicio, "d_fim": data_fim})
+
+            query_vex_detalhe = text("""
+                SELECT e.date AS data_despesa,
+                       rp.id_project::text AS id_project,
+                       COALESCE(tm.name, 'Não Identificado') AS colaborador,
+                       e.title AS descricao,
+                       COALESCE(e.value, 0) AS valor,
+                       r.pdf_link
+                FROM public.expenses e
+                JOIN public.relatorioprojeto rp ON e.id = rp.id_expense
+                LEFT JOIN public.reports r ON rp.id_report = r.id
+                LEFT JOIN public.teammembers tm ON e.user_id = tm.id
+                WHERE e.date >= :d_inicio AND e.date <= :d_fim
+                ORDER BY e.date DESC
+            """)
+            df_detalhe = pd.read_sql(query_vex_detalhe, conn_vex, params={"d_inicio": data_inicio, "d_fim": data_fim})
+
+        if not df_previsto.empty:
+            if not df_realizado.empty:
+                df_dash = pd.merge(df_previsto, df_realizado, left_on='deal_id', right_on='id_project', how='left')
+            else:
+                df_dash = df_previsto.copy()
+                df_dash['gasto_realizado'] = 0.0
+
+            df_dash['gasto_realizado'] = df_dash['gasto_realizado'].fillna(0)
+            df_dash['Saldo (Margem)'] = df_dash['previsto_setup'] - df_dash['gasto_realizado']
+            
+            t_previsto = df_dash['previsto_setup'].sum()
+            t_realizado = df_dash['gasto_realizado'].sum()
+            t_saldo = df_dash['Saldo (Margem)'].sum()
+            cor_saldo = "#2e7d32" if t_saldo >= 0 else "#d32f2f"
+
+            with st.expander("📊 Resumo de Margem do Período", expanded=True):
+                col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
+                with col_kpi1: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #1976d2;"><div class="dash-title">Total Orçado</div><div style="font-size:1.5rem; font-weight:900;">R$ {f_br(t_previsto)}</div></div>""", unsafe_allow_html=True)
+                with col_kpi2: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #ff6600;"><div class="dash-title">Total Gasto (Realizado)</div><div style="font-size:1.5rem; font-weight:900;">R$ {f_br(t_realizado)}</div></div>""", unsafe_allow_html=True)
+                with col_kpi3: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid {cor_saldo}; background:#f4f6f9;"><div class="dash-title">Saldo Global</div><div style="font-size:1.5rem; font-weight:900; color:{cor_saldo};">R$ {f_br(t_saldo)}</div></div>""", unsafe_allow_html=True)
+
+            with st.expander("📋 Detalhamento de Margem por Projeto", expanded=True):
+                df_exibicao = df_dash[['nome_cliente_bitrix', 'executivo_vendas', 'previsto_setup', 'gasto_realizado', 'Saldo (Margem)']].copy()
+                df_exibicao.columns = ['Cliente / Projeto', 'Executivo', 'Previsto', 'Realizado', 'Saldo']
+                for col in ['Previsto', 'Realizado', 'Saldo']:
+                    df_exibicao[col] = df_exibicao[col].apply(lambda x: f"R$ {f_br(x)}")
+                st.dataframe(df_exibicao, use_container_width=True, hide_index=True)
+
+            with st.expander("🧾 Auditoria de Lançamentos e Comprovantes", expanded=True):
+                if not df_detalhe.empty:
+                    df_extrato = pd.merge(df_detalhe, df_previsto[['deal_id', 'nome_cliente_bitrix']], left_on='id_project', right_on='deal_id', how='inner')
+                    df_extrato['data_despesa'] = pd.to_datetime(df_extrato['data_despesa']).dt.strftime('%d/%m/%Y')
+                    df_extrato['colaborador'] = df_extrato['colaborador'].astype(str).str.title()
+                    df_extrato['descricao'] = df_extrato['descricao'].astype(str).str.capitalize()
+                    df_extrato['Valor'] = df_extrato['valor'].apply(lambda x: f"R$ {f_br(x)}")
+                    
+                    df_final = df_extrato[['data_despesa', 'colaborador', 'nome_cliente_bitrix', 'descricao', 'Valor', 'pdf_link']]
+                    df_final.columns = ['Data', 'Colaborador', 'Projeto', 'Descrição', 'Valor', 'Comprovante']
+                    
+                    st.dataframe(
+                        df_final,
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "Comprovante": st.column_config.LinkColumn("Visualizar", display_text="Abrir PDF")
+                        }
+                    )
+                else:
+                    st.info("Sem despesas vinculadas a estes projetos no VExpenses.")
+
+        else:
+            st.info("Nenhuma Despesa de Projeto encontrada no Bitrix para este período.")
+
+    except Exception as e:
+        st.error(f"Erro no painel de rentabilidade: {e}")
         
 def tela_controle_despesas():
     import datetime 
