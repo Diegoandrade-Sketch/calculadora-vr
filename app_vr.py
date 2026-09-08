@@ -984,8 +984,9 @@ def tela_rentabilidade_projetos():
     from sqlalchemy import text, create_engine
     import streamlit as st
     
+    # --- CABEÇALHO ---
     st.markdown("<h1 class='hero-title'>RENTABILIDADE DE PROJETOS</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Análise de Margem: Previsto (Proposta) vs. Realizado (VExpenses)</p>", unsafe_allow_html=True)
+    st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Análise Híbrida: Cruzamento Automático e Conciliação Manual</p>", unsafe_allow_html=True)
 
     try:
         hoje = datetime.date.today()
@@ -1003,7 +1004,8 @@ def tela_rentabilidade_projetos():
                 SELECT n.id::text AS deal_id, 
                        c.title AS nome_cliente_bitrix,
                        COALESCE(o.ufcrmvalorprojeto::text, '0') AS previsto_setup_str,
-                       TRIM(CONCAT(COALESCE(ab.name, ''), ' ', COALESCE(ab.lastname, ''))) AS executivo_vendas
+                       TRIM(CONCAT(COALESCE(ab.name, ''), ' ', COALESCE(ab.lastname, ''))) AS executivo_vendas,
+                       o.closedate AS data_fechamento
                 FROM orcamento_novo AS o
                 JOIN negocio_novo AS n ON n.id = o.dealId
                 LEFT JOIN company_novo AS c ON c.id = n.companyId
@@ -1016,10 +1018,9 @@ def tela_rentabilidade_projetos():
 
             if not df_previsto.empty:
                 df_previsto['previsto_setup'] = df_previsto['previsto_setup_str'].apply(parse_currency)
-                # Cria chave de busca padronizada (Tudo maiúsculo e sem espaços sobrando nas pontas)
                 df_previsto['chave_busca'] = df_previsto['nome_cliente_bitrix'].astype(str).str.upper().str.strip()
 
-        # 2. BUSCA O REALIZADO POR NOME DE PROJETO (VEXPENSES)
+        # 2. BUSCA O REALIZADO (VEXPENSES)
         with engine_vex.connect() as conn_vex:
             query_vex_agg = text("""
                 SELECT p.name AS nome_projeto_vex,
@@ -1033,7 +1034,6 @@ def tela_rentabilidade_projetos():
             df_realizado = pd.read_sql(query_vex_agg, conn_vex, params={"d_inicio": data_inicio, "d_fim": data_fim})
 
             if not df_realizado.empty:
-                # Cria a mesma chave de texto padronizada do VExpenses
                 df_realizado['chave_busca'] = df_realizado['nome_projeto_vex'].astype(str).str.upper().str.strip()
 
             query_vex_detalhe = text("""
@@ -1055,7 +1055,7 @@ def tela_rentabilidade_projetos():
 
         if not df_previsto.empty:
             
-            # --- CRUZAMENTO POR NOME (TEXTO) ---
+            # --- MOTOR DE CRUZAMENTO AUTOMÁTICO ---
             if not df_realizado.empty:
                 df_dash = pd.merge(df_previsto, df_realizado, on='chave_busca', how='left')
             else:
@@ -1070,31 +1070,74 @@ def tela_rentabilidade_projetos():
             t_saldo = df_dash['Saldo (Margem)'].sum()
             cor_saldo = "#2e7d32" if t_saldo >= 0 else "#d32f2f"
 
-            with st.expander("📊 Resumo de Margem do Período", expanded=True):
+            # ---------------------------------------------------------
+            # BLOCO 1: VISÃO GERENCIAL (O FUTURO / CRUZAMENTO EXATO)
+            # ---------------------------------------------------------
+            with st.expander("📊 1. Resumo de Margem e Cruzamento Automático", expanded=True):
                 col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
-                with col_kpi1: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #1976d2;"><div class="dash-title">Total Orçado</div><div style="font-size:1.5rem; font-weight:900;">R$ {f_br(t_previsto)}</div></div>""", unsafe_allow_html=True)
-                with col_kpi2: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #ff6600;"><div class="dash-title">Total Gasto (Realizado)</div><div style="font-size:1.5rem; font-weight:900;">R$ {f_br(t_realizado)}</div></div>""", unsafe_allow_html=True)
+                with col_kpi1: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #1976d2;"><div class="dash-title">Total Orçado (Bitrix)</div><div style="font-size:1.5rem; font-weight:900;">R$ {f_br(t_previsto)}</div></div>""", unsafe_allow_html=True)
+                with col_kpi2: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #ff6600;"><div class="dash-title">Total Gasto (Cruzado)</div><div style="font-size:1.5rem; font-weight:900;">R$ {f_br(t_realizado)}</div></div>""", unsafe_allow_html=True)
                 with col_kpi3: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid {cor_saldo}; background:#f4f6f9;"><div class="dash-title">Saldo Global</div><div style="font-size:1.5rem; font-weight:900; color:{cor_saldo};">R$ {f_br(t_saldo)}</div></div>""", unsafe_allow_html=True)
 
-            with st.expander("📋 Detalhamento de Margem por Projeto", expanded=True):
                 df_exibicao = df_dash[['nome_cliente_bitrix', 'executivo_vendas', 'previsto_setup', 'gasto_realizado', 'Saldo (Margem)']].copy()
                 df_exibicao.columns = ['Cliente / Projeto', 'Executivo', 'Previsto', 'Realizado', 'Saldo']
                 for col in ['Previsto', 'Realizado', 'Saldo']:
                     df_exibicao[col] = df_exibicao[col].apply(lambda x: f"R$ {f_br(x)}")
+                
+                st.markdown("**(Apenas projetos com nomes idênticos terão o 'Realizado' preenchido automaticamente aqui)**")
                 st.dataframe(df_exibicao, use_container_width=True, hide_index=True)
 
-            with st.expander("🧾 Auditoria de Lançamentos e Comprovantes", expanded=True):
+            # ---------------------------------------------------------
+            # BLOCO 2: MESA DE CONCILIAÇÃO (O PRESENTE / AUDITORIA MANUAL)
+            # ---------------------------------------------------------
+            st.markdown("<h3 style='margin-top:20px; color:#444;'>Ferramentas de Auditoria</h3>", unsafe_allow_html=True)
+            
+            col_aud1, col_aud2 = st.columns(2)
+            
+            # Lado Esquerdo: Raio-X do Bitrix
+            with col_aud1:
+                with st.expander("🔍 Raio-X da Venda (Previsto no Bitrix)", expanded=True):
+                    projeto_selecionado = st.selectbox(
+                        "Selecione um contrato para auditar o escopo:", 
+                        df_previsto['nome_cliente_bitrix'].tolist()
+                    )
+                    if projeto_selecionado:
+                        detalhe_venda = df_previsto[df_previsto['nome_cliente_bitrix'] == projeto_selecionado].iloc[0]
+                        st.markdown(f"""
+                        **ID do Negócio:** {detalhe_venda['deal_id']}  
+                        **Executivo:** {detalhe_venda['executivo_vendas']}  
+                        **Data Fechamento:** {pd.to_datetime(detalhe_venda['data_fechamento']).strftime('%d/%m/%Y')}  
+                        **Orçamento Aprovado:** R$ {f_br(detalhe_venda['previsto_setup'])}
+                        """)
+                        # Aqui no futuro você pode plugar a query de 'itens do negócio' usando o deal_id
+
+            # Lado Direito: Mapa do VExpenses
+            with col_aud2:
+                with st.expander("🛠️ Mapa de Gastos Soltos (VExpenses)", expanded=True):
+                    if not df_realizado.empty:
+                        df_isolado_vex = df_realizado[['nome_projeto_vex', 'gasto_realizado']].copy()
+                        df_isolado_vex = df_isolado_vex.sort_values(by='gasto_realizado', ascending=False)
+                        df_isolado_vex.columns = ['Nome Cadastrado no Cartão', 'Total Gasto (R$)']
+                        df_isolado_vex['Total Gasto (R$)'] = df_isolado_vex['Total Gasto (R$)'].apply(lambda x: f"R$ {f_br(x)}")
+                        
+                        st.markdown("*(Busque o nome listado aqui para justificar despesas zeradas na tabela acima)*")
+                        st.dataframe(df_isolado_vex, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Nenhuma despesa foi lançada neste período no VExpenses.")
+
+            # ---------------------------------------------------------
+            # BLOCO 3: EXTRATO COMPLETO
+            # ---------------------------------------------------------
+            with st.expander("🧾 Extrato Geral de Comprovantes", expanded=False):
                 if not df_detalhe.empty:
-                    df_detalhe['chave_busca'] = df_detalhe['nome_projeto_vex'].astype(str).str.upper().str.strip()
-                    df_extrato = pd.merge(df_detalhe, df_previsto[['chave_busca', 'nome_cliente_bitrix']], on='chave_busca', how='inner')
-                    
+                    df_extrato = df_detalhe.copy()
                     df_extrato['data_despesa'] = pd.to_datetime(df_extrato['data_despesa']).dt.strftime('%d/%m/%Y')
                     df_extrato['colaborador'] = df_extrato['colaborador'].astype(str).str.title()
                     df_extrato['descricao'] = df_extrato['descricao'].astype(str).str.capitalize()
                     df_extrato['Valor'] = df_extrato['valor'].apply(lambda x: f"R$ {f_br(x)}")
                     
-                    df_final = df_extrato[['data_despesa', 'colaborador', 'nome_cliente_bitrix', 'descricao', 'Valor', 'pdf_link']]
-                    df_final.columns = ['Data', 'Colaborador', 'Projeto', 'Descrição', 'Valor', 'Comprovante']
+                    df_final = df_extrato[['data_despesa', 'colaborador', 'nome_projeto_vex', 'descricao', 'Valor', 'pdf_link']]
+                    df_final.columns = ['Data', 'Colaborador', 'Projeto (VExpenses)', 'Descrição', 'Valor', 'Comprovante']
                     
                     st.dataframe(
                         df_final,
@@ -1105,7 +1148,7 @@ def tela_rentabilidade_projetos():
                         }
                     )
                 else:
-                    st.info("Sem despesas vinculadas a estes projetos no VExpenses.")
+                    st.info("Sem comprovantes para exibir no período.")
 
         else:
             st.info("Nenhuma Despesa de Projeto encontrada no Bitrix para este período.")
