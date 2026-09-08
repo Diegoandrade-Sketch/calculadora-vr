@@ -1023,6 +1023,9 @@ def modal_visualizar_pdf(url_pdf):
         return
         
     try:
+        import requests
+        import base64
+        
         # Extrai os bytes do arquivo silenciosamente
         response = requests.get(url_pdf)
         response.raise_for_status()
@@ -1036,9 +1039,9 @@ def modal_visualizar_pdf(url_pdf):
             mime="application/pdf"
         )
         
-        # Renderizador visual interno
+        # TROCA DO IFRAME PELO EMBED (Bypass do bloqueio do Edge/Chrome)
         base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
-        pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600" type="application/pdf"></iframe>'
+        pdf_display = f'<embed src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600" type="application/pdf">'
         st.markdown(pdf_display, unsafe_allow_html=True)
         
     except Exception as e:
