@@ -1,8 +1,8 @@
-streamlit==1.49.1
+streamlit
 pandas
 sqlalchemy
 psycopg2-binary
 fpdf2
-starlette==0.47.2
-uvicorn==0.35.0
+starlette
+uvicorn
 openpyxl
