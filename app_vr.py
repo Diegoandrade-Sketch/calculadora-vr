@@ -2504,6 +2504,21 @@ def aplicativo_principal():
     elif tela == "Controle de Despesas":
         tela_controle_despesas()
 
+# Alimenta o motor central com a aba selecionada nas gavetas
+tela = st.session_state.aba_atual
+
+# --- LÓGICA DE ROTEAMENTO DAS TELAS ---
+
+if tela == "Controle de Despesas":
+    # Chama a função da tela 1 (o Espelho do VExpenses com filtros)
+    tela_controle_despesas() 
+
+elif tela == "Rentabilidade de Projetos":
+    # Chama a função da tela 2 (o Cruzamento Bitrix x VExpenses com o PDF)
+    tela_rentabilidade_projetos()
+
+# ... (aqui continuam as suas outras telas, como if tela == "Diagnóstico": etc) ...
+
 # ==========================================
 # ROTEADOR DE SEGURANÇA
 # ==========================================
