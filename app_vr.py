@@ -1326,7 +1326,7 @@ def aplicativo_principal():
                 st.session_state.aba_atual = label
                 st.rerun()
 
-        # ---------------------------------------------
+       # ---------------------------------------------
         # CONSTRUÇÃO DO MENU EM GAVETAS (EXPANDERS)
         # ---------------------------------------------
         if role == "consultor":
@@ -1353,6 +1353,13 @@ def aplicativo_principal():
                 render_nav_button("Visão Comercial")
                 render_nav_button("Controle de Despesas")
                 
+            # ==========================================
+            # NOVO MENU DE PROJETOS ADICIONADO AQUI
+            # ==========================================
+            with st.expander("Projetos", expanded=True):
+                render_nav_button("Rentabilidade de Projetos")
+            # ==========================================
+                
             if not simulando:
                 if role == "admin":
                     # Gavetas gerenciais iniciam fechadas para não poluir a visão
@@ -1367,27 +1374,6 @@ def aplicativo_principal():
                 elif role == "projetos":
                     with st.expander("Backoffice e Gestão", expanded=False):
                         render_nav_button("Painel Admin")
-
-        else:
-            simulando = st.toggle("Simular Visão Vendedor", key="toggle_simular_vendedor") if role in ["admin", "projetos"] else False
-            
-            with st.expander("Operação Comercial", expanded=True):
-                render_nav_button("Início")
-                render_nav_button("Diagnóstico")
-                render_nav_button("Gerador de Proposta")
-                render_nav_button("Minhas Propostas")
-                render_nav_button("Consulta de Preco")
-                
-            with st.expander("Inteligência Estratégica", expanded=True):
-                render_nav_button("Visão Comercial")
-                render_nav_button("Controle de Despesas") # -> Esta é a sua tela de auditoria/espelho
-                
-            # ==========================================
-            # NOVO MENU ADICIONADO AQUI!
-            # ==========================================
-            with st.expander("Projetos", expanded=True):
-                render_nav_button("Rentabilidade de Projetos") # -> Esta é a tela nova do cruzamento
-            # ==========================================
 
         # Alimenta o motor central com a aba selecionada nas gavetas
         tela = st.session_state.aba_atual
