@@ -13,7 +13,7 @@ import html
 import hashlib
 
 # ==========================================
-# CONFIGURAÇÕES INICIAIS E CONTROLE DE ESTADO
+# CONFIGURAÇÕES INICIAIS E CONTROLE DE ESTADO 
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
