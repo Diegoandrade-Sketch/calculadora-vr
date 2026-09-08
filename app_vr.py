@@ -13,7 +13,7 @@ import html
 import hashlib
 
 # ==========================================
-# CONFIGURAÇÕES INICIAIS E CONTROLE DE ESTADO
+# CONFIGURAÇÕES INICIAIS E CONTROLE DE ESTADO 
 # ==========================================
 st.set_page_config(page_title="VR Software | Sales Intelligence", layout="wide")
 
@@ -981,102 +981,151 @@ def tela_visao_comercial():
 def tela_controle_despesas():
     import datetime 
     import pandas as pd
-    from sqlalchemy import text
-
+    from sqlalchemy import text, create_engine
+    
     st.markdown("<h1 class='hero-title'>CONTROLE DE DESPESAS</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Análise de Margem: Previsto (Proposta) vs. Realizado (VExpenses)</p>", unsafe_allow_html=True)
+    st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Auditoria de Gastos e Reembolsos (VExpenses)</p>", unsafe_allow_html=True)
 
     try:
         hoje = datetime.date.today()
-        c1, c2 = st.columns(2)
+        
+        # --- FILTROS DE DATA & OPÇÕES RÁPIDAS ---
+        c1, c2, c3 = st.columns([1, 1, 2])
         data_inicio = c1.date_input("Período Início", hoje.replace(day=1), format="DD/MM/YYYY", key="desp_in")
         data_fim = c2.date_input("Período Fim", hoje, format="DD/MM/YYYY", key="desp_fim")
-
-        # ==========================================
-        # 1. ÁREA DE BUSCA NO BANCO DE DADOS
-        # ==========================================
-        from sqlalchemy import create_engine
+        
+        # Toggle para ignorar percurso na base
+        ocultar_percurso = st.toggle("🚫 Ocultar despesas de 'Percurso'", value=False)
 
         engine_bitrix = get_db_engine()
-        
-        # Clona a conexão atual e troca apenas o nome do banco para 'vexpenses'
         url_vex = engine_bitrix.url.set(database='vexpenses')
         engine_vex = create_engine(url_vex)
 
-        # PASSO A: Conecta no banco BITRIX e puxa o previsto
-        with engine_bitrix.connect() as conn_bitrix:
-            query_bitrix = text("""
-                SELECT n.id AS deal_id, 
-                       c.title AS nome_cliente_bitrix,
-                       COALESCE(o.ufcrmvalorprojeto::text, '0') AS previsto_setup_str,
-                       TRIM(CONCAT(COALESCE(ab.name, ''), ' ', COALESCE(ab.lastname, ''))) AS executivo_vendas
-                FROM orcamento_novo AS o
-                JOIN negocio_novo AS n ON n.id = o.dealId
-                LEFT JOIN company_novo AS c ON c.id = n.companyId
-                LEFT JOIN assignedby_novo AS ab ON ab.id = n.assignedById
-                WHERE o.closedate >= :d_inicio AND o.closedate <= :d_fim AND n.closed = 'Y'
-            """)
-            df_previsto = pd.read_sql(query_bitrix, conn_bitrix, params={"d_inicio": data_inicio, "d_fim": data_fim})
-
-            if not df_previsto.empty:
-                df_previsto['previsto_setup'] = df_previsto['previsto_setup_str'].apply(parse_currency)
-
-        # PASSO B: Conecta no banco VEXPENSES e puxa o realizado
         with engine_vex.connect() as conn_vex:
-            query_vexpenses = text("""
-                SELECT p.name AS nome_projeto_vexpenses,
-                       SUM(e.value) AS gasto_realizado,
-                       COUNT(e.id) AS qtd_despesas
+            query_vex = text("""
+                SELECT e.date AS data_despesa,
+                       COALESCE(tm.name, 'Usuário Não Identificado') AS colaborador,
+                       COALESCE(p.name, 'Sem Projeto Vinculado') AS projeto,
+                       COALESCE(et.description, 'Outros') AS tipo_despesa,
+                       e.title AS descricao,
+                       COALESCE(e.value, 0) AS valor,
+                       e.reimbursable
                 FROM public.expenses e
-                JOIN public.relatorioprojeto rp ON e.id = rp.id_expense
-                JOIN public.projects p ON p.id = rp.id_project
+                LEFT JOIN public.teammembers tm ON e.user_id = tm.id
+                LEFT JOIN public.relatorioprojeto rp ON e.id = rp.id_expense
+                LEFT JOIN public.projects p ON p.id = rp.id_project
+                LEFT JOIN public.expensestype et ON e.expense_type_id = et.id
                 WHERE e.date >= :d_inicio AND e.date <= :d_fim
-                GROUP BY p.name
+                ORDER BY e.date DESC
             """)
-            df_realizado = pd.read_sql(query_vexpenses, conn_vex, params={"d_inicio": data_inicio, "d_fim": data_fim})
+            df_base = pd.read_sql(query_vex, conn_vex, params={"d_inicio": data_inicio, "d_fim": data_fim})
 
-        # ==========================================
-        # 2. MOTOR DE CRUZAMENTO (NORMALIZAÇÃO)
-        # ==========================================
-        if not df_previsto.empty and not df_realizado.empty:
-            # Padroniza os textos: tudo minúsculo e sem espaços sobrando nas pontas
-            df_previsto['chave_cruzamento'] = df_previsto['nome_cliente_bitrix'].fillna('').astype(str).str.lower().str.strip()
-            df_realizado['chave_cruzamento'] = df_realizado['nome_projeto_vexpenses'].fillna('').astype(str).str.lower().str.strip()
-
-            # Une as tabelas baseadas no nome normalizado
-            df_dash = pd.merge(df_previsto, df_realizado, on='chave_cruzamento', how='left')
-            df_dash['gasto_realizado'] = df_dash['gasto_realizado'].fillna(0)
-            df_dash['Saldo (Lucro/Prejuízo)'] = df_dash['previsto_setup'] - df_dash['gasto_realizado']
+        if not df_base.empty:
             
-            t_previsto = df_dash['previsto_setup'].sum()
-            t_realizado = df_dash['gasto_realizado'].sum()
-            t_saldo = df_dash['Saldo (Lucro/Prejuízo)'].sum()
-            cor_saldo = "#2e7d32" if t_saldo >= 0 else "#d32f2f" # Verde se lucro, Vermelho se prejuízo
+            # --- 1. PADRONIZAÇÃO ESTÉTICA (Title Case) ---
+            df_base['colaborador'] = df_base['colaborador'].astype(str).str.title()
+            df_base['projeto'] = df_base['projeto'].astype(str).str.title()
+            df_base['tipo_despesa'] = df_base['tipo_despesa'].astype(str).str.title()
+            df_base['descricao'] = df_base['descricao'].astype(str).str.capitalize()
+            
+            # --- 2. DIVISÃO DE EQUIPES ---
+            time_comercial = [
+                'Diego Andrade', 'Diego Cavalcanti', 'Ricardo Araujo', 'Artur Neto', 
+                'Bruno Costa', 'Claudio Anjos', 'João Marcos', 'Hermani Souza', 'Matheus Zimke'
+            ]
+            time_comercial_formatado = [nome.title() for nome in time_comercial]
+            df_base['equipe'] = df_base['colaborador'].apply(lambda x: "Comercial" if x in time_comercial_formatado else "Projetos")
 
-            # ==========================================
-            # 3. INTERFACE DE EXIBIÇÃO (PADRÃO VISÃO COMERCIAL)
-            # ==========================================
-            with st.expander("📊 Resumo de Margem do Período", expanded=True):
+            # Tratamento da flag reembolsável
+            df_base['reembolsavel_str'] = df_base['reimbursable'].apply(lambda x: "Sim" if x in [True, 'true', 'True', 1, '1', 't', 'T'] else "Não")
+
+            # --- 3. FILTROS VISUAIS ---
+            st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
+            col_f0, col_f1, col_f2, col_f3 = st.columns(4)
+            
+            equipe_list = ["Todos", "Comercial", "Projetos"]
+            resp_list = ["Todos"] + sorted(df_base['colaborador'].unique().tolist())
+            tipo_list = ["Todos"] + sorted(df_base['tipo_despesa'].unique().tolist())
+            
+            equipe_sel = col_f0.selectbox("Filtrar Equipe", equipe_list)
+            resp_sel = col_f1.selectbox("Responsável", resp_list)
+            tipo_sel = col_f2.selectbox("Categoria", tipo_list)
+            reemb_sel = col_f3.selectbox("Reembolsável?", ["Todos", "Sim", "Não"])
+            
+            # --- 4. APLICAÇÃO DOS FILTROS ---
+            df_despesas = df_base.copy()
+            
+            if ocultar_percurso:
+                df_despesas = df_despesas[~df_despesas['tipo_despesa'].str.contains('Percurso', case=False, na=False)]
+            if equipe_sel != "Todos":
+                df_despesas = df_despesas[df_despesas['equipe'] == equipe_sel]
+            if resp_sel != "Todos":
+                df_despesas = df_despesas[df_despesas['colaborador'] == resp_sel]
+            if tipo_sel != "Todos":
+                df_despesas = df_despesas[df_despesas['tipo_despesa'] == tipo_sel]
+            if reemb_sel != "Todos":
+                df_despesas = df_despesas[df_despesas['reembolsavel_str'] == reemb_sel]
+            
+            if df_despesas.empty:
+                st.warning("Nenhuma despesa encontrada para os filtros selecionados.")
+                return
+
+            # --- 5. CÁLCULOS KPI ESTRATÉGICOS ---
+            total_gasto = df_despesas['valor'].sum()
+            qtd_lancamentos = len(df_despesas)
+            
+            # Calcula o ticket com base nas pessoas únicas que viajaram/gastaram no período
+            qtd_viajantes = df_despesas['colaborador'].nunique()
+            custo_medio_colab = total_gasto / qtd_viajantes if qtd_viajantes > 0 else 0
+            
+            # --- BLOCO 1: RESUMO ---
+            with st.expander("Resumo de Gastos do Período", expanded=True):
                 col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
-                with col_kpi1: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #1976d2;"><div class="dash-title">Total Orçado (Vendido)</div><div style="font-size:1.5rem; font-weight:900;">R$ {f_br(t_previsto)}</div></div>""", unsafe_allow_html=True)
-                with col_kpi2: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #ff6600;"><div class="dash-title">Total Gasto (VExpenses)</div><div style="font-size:1.5rem; font-weight:900;">R$ {f_br(t_realizado)}</div></div>""", unsafe_allow_html=True)
-                with col_kpi3: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid {cor_saldo}; background:#f4f6f9;"><div class="dash-title">Saldo (Margem)</div><div style="font-size:1.5rem; font-weight:900; color:{cor_saldo};">R$ {f_br(t_saldo)}</div></div>""", unsafe_allow_html=True)
+                with col_kpi1: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #d32f2f;"><div class="dash-title">Custo Total</div><div style="font-size:1.5rem; font-weight:900; color:#d32f2f;">R$ {f_br(total_gasto)}</div></div>""", unsafe_allow_html=True)
+                with col_kpi2: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #1976d2;"><div class="dash-title">Volume de Lançamentos</div><div style="font-size:1.5rem; font-weight:900;">{qtd_lancamentos} lançamentos</div></div>""", unsafe_allow_html=True)
+                with col_kpi3: st.markdown(f"""<div class="dash-card" style="border-top: 5px solid #ff6600; background:#f4f6f9;"><div class="dash-title">Custo Médio por Executivo</div><div style="font-size:1.5rem; font-weight:900;">R$ {f_br(custo_medio_colab)}</div></div>""", unsafe_allow_html=True)
 
-            with st.expander("📋 Detalhamento por Projeto (Previsto vs Realizado)", expanded=True):
-                df_exibicao = df_dash[['nome_cliente_bitrix', 'executivo_vendas', 'previsto_setup', 'gasto_realizado', 'Saldo (Lucro/Prejuízo)']].copy()
-                df_exibicao.columns = ['Cliente / Projeto', 'Executivo', 'Previsto (R$)', 'Realizado (R$)', 'Saldo (R$)']
+            # --- BLOCO 2: MATRIZ DE DESPESAS ---
+            with st.expander("Matriz de Despesas (Responsável x Categoria)", expanded=True):
+                df_pivot = pd.pivot_table(
+                    df_despesas, 
+                    values='valor', 
+                    index='colaborador', 
+                    columns='tipo_despesa', 
+                    aggfunc='sum', 
+                    fill_value=0
+                )
                 
-                # Formatação visual de moeda
-                for col in ['Previsto (R$)', 'Realizado (R$)', 'Saldo (R$)']:
-                    df_exibicao[col] = df_exibicao[col].apply(lambda x: f"R$ {f_br(x)}")
+                df_pivot['Total Geral'] = df_pivot.sum(axis=1)
+                df_pivot = df_pivot.sort_values(by='Total Geral', ascending=False)
                 
-                st.dataframe(df_exibicao, use_container_width=True, hide_index=True)
+                # Mascara os zeros com traço para visual limpo
+                for col in df_pivot.columns:
+                    df_pivot[col] = df_pivot[col].apply(lambda x: f"R$ {f_br(x)}" if x > 0 else "-")
+                    
+                st.dataframe(df_pivot, use_container_width=True)
+
+            # --- BLOCO 3: EXTRATO COMPLETO ---
+            with st.expander("Extrato Completo de Lançamentos", expanded=True):
+                df_visual = df_despesas.copy()
+                df_visual['data_despesa'] = pd.to_datetime(df_visual['data_despesa']).dt.strftime('%d/%m/%Y')
+                
+                df_visual = df_visual[['data_despesa', 'equipe', 'colaborador', 'tipo_despesa', 'projeto', 'descricao', 'reembolsavel_str', 'valor']]
+                df_visual.columns = ['Data', 'Equipe', 'Responsável', 'Tipo', 'Projeto / Cliente', 'Descrição do Gasto', 'Reembolsável?', 'Valor Bruto']
+                
+                df_visual['Valor (R$)'] = df_visual['Valor Bruto'].apply(lambda x: f"R$ {f_br(x)}")
+                
+                st.dataframe(
+                    df_visual[['Data', 'Equipe', 'Responsável', 'Tipo', 'Projeto / Cliente', 'Descrição do Gasto', 'Reembolsável?', 'Valor (R$)']], 
+                    use_container_width=True, 
+                    hide_index=True
+                )
 
         else:
-            st.info("Não há dados suficientes no período para cruzar as informações do Bitrix com o VExpenses.")
+            st.info("Nenhum lançamento financeiro encontrado no VExpenses para este período.")
 
     except Exception as e:
-        st.error(f"Erro ao gerar painel de despesas: {e}")   
+        st.error(f"Erro ao gerar painel espelho do VExpenses: {e}")
         
 def tela_comissionamento():
     st.markdown("<h1 class='hero-title'>COMISSIONAMENTO</h1>", unsafe_allow_html=True)
