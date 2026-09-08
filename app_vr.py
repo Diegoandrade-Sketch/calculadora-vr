@@ -1064,11 +1064,33 @@ def modal_visualizar_pdf(url_pdf):
 # 2. TELA PRINCIPAL (RENTABILIDADE)
 # ==========================================
 def tela_rentabilidade_projetos():
+    import datetime 
+    import pandas as pd
+    import re
+    from sqlalchemy import text, create_engine
+    import streamlit as st
+    
+    # Tenta importar a biblioteca de similaridade (Fuzzy)
+    try:
+        from thefuzz import process
+    except ImportError:
+        st.error("Biblioteca 'thefuzz' não encontrada. Adicione ao requirements.txt.")
+        return
+
+    # --- MOTOR DE FAXINA DE TEXTO (Apenas para esta tela) ---
+    def limpar_nome_projeto(texto):
+        if not isinstance(texto, str): return ""
+        t = texto.upper()
+        t = re.sub(r'\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}', '', t) # Remove CNPJ
+        t = re.sub(r'\[.*?\]', '', t) # Remove conteúdo entre colchetes ex: [PE]
+        t = re.sub(r'\b(LTDA|ME|EPP|SA|S\.A\.|S/A)\b', '', t) # Remove termos jurídicos
+        t = re.sub(r'[^A-Z0-9 ]', ' ', t) # Remove barras, hífens e pontuações
+        return ' '.join(t.split()) # Remove espaços duplos e laterais
+
     st.markdown("<h1 class='hero-title'>RENTABILIDADE DE PROJETOS</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Conciliação Financeira Híbrida e Auditoria de Contratos</p>", unsafe_allow_html=True)
+    st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Conciliação Híbrida com Motor de Similaridade (Fuzzy Matching)</p>", unsafe_allow_html=True)
 
     try:
-        # --- BLOCO 1: FILTROS GERENCIAIS ---
         with st.container():
             hoje = datetime.date.today()
             f1, f2, f3, f4, f5 = st.columns([1.5, 1.5, 2, 2, 2])
@@ -1076,7 +1098,7 @@ def tela_rentabilidade_projetos():
             data_inicio = f1.date_input("Início", hoje.replace(day=1), format="DD/MM/YYYY", key="proj_in")
             data_fim = f2.date_input("Fim", hoje, format="DD/MM/YYYY", key="proj_fim")
             busca_texto = f3.text_input("Buscar Projeto (Texto)")
-            filtro_executivo = f4.selectbox("Executivo", ["Todos"]) # Alimentado depois da query
+            filtro_executivo = f4.selectbox("Executivo", ["Todos"]) 
             filtro_margem = f5.selectbox("Status da Margem", ["Todos", "Prejuízo", "Lucro"])
 
         engine_bitrix = get_db_engine()
@@ -1103,7 +1125,8 @@ def tela_rentabilidade_projetos():
             
             if not df_previsto.empty:
                 df_previsto['previsto_setup'] = df_previsto['previsto_setup_str'].apply(parse_currency)
-                df_previsto['chave_busca'] = df_previsto['nome_cliente_bitrix'].astype(str).str.upper().str.strip()
+                # Aplica a faxina no Bitrix
+                df_previsto['nome_limpo_bitrix'] = df_previsto['nome_cliente_bitrix'].apply(limpar_nome_projeto)
 
         # BUSCA VEXPENSES
         with engine_vex.connect() as conn_vex:
@@ -1116,8 +1139,10 @@ def tela_rentabilidade_projetos():
                 GROUP BY p.name
             """)
             df_realizado = pd.read_sql(query_vex_agg, conn_vex, params={"d_inicio": data_inicio, "d_fim": data_fim})
+            
             if not df_realizado.empty:
-                df_realizado['chave_busca'] = df_realizado['nome_projeto_vex'].astype(str).str.upper().str.strip()
+                # Aplica a faxina no VExpenses
+                df_realizado['nome_limpo_vex'] = df_realizado['nome_projeto_vex'].apply(limpar_nome_projeto)
 
             query_vex_detalhe = text("""
                 SELECT e.date AS data_despesa,
@@ -1138,9 +1163,22 @@ def tela_rentabilidade_projetos():
 
         if not df_previsto.empty:
             
-            # CRUZAMENTO BASE
+            # --- MOTOR DE APROXIMAÇÃO (FUZZY MATCHING) ---
             if not df_realizado.empty:
-                df_dash = pd.merge(df_previsto, df_realizado, on='chave_busca', how='left')
+                lista_vex_limpa = df_realizado['nome_limpo_vex'].dropna().unique().tolist()
+                dicionario_matches = {}
+                
+                # Compara cada nome do Bitrix com todos do VExpenses
+                for nome_bitrix in df_previsto['nome_limpo_bitrix'].dropna().unique():
+                    if lista_vex_limpa:
+                        # Retorna o melhor match e a pontuação de similaridade (0 a 100)
+                        melhor_match, pontuacao = process.extractOne(nome_bitrix, lista_vex_limpa)
+                        if pontuacao >= 80:  # Linha de corte: só cruza se for 80%+ igual
+                            dicionario_matches[nome_bitrix] = melhor_match
+                
+                # Cria a ponte de ligação baseada nos matches aprovados
+                df_previsto['chave_fuzzy'] = df_previsto['nome_limpo_bitrix'].map(dicionario_matches)
+                df_dash = pd.merge(df_previsto, df_realizado, left_on='chave_fuzzy', right_on='nome_limpo_vex', how='left')
             else:
                 df_dash = df_previsto.copy()
                 df_dash['gasto_realizado'] = 0.0
@@ -1159,7 +1197,7 @@ def tela_rentabilidade_projetos():
             if filtro_margem == "Prejuízo": df_dash = df_dash[df_dash['Saldo (Margem)'] < 0]
             elif filtro_margem == "Lucro": df_dash = df_dash[df_dash['Saldo (Margem)'] >= 0]
 
-            # --- BLOCO 2: MESA DE CRUZAMENTO AUTOMÁTICO ---
+            # --- BLOCO 2: VISÃO CONSOLIDADA ---
             with st.expander("📊 Visão Consolidada de Margem", expanded=True):
                 t_prev = df_dash['previsto_setup'].sum()
                 t_real = df_dash['gasto_realizado'].sum()
@@ -1186,7 +1224,7 @@ def tela_rentabilidade_projetos():
                         id_alvo = df_dash[df_dash['nome_cliente_bitrix'] == projeto_alvo].iloc[0]['deal_id']
                         modal_detalhe_bitrix(id_alvo, projeto_alvo, engine_bitrix)
 
-            # --- BLOCO 3: EXTRATO E AUDITORIA (VEXPENSES) ---
+            # --- BLOCO 3: EXTRATO VEXPENSES ---
             st.markdown("<h3 style='margin-top:20px; color:#444;'>Conciliação Manual e Comprovantes</h3>", unsafe_allow_html=True)
             col_v1, col_v2 = st.columns([1, 2])
             
@@ -1203,24 +1241,20 @@ def tela_rentabilidade_projetos():
             with col_v2:
                 with st.expander("🧾 Extrato de Despesas", expanded=True):
                     if not df_detalhe.empty:
-                        # Prepara lista para o seletor do balão
                         opcoes_despesa = []
                         for _, row in df_detalhe.iterrows():
                             texto_opcao = f"{row['data_despesa']} | {row['colaborador']} | R$ {f_br(row['valor'])} | {row['nome_projeto_vex']}"
                             opcoes_despesa.append({"label": texto_opcao, "link": row['pdf_link']})
                         
                         df_acoes = pd.DataFrame(opcoes_despesa)
-                        
-                        # Interface de abertura do PDF
                         c_sel, c_btn = st.columns([4, 1])
                         with c_sel: despesa_alvo = st.selectbox("Selecione a despesa para ver o comprovante:", df_acoes['label'].tolist())
                         with c_btn: 
-                            st.write("") # Espaçamento
+                            st.write("") 
                             if st.button("Ver PDF", width="stretch") and despesa_alvo:
                                 link_alvo = df_acoes[df_acoes['label'] == despesa_alvo].iloc[0]['link']
                                 modal_visualizar_pdf(link_alvo)
 
-                        # Tabela Visual
                         df_extrato = df_detalhe.copy()
                         df_extrato['data_despesa'] = pd.to_datetime(df_extrato['data_despesa']).dt.strftime('%d/%m/%Y')
                         df_extrato['Valor'] = df_extrato['valor'].apply(lambda x: f"R$ {f_br(x)}")
