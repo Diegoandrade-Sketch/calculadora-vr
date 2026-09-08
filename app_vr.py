@@ -1024,29 +1024,29 @@ def modal_visualizar_pdf(url_pdf):
         
     try:
         import requests
-        import base64
         
-        # Extrai os bytes do arquivo silenciosamente
+        # Prepara o arquivo para o botão de download manual
         response = requests.get(url_pdf)
         response.raise_for_status()
         pdf_bytes = response.content
         
-        # Botão intencional de download
-        st.download_button(
-            label="📥 Baixar Arquivo (Download)",
-            data=pdf_bytes,
-            file_name="comprovante_auditoria.pdf",
-            mime="application/pdf"
-        )
+        st.info("O navegador bloqueou a exibição de PDFs embutidos por segurança. Escolha como deseja visualizar:")
         
-        # TROCA DO IFRAME PELO EMBED (Bypass do bloqueio do Edge/Chrome)
-        base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
-        pdf_display = f'<embed src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600" type="application/pdf">'
-        st.markdown(pdf_display, unsafe_allow_html=True)
-        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.download_button(
+                label="📥 Baixar Arquivo (PDF)",
+                data=pdf_bytes,
+                file_name="comprovante.pdf",
+                mime="application/pdf",
+                width="stretch"
+            )
+        with col2:
+            st.link_button("🔗 Abrir em Nova Aba Segura", url_pdf, width="stretch")
+            
     except Exception as e:
-        st.error("Não foi possível renderizar o PDF internamente.")
-        st.markdown(f"[🔗 Abrir arquivo direto no navegador]({url_pdf})")
+        st.error("Erro ao processar o arquivo diretamente.")
+        st.markdown(f"[🔗 Acessar link original do VExpenses]({url_pdf})")
 
 # ==========================================
 # 2. TELA PRINCIPAL (RENTABILIDADE)
