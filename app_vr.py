@@ -997,6 +997,7 @@ def tela_rentabilidade_projetos():
         url_vex = engine_bitrix.url.set(database='vexpenses')
         engine_vex = create_engine(url_vex)
 
+        # 1. BUSCA O PREVISTO (BITRIX)
         with engine_bitrix.connect() as conn_bitrix:
             query_bitrix = text("""
                 SELECT n.id::text AS deal_id, 
@@ -1015,27 +1016,36 @@ def tela_rentabilidade_projetos():
 
             if not df_previsto.empty:
                 df_previsto['previsto_setup'] = df_previsto['previsto_setup_str'].apply(parse_currency)
+                # Cria chave de busca padronizada (Tudo maiúsculo e sem espaços sobrando nas pontas)
+                df_previsto['chave_busca'] = df_previsto['nome_cliente_bitrix'].astype(str).str.upper().str.strip()
 
+        # 2. BUSCA O REALIZADO POR NOME DE PROJETO (VEXPENSES)
         with engine_vex.connect() as conn_vex:
             query_vex_agg = text("""
-                SELECT rp.id_project::text AS id_project,
+                SELECT p.name AS nome_projeto_vex,
                        SUM(e.value) AS gasto_realizado
                 FROM public.expenses e
                 JOIN public.relatorioprojeto rp ON e.id = rp.id_expense
+                JOIN public.projects p ON rp.id_project = p.id
                 WHERE e.date >= :d_inicio AND e.date <= :d_fim
-                GROUP BY rp.id_project
+                GROUP BY p.name
             """)
             df_realizado = pd.read_sql(query_vex_agg, conn_vex, params={"d_inicio": data_inicio, "d_fim": data_fim})
 
+            if not df_realizado.empty:
+                # Cria a mesma chave de texto padronizada do VExpenses
+                df_realizado['chave_busca'] = df_realizado['nome_projeto_vex'].astype(str).str.upper().str.strip()
+
             query_vex_detalhe = text("""
                 SELECT e.date AS data_despesa,
-                       rp.id_project::text AS id_project,
+                       p.name AS nome_projeto_vex,
                        COALESCE(tm.name, 'Não Identificado') AS colaborador,
                        e.title AS descricao,
                        COALESCE(e.value, 0) AS valor,
                        r.pdf_link
                 FROM public.expenses e
                 JOIN public.relatorioprojeto rp ON e.id = rp.id_expense
+                JOIN public.projects p ON rp.id_project = p.id
                 LEFT JOIN public.reports r ON rp.id_report = r.id
                 LEFT JOIN public.teammembers tm ON e.user_id = tm.id
                 WHERE e.date >= :d_inicio AND e.date <= :d_fim
@@ -1044,8 +1054,10 @@ def tela_rentabilidade_projetos():
             df_detalhe = pd.read_sql(query_vex_detalhe, conn_vex, params={"d_inicio": data_inicio, "d_fim": data_fim})
 
         if not df_previsto.empty:
+            
+            # --- CRUZAMENTO POR NOME (TEXTO) ---
             if not df_realizado.empty:
-                df_dash = pd.merge(df_previsto, df_realizado, left_on='deal_id', right_on='id_project', how='left')
+                df_dash = pd.merge(df_previsto, df_realizado, on='chave_busca', how='left')
             else:
                 df_dash = df_previsto.copy()
                 df_dash['gasto_realizado'] = 0.0
@@ -1073,7 +1085,9 @@ def tela_rentabilidade_projetos():
 
             with st.expander("🧾 Auditoria de Lançamentos e Comprovantes", expanded=True):
                 if not df_detalhe.empty:
-                    df_extrato = pd.merge(df_detalhe, df_previsto[['deal_id', 'nome_cliente_bitrix']], left_on='id_project', right_on='deal_id', how='inner')
+                    df_detalhe['chave_busca'] = df_detalhe['nome_projeto_vex'].astype(str).str.upper().str.strip()
+                    df_extrato = pd.merge(df_detalhe, df_previsto[['chave_busca', 'nome_cliente_bitrix']], on='chave_busca', how='inner')
+                    
                     df_extrato['data_despesa'] = pd.to_datetime(df_extrato['data_despesa']).dt.strftime('%d/%m/%Y')
                     df_extrato['colaborador'] = df_extrato['colaborador'].astype(str).str.title()
                     df_extrato['descricao'] = df_extrato['descricao'].astype(str).str.capitalize()
