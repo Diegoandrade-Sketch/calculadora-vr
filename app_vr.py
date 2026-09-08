@@ -1024,29 +1024,41 @@ def modal_visualizar_pdf(url_pdf):
         
     try:
         import requests
+        import fitz  # Biblioteca do PyMuPDF
+        from PIL import Image
+        import io
+        import streamlit as st
         
-        # Prepara o arquivo para o botão de download manual
+        # 1. O Python baixa os bytes do PDF silenciosamente
         response = requests.get(url_pdf)
         response.raise_for_status()
         pdf_bytes = response.content
         
-        st.info("O navegador bloqueou a exibição de PDFs embutidos por segurança. Escolha como deseja visualizar:")
+        # 2. Converte a primeira página em Imagem (PNG)
+        doc = fitz.open("pdf", pdf_bytes)
+        page = doc.load_page(0) 
+        # Aplica um zoom de 2x (Matrix) para a nota fiscal não ficar embaçada
+        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2)) 
+        img_data = pix.tobytes("png")
+        img = Image.open(io.BytesIO(img_data))
         
-        col1, col2 = st.columns(2)
-        with col1:
-            st.download_button(
-                label="📥 Baixar Arquivo (PDF)",
-                data=pdf_bytes,
-                file_name="comprovante.pdf",
-                mime="application/pdf",
-                width="stretch"
-            )
-        with col2:
-            st.link_button("🔗 Abrir em Nova Aba Segura", url_pdf, width="stretch")
+        # 3. Exibe a imagem renderizada (Inquebrável pelos navegadores)
+        st.image(img, caption="Visualização do Comprovante (Página 1)")
+        
+        # 4. Mantém a opção do gestor baixar o arquivo original se precisar
+        st.download_button(
+            label="📥 Baixar PDF Original",
+            data=pdf_bytes,
+            file_name="comprovante.pdf",
+            mime="application/pdf",
+            width="stretch"
+        )
             
+    except ImportError:
+        st.error("Biblioteca 'PyMuPDF' não encontrada. Adicione ao requirements.txt.")
     except Exception as e:
-        st.error("Erro ao processar o arquivo diretamente.")
-        st.markdown(f"[🔗 Acessar link original do VExpenses]({url_pdf})")
+        st.error("Erro ao converter o comprovante em imagem.")
+        st.markdown(f"[🔗 Tentar abrir link original]({url_pdf})")
 
 # ==========================================
 # 2. TELA PRINCIPAL (RENTABILIDADE)
