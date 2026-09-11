@@ -2776,11 +2776,6 @@ def aplicativo_principal():
         tela_visao_comercial()
     elif tela == "Comissionamento":
         tela_comissionamento()
-        # ==========================================
-    # TELA CONTROLE DE DESPESAS
-    # ==========================================
-    elif tela == "Controle de Despesas":
-        tela_controle_despesas()
 
 # Alimenta o motor central com a aba selecionada nas gavetas
 tela = st.session_state.aba_atual
