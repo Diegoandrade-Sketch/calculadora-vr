@@ -1395,7 +1395,7 @@ def tela_controle_despesas():
                 for col in df_pivot.columns:
                     df_pivot[col] = df_pivot[col].apply(lambda x: f"R$ {f_br(x)}" if x > 0 else "-")
                     
-                st.dataframe(df_pivot, width="stretch")
+                st.dataframe(df_pivot, use_container_width=True)
 
             # --- BLOCO 3: EXTRATO COMPLETO ---
             with st.expander("Extrato Completo de Lançamentos", expanded=True):
@@ -1409,7 +1409,7 @@ def tela_controle_despesas():
                 
                 st.dataframe(
                     df_visual[['Data', 'Equipe', 'Responsável', 'Tipo', 'Projeto / Cliente', 'Descrição do Gasto', 'Reembolsável?', 'Valor (R$)']], 
-                    width="stretch", 
+                    use_container_width=True, 
                     hide_index=True
                 )
 
