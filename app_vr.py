@@ -1275,6 +1275,7 @@ def tela_controle_despesas():
     import pandas as pd
     from sqlalchemy import text, create_engine
     
+    st.markdown("<h1 class='hero-title'>CONTROLE DE DESPESAS</h1>", unsafe_allow_html=True)
     st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Auditoria de Gastos e Reembolsos (VExpenses)</p>", unsafe_allow_html=True)
 
     try:
