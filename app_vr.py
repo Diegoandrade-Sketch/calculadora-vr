@@ -2763,10 +2763,10 @@ def aplicativo_principal():
            # tela_visao_comercial()
        # elif tela == "Comissionamento":
            # tela_comissionamento()
-        elif tela == "Controle de Despesas":
-            tela_controle_despesas()
-        elif tela == "Rentabilidade de Projetos":
-            tela_rentabilidade_projetos()
+        #elif tela == "Controle de Despesas":
+          #  tela_controle_despesas()
+       # elif tela == "Rentabilidade de Projetos":
+           # tela_rentabilidade_projetos()
 
 # ==========================================
 # ROTEADOR DE SEGURANÇA (FINAL DO FICHEIRO)
