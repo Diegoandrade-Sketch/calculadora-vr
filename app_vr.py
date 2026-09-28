@@ -316,7 +316,7 @@ def tela_login():
                                         st.session_state.logged_in = True; st.rerun()
                                 else: st.error("Credenciais inválidas.")
                             else: st.error("Credenciais inválidas.")
-                        except Exception as e: st.error("Erro técnico interno. Tente novamente.")
+                        except Exception as e: st.error(f"Erro técnico interno. Detalhe: {e}")
 
 # ==========================================
 # BLOCO 2: RENDERIZADORES HTML (PDFs)
