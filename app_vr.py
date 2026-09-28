@@ -2757,16 +2757,16 @@ def aplicativo_principal():
             st.error("Falha técnica interna.")
             
 # ==========================================
-        # ROTA INJETADA: COMERCIAL, FINANCEIRO E PROJETOS
-        # ==========================================
-        elif tela == "Visão Comercial":
-            tela_visao_comercial()
-        elif tela == "Comissionamento":
-            tela_comissionamento()
-        elif tela == "Controle de Despesas":
-            tela_controle_despesas()
-        elif tela == "Rentabilidade de Projetos":
-            tela_rentabilidade_projetos()
+    # ROTA INJETADA: COMERCIAL, FINANCEIRO E PROJETOS
+    # ==========================================
+    elif tela == "Visão Comercial":
+        tela_visao_comercial()
+    elif tela == "Comissionamento":
+        tela_comissionamento()
+    elif tela == "Controle de Despesas":
+        tela_controle_despesas()
+    elif tela == "Rentabilidade de Projetos":
+        tela_rentabilidade_projetos()
 
 # ==========================================
 # ROTEADOR DE SEGURANÇA (FINAL DO FICHEIRO)
