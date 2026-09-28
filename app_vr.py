@@ -2757,30 +2757,19 @@ def aplicativo_principal():
             st.error("Falha técnica interna.")
             
     # ==========================================
-    # ROTA INJETADA: COMERCIAL E COMISSIONAMENTO
-    # ==========================================
-    elif tela == "Visão Comercial":
-        tela_visao_comercial()
-    elif tela == "Comissionamento":
-        tela_comissionamento()
-
-# Alimenta o motor central com a aba selecionada nas gavetas
-tela = st.session_state.aba_atual
-
-# --- LÓGICA DE ROTEAMENTO DAS TELAS ---
-
-if tela == "Controle de Despesas":
-    # Chama a função da tela 1 (o Espelho do VExpenses com filtros)
-    tela_controle_despesas() 
-
-elif tela == "Rentabilidade de Projetos":
-    # Chama a função da tela 2 (o Cruzamento Bitrix x VExpenses com o PDF)
-    tela_rentabilidade_projetos()
-
-# ... (aqui continuam as suas outras telas, como if tela == "Diagnóstico": etc) ...
+        # ROTA INJETADA: COMERCIAL, FINANCEIRO E PROJETOS
+        # ==========================================
+        elif tela == "Visão Comercial":
+            tela_visao_comercial()
+        elif tela == "Comissionamento":
+            tela_comissionamento()
+        elif tela == "Controle de Despesas":
+            tela_controle_despesas()
+        elif tela == "Rentabilidade de Projetos":
+            tela_rentabilidade_projetos()
 
 # ==========================================
-# ROTEADOR DE SEGURANÇA
+# ROTEADOR DE SEGURANÇA (FINAL DO FICHEIRO)
 # ==========================================
 if not st.session_state.logged_in: 
     tela_login()
