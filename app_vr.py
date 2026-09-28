@@ -51,7 +51,7 @@ try:
     DB_PORT = st.secrets["DB_PORT"]
     DB_NAME = st.secrets["DB_NAME"]
     DB_PASS_ENCODED = urllib.parse.quote_plus(DB_PASS)
-    CONN_STR = f"postgresql://{DB_USER}:{DB_PASS_ENCODED}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    CONN_STR = f"postgresql+psycopg2://{DB_USER}:{DB_PASS_ENCODED}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 except Exception:
     CONN_STR = None
 
