@@ -2761,8 +2761,8 @@ def aplicativo_principal():
 # ==========================================
        # elif tela == "Visão Comercial":
            # tela_visao_comercial()
-        elif tela == "Comissionamento":
-            tela_comissionamento()
+       # elif tela == "Comissionamento":
+           # tela_comissionamento()
         elif tela == "Controle de Despesas":
             tela_controle_despesas()
         elif tela == "Rentabilidade de Projetos":
