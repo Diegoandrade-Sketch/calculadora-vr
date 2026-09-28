@@ -2757,8 +2757,8 @@ def aplicativo_principal():
             st.error("Falha técnica interna.")
             
     # ==========================================
-        # ROTA INJETADA: COMERCIAL, FINANCEIRO E PROJETOS
-        # ==========================================
+    # ROTA INJETADA: COMERCIAL, FINANCEIRO E PROJETOS
+    # ==========================================
         elif tela == "Visão Comercial":
             tela_visao_comercial()
         elif tela == "Comissionamento":
