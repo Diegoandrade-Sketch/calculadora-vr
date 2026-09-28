@@ -994,13 +994,10 @@ def modal_detalhe_bitrix(deal_id, nome_projeto, engine_bitrix):
     st.write(f"**ID do Negócio:** {deal_id}")
     
     # Exemplo de query para buscar os produtos. 
-    # (Ajuste os nomes das tabelas de produtos do seu Bitrix aqui)
     query_produtos = text("""
         SELECT 'Produto/Serviço Exemplo' AS descricao, 
                1 AS quantidade, 
                1500.00 AS preco_unitario
-        -- Substitua pelas suas tabelas reais:
-        -- FROM produtos_negocio WHERE deal_id = :d_id
     """)
     
     try:
@@ -1024,41 +1021,31 @@ def modal_visualizar_pdf(url_pdf):
         
     try:
         import requests
-        import fitz  # Biblioteca do PyMuPDF
-        from PIL import Image
-        import io
         import streamlit as st
         
-        # 1. O Python baixa os bytes do PDF silenciosamente
+        # O Python apenas baixa o arquivo para criar o botão de download
         response = requests.get(url_pdf)
         response.raise_for_status()
         pdf_bytes = response.content
         
-        # 2. Converte a primeira página em Imagem (PNG)
-        doc = fitz.open("pdf", pdf_bytes)
-        page = doc.load_page(0) 
-        # Aplica um zoom de 2x (Matrix) para a nota fiscal não ficar embaçada
-        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2)) 
-        img_data = pix.tobytes("png")
-        img = Image.open(io.BytesIO(img_data))
+        st.info("O comprovante está pronto. Escolha uma opção abaixo:")
         
-        # 3. Exibe a imagem renderizada (Inquebrável pelos navegadores)
-        st.image(img, caption="Visualização do Comprovante (Página 1)")
-        
-        # 4. Mantém a opção do gestor baixar o arquivo original se precisar
-        st.download_button(
-            label="📥 Baixar PDF Original",
-            data=pdf_bytes,
-            file_name="comprovante.pdf",
-            mime="application/pdf",
-            width="stretch"
-        )
+        col1, col2 = st.columns(2)
+        with col1:
+            st.download_button(
+                label="📥 Baixar Arquivo (PDF)",
+                data=pdf_bytes,
+                file_name="comprovante.pdf",
+                mime="application/pdf",
+                width="stretch"
+            )
+        with col2:
+            st.link_button("🔗 Abrir numa Nova Aba", url_pdf, width="stretch")
             
-    except ImportError:
-        st.error("Biblioteca 'PyMuPDF' não encontrada. Adicione ao requirements.txt.")
     except Exception as e:
-        st.error("Erro ao converter o comprovante em imagem.")
+        st.error("Erro ao processar o comprovante.")
         st.markdown(f"[🔗 Tentar abrir link original]({url_pdf})")
+
 
 # ==========================================
 # 2. TELA PRINCIPAL (RENTABILIDADE)
@@ -1073,9 +1060,10 @@ def tela_rentabilidade_projetos():
     # Tenta importar a biblioteca de similaridade (Fuzzy)
     try:
         from thefuzz import process
+        fuzz_ativo = True
     except ImportError:
-        st.error("Biblioteca 'thefuzz' não encontrada. Adicione ao requirements.txt.")
-        return
+        fuzz_ativo = False
+        st.warning("Motor 'thefuzz' ausente. O cruzamento usará apenas nomes exatos.")
 
     # --- MOTOR DE FAXINA DE TEXTO (Apenas para esta tela) ---
     def limpar_nome_projeto(texto):
@@ -1088,7 +1076,7 @@ def tela_rentabilidade_projetos():
         return ' '.join(t.split()) # Remove espaços duplos e laterais
 
     st.markdown("<h1 class='hero-title'>RENTABILIDADE DE PROJETOS</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Conciliação Híbrida com Motor de Similaridade (Fuzzy Matching)</p>", unsafe_allow_html=True)
+    st.markdown("<p style='color:#777; font-size:1.2rem; margin-bottom:30px;'>Conciliação Híbrida com Motor de Similaridade</p>", unsafe_allow_html=True)
 
     try:
         with st.container():
@@ -1097,9 +1085,9 @@ def tela_rentabilidade_projetos():
             
             data_inicio = f1.date_input("Início", hoje.replace(day=1), format="DD/MM/YYYY", key="proj_in")
             data_fim = f2.date_input("Fim", hoje, format="DD/MM/YYYY", key="proj_fim")
-            busca_texto = f3.text_input("Buscar Projeto (Texto)")
-            filtro_executivo = f4.selectbox("Executivo", ["Todos"]) 
-            filtro_margem = f5.selectbox("Status da Margem", ["Todos", "Prejuízo", "Lucro"])
+            busca_texto = f3.text_input("Buscar Projeto (Texto)", key="proj_busca")
+            filtro_executivo = f4.selectbox("Executivo", ["Todos"], key="proj_exec") 
+            filtro_margem = f5.selectbox("Status da Margem", ["Todos", "Prejuízo", "Lucro"], key="proj_marg")
 
         engine_bitrix = get_db_engine()
         url_vex = engine_bitrix.url.set(database='vexpenses')
@@ -1125,7 +1113,6 @@ def tela_rentabilidade_projetos():
             
             if not df_previsto.empty:
                 df_previsto['previsto_setup'] = df_previsto['previsto_setup_str'].apply(parse_currency)
-                # Aplica a faxina no Bitrix
                 df_previsto['nome_limpo_bitrix'] = df_previsto['nome_cliente_bitrix'].apply(limpar_nome_projeto)
 
         # BUSCA VEXPENSES
@@ -1141,7 +1128,6 @@ def tela_rentabilidade_projetos():
             df_realizado = pd.read_sql(query_vex_agg, conn_vex, params={"d_inicio": data_inicio, "d_fim": data_fim})
             
             if not df_realizado.empty:
-                # Aplica a faxina no VExpenses
                 df_realizado['nome_limpo_vex'] = df_realizado['nome_projeto_vex'].apply(limpar_nome_projeto)
 
             query_vex_detalhe = text("""
@@ -1168,15 +1154,16 @@ def tela_rentabilidade_projetos():
                 lista_vex_limpa = df_realizado['nome_limpo_vex'].dropna().unique().tolist()
                 dicionario_matches = {}
                 
-                # Compara cada nome do Bitrix com todos do VExpenses
                 for nome_bitrix in df_previsto['nome_limpo_bitrix'].dropna().unique():
                     if lista_vex_limpa:
-                        # Retorna o melhor match e a pontuação de similaridade (0 a 100)
-                        melhor_match, pontuacao = process.extractOne(nome_bitrix, lista_vex_limpa)
-                        if pontuacao >= 80:  # Linha de corte: só cruza se for 80%+ igual
-                            dicionario_matches[nome_bitrix] = melhor_match
+                        if fuzz_ativo:
+                            melhor_match, pontuacao = process.extractOne(nome_bitrix, lista_vex_limpa)
+                            if pontuacao >= 80:  
+                                dicionario_matches[nome_bitrix] = melhor_match
+                        else:
+                            if nome_bitrix in lista_vex_limpa:
+                                dicionario_matches[nome_bitrix] = nome_bitrix
                 
-                # Cria a ponte de ligação baseada nos matches aprovados
                 df_previsto['chave_fuzzy'] = df_previsto['nome_limpo_bitrix'].map(dicionario_matches)
                 df_dash = pd.merge(df_previsto, df_realizado, left_on='chave_fuzzy', right_on='nome_limpo_vex', how='left')
             else:
@@ -1219,8 +1206,8 @@ def tela_rentabilidade_projetos():
                 
                 with c_action:
                     st.markdown("**🔍 Auditar Venda (Bitrix)**")
-                    projeto_alvo = st.selectbox("Selecione o Projeto:", df_dash['nome_cliente_bitrix'].tolist(), label_visibility="collapsed")
-                    if st.button("Ver Itens do Negócio", width="stretch") and projeto_alvo:
+                    projeto_alvo = st.selectbox("Selecione o Projeto:", df_dash['nome_cliente_bitrix'].tolist(), label_visibility="collapsed", key="proj_audit")
+                    if st.button("Ver Itens do Negócio", width="stretch", key="btn_audit") and projeto_alvo:
                         id_alvo = df_dash[df_dash['nome_cliente_bitrix'] == projeto_alvo].iloc[0]['deal_id']
                         modal_detalhe_bitrix(id_alvo, projeto_alvo, engine_bitrix)
 
@@ -1248,10 +1235,10 @@ def tela_rentabilidade_projetos():
                         
                         df_acoes = pd.DataFrame(opcoes_despesa)
                         c_sel, c_btn = st.columns([4, 1])
-                        with c_sel: despesa_alvo = st.selectbox("Selecione a despesa para ver o comprovante:", df_acoes['label'].tolist())
+                        with c_sel: despesa_alvo = st.selectbox("Selecione a despesa para ver o comprovante:", df_acoes['label'].tolist(), key="proj_desp_pdf")
                         with c_btn: 
                             st.write("") 
-                            if st.button("Ver PDF", width="stretch") and despesa_alvo:
+                            if st.button("Ver PDF", width="stretch", key="btn_pdf") and despesa_alvo:
                                 link_alvo = df_acoes[df_acoes['label'] == despesa_alvo].iloc[0]['link']
                                 modal_visualizar_pdf(link_alvo)
 
