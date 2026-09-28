@@ -7,3 +7,5 @@ starlette
 uvicorn
 openpyxl
 psycopg-binary
+thefuzz
+Levenshtein
