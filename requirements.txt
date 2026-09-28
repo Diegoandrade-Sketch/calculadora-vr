@@ -6,5 +6,4 @@ fpdf2
 starlette
 uvicorn
 openpyxl
-PyMuPDF
 thefuzz
