@@ -6,3 +6,5 @@ fpdf2
 starlette
 uvicorn
 openpyxl
+psycopg2-binary
+psycopg-binary
