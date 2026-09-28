@@ -2759,8 +2759,8 @@ def aplicativo_principal():
 # ==========================================
 # ROTA INJETADA: COMERCIAL, FINANCEIRO E PROJETOS
 # ==========================================
-        elif tela == "Visão Comercial":
-            tela_visao_comercial()
+       # elif tela == "Visão Comercial":
+           # tela_visao_comercial()
         elif tela == "Comissionamento":
             tela_comissionamento()
         elif tela == "Controle de Despesas":
