@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import datetime
+import calendar
 
 # ==========================================
 # CONFIGURAÇÃO DA PÁGINA ISOLADA
@@ -43,7 +44,7 @@ st.markdown("<p style='color:#777; font-size:1.1rem; margin-bottom:20px;'>Docume
 aba_vis, aba_cad = st.tabs(["📋 Consultar Atas & Calendário", "➕ Nova Reunião / Ata"])
 
 # ==========================================
-# ABA 1: CONSULTA, FILTROS E CALENDÁRIO
+# ABA 1: CONSULTA, FILTROS E CALENDÁRIO REAL
 # ==========================================
 with aba_vis:
     st.markdown("### Filtros de Busca")
@@ -54,7 +55,7 @@ with aba_vis:
     
     filtro_resp = f2.text_input("Filtrar por Responsável")
     
-    modo_exibicao = f3.radio("Modo de Exibição", ["Lista Detalhada", "Visão Calendário (Simulada)"], horizontal=True)
+    modo_exibicao = f3.radio("Modo de Exibição", ["Lista Detalhada", "Visão Calendário (Mês a Mês)"], horizontal=True)
 
     st.markdown("---")
 
@@ -90,16 +91,73 @@ with aba_vis:
                         </div>
                     """, unsafe_allow_html=True)
         else:
-            # Visão Calendário Agrupada por Data
-            st.markdown("#### Agenda de Reuniões")
-            if df_atas.empty:
-                st.info("Nenhuma reunião agendada.")
-            else:
-                df_calendario = df_atas.sort_values(by="data")
-                for data_reuniao, grupo in df_calendario.groupby("data"):
-                    st.markdown(f"##### 📅 {data_reuniao.strftime('%d/%m/%Y')}")
-                    for _, r in grupo.iterrows():
-                        st.info(f"**{r['horario']}** - [{r['setor']}] **{r['titulo']}** (Conduzido por: *{r['responsavel']}*)")
+            # ==========================================
+            # VISÃO CALENDÁRIO MÊS A MÊS
+            # ==========================================
+            st.markdown("#### 📅 Calendário de Reuniões")
+            
+            c_mes, c_ano = st.columns(2)
+            meses_dict = {
+                1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril", 
+                5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto", 
+                9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
+            }
+            hoje = datetime.date.today()
+            
+            mes_sel = c_mes.selectbox("Selecionar Mês", list(meses_dict.keys()), format_func=lambda x: meses_dict[x], index=hoje.month - 1)
+            ano_sel = c_ano.number_input("Selecionar Ano", value=hoje.year, step=1)
+
+            st.markdown("---")
+
+            # Gerar matriz do calendário (Segunda a Domingo ou Domingo a Sábado)
+            cal = calendar.monthcalendar(ano_sel, mes_sel)
+            dias_semana = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"]
+
+            # Cabeçalho dos dias da semana
+            cols_sem = st.columns(7)
+            for i, d_nome in enumerate(dias_semana):
+                cols_sem[i].markdown(f"<div style='text-align: center; font-weight: bold; color: #555; background: #e0e0e0; padding: 5px; border-radius: 4px;'>{d_nome}</div>", unsafe_allow_html=True)
+
+            # Filtrar atas para o mês e ano selecionados
+            df_mes = df_atas[
+                (df_atas['data'].apply(lambda x: x.year) == ano_sel) & 
+                (df_atas['data'].apply(lambda x: x.month) == mes_sel)
+            ]
+
+            # Mapear reuniões por dia do mês
+            reunioes_por_dia = {}
+            for _, r in df_mes.iterrows():
+                dia_num = r['data'].day
+                if dia_num not in reunioes_por_dia:
+                    reunioes_por_dia[dia_num] = []
+                reunioes_por_dia[dia_num].append(r)
+
+            # Renderizar semanas do calendário
+            for semana in cal:
+                cols_dia = st.columns(7)
+                for i, dia in enumerate(semana):
+                    with cols_dia[i]:
+                        if dia == 0:
+                            st.markdown("<div style='padding: 15px; color: #ccc; text-align: center; height: 90px;'>-</div>", unsafe_allow_html=True)
+                        else:
+                            tem_evento = dia in reunioes_por_dia
+                            bg = "#fff8f0" if tem_evento else "#ffffff"
+                            borda = "#ff6600" if tem_evento else "#e0e0e0"
+                            
+                            st.markdown(f"""
+                                <div style="background: {bg}; border: 1px solid {borda}; border-radius: 6px; padding: 6px; height: 95px; overflow-y: auto; margin-bottom: 8px;">
+                                    <div style="font-weight: bold; font-size: 0.85rem; color: #333; margin-bottom: 4px;">{dia}</div>
+                            """, unsafe_allow_html=True)
+                            
+                            if tem_evento:
+                                for ev in reunioes_por_dia[dia]:
+                                    st.markdown(f"""
+                                        <div style="background: #ff6600; color: white; font-size: 0.7rem; padding: 2px 4px; border-radius: 3px; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{ev['titulo']}">
+                                            🕒 {ev['horario']} - {ev['titulo']}
+                                        </div>
+                                    """, unsafe_allow_html=True)
+                                    
+                            st.markdown("</div>", unsafe_allow_html=True)
 
 # ==========================================
 # ABA 2: FORMULÁRIO DE CADASTRO DE ATA
